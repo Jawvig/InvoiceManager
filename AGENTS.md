@@ -9,6 +9,7 @@ Before making implementation changes, read:
 - [docs/architecture.md](docs/architecture.md)
 - [docs/domain-model.md](docs/domain-model.md)
 - [docs/data-model.md](docs/data-model.md)
+- [docs/deployment.md](docs/deployment.md) — deployment strategy, CI/CD pipeline, and infrastructure as code
 
 ## Project Intent
 

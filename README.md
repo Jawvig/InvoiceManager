@@ -15,6 +15,8 @@ orchestrated with Aspire.
 - Save invoices to OneDrive with filenames that include the invoice ISO date,
   invoice purpose, invoice total, and whether that total is inclusive (`inc`) or
   exclusive (`exc`) of VAT.
+- Catch up on downloading bills if there are some missing (e.g. missed 
+  downloading the previous month, now two are available).
 - Upload each invoice to the relevant FreeAgent bill.
 - Update a FreeAgent bill total when needed so it matches the retrieved invoice.
 - Track expected invoices, retrieved invoices, saved file locations, and
