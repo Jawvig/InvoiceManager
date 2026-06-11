@@ -46,8 +46,6 @@ Manual Approval (GitHub Environment)
        ↓
 Deploy to Production Environment
        ↓
-Integration Tests (Production)
-       ↓
 Complete
 ```
 
@@ -122,7 +120,7 @@ Triggered on: Push to `main` branch or pull request.
 
 **Steps**:
 1. Checkout code.
-2. Setup .NET 8.
+2. Setup .NET 10.
 3. Restore NuGet dependencies.
 4. Build solution.
 5. Run unit tests.

@@ -48,3 +48,5 @@ See [docs/architecture.md](docs/architecture.md) for the detailed architecture.
 - [docs/architecture.md](docs/architecture.md) - runtime, hosting, integration,
   storage, and monitoring design.
 - [docs/data-model.md](docs/data-model.md) - initial Cosmos DB data model.
+- [docs/deployment.md](docs/deployment.md) - deployment strategy, CI/CD pipeline,
+  and infrastructure as code.
