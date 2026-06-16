@@ -15,12 +15,19 @@ Initial triggers:
 The timer-triggered workflow should:
 
 1. Load invoice configuration from storage.
-2. Determine which invoices are expected.
-3. Ask the relevant invoice integration to retrieve each expected invoice.
-4. Save retrieved invoice files to OneDrive.
-5. Upload saved invoices to FreeAgent bills.
-6. Persist the resulting invoice state.
-7. Record logs, metrics, and failures.
+2. Find expected invoice records that are due or retryable.
+3. For each expected invoice, check the configured OneDrive destination for an
+   existing matching file.
+4. If a matching OneDrive file exists, update the invoice record as reconciled
+   and continue the downstream workflow from that saved file.
+5. If no matching OneDrive file exists, ask the relevant invoice integration to
+   retrieve an invoice using the expected invoice selection criteria.
+6. Save retrieved invoice files to OneDrive.
+7. Upload saved or reconciled invoices to FreeAgent bills.
+8. Create the next expected invoice record when the current invoice reaches the
+   configured success state.
+9. Persist invoice state after each meaningful step.
+10. Record logs, metrics, and failures.
 
 ## Azure Hosting
 
@@ -73,13 +80,22 @@ The core workflow should be provider-independent. It should decide:
 
 - Which invoices are expected.
 - Which integration should be used.
+- Which expected date, amount, currency, and source hints should be passed to an
+  invoice source integration.
 - Whether a retrieved invoice matches the expectation.
+- Whether an existing OneDrive file matches the expectation.
 - Where the invoice should be saved.
 - Whether a FreeAgent bill needs to be created, updated, or attached to.
 - How invoice state should transition after each step.
+- When to create the next expected invoice record.
 
 The core workflow should not know the details of Microsoft Graph, OpenAI billing
 APIs, Azure billing APIs, OneDrive APIs, or FreeAgent APIs.
+
+The database is the workflow ledger, but it is not the only source of truth for
+whether an invoice file has already been saved. OneDrive reconciliation is part
+of the normal workflow so that pre-existing files, manually repaired files, and
+retries after partial failures do not result in duplicate saved files.
 
 ## Integration Model
 
@@ -88,13 +104,26 @@ shared contract and be selected by configuration.
 
 Conceptual responsibilities:
 
-- Invoice source integrations retrieve invoice files and metadata.
-- OneDrive integration saves files to configured folders.
+- Invoice source integrations retrieve invoice files and metadata using
+  provider-independent selection criteria supplied by the core workflow.
+- OneDrive integration searches configured folders for existing matching files
+  and saves files to configured folders.
 - FreeAgent integration finds bills, updates totals when required, and uploads
   invoice attachments.
 
 The exact C# interfaces will be defined during implementation, but they should
 support provider-independent workflow testing.
+
+The source integration contract should be able to accept search criteria such as
+expected invoice date, date tolerance, expected amount and currency. The 
+integration should return invoice content or a retrievable file reference plus 
+actual metadata such as source invoice ID, invoice date, amount, and currency.
+
+The OneDrive integration contract should be able to search a configured
+destination for an existing file that satisfies the expected invoice metadata and
+return the saved location when a match is found. Matching rules belong in the
+core workflow, while provider-specific file listing and metadata extraction
+belong in the OneDrive integration.
 
 ## Storage
 
@@ -113,10 +142,15 @@ the queries the service needs, especially:
 - Find active invoice configurations.
 - Find invoices expected on or before a date.
 - Find invoice records by configuration.
+- Find invoice records that need OneDrive reconciliation.
 - Find failures that need retry.
+- Find the latest completed invoice record for creating the next expected
+  invoice.
 - Review recent processing runs.
 
-See [data-model.md](data-model.md) for the initial data model.
+See [data-model.md](data-model.md) for the initial data model and
+[workflow-reconciliation.md](workflow-reconciliation.md) for matching and
+reconciliation behavior.
 
 ## Secrets
 
@@ -142,6 +176,7 @@ The service should emit enough telemetry to answer:
 - Which invoices were expected in a run?
 - Which invoices were retrieved?
 - Which invoices were missing?
+- Which invoices were reconciled from existing OneDrive files?
 - Which files were saved to OneDrive?
 - Which FreeAgent bills were updated or attached to?
 - Which external calls failed?
