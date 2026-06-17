@@ -100,8 +100,9 @@ source integration when requesting an invoice.
 
 Search criteria may include expected date, date tolerance, expected amount and
 currency.
-Source integrations can translate those criteria into provider-specific 
-queries or UI navigation without exposing those details to the core workflow.
+Source and OneDrive integrations translate those criteria into provider-specific
+search and matching behavior without exposing those details to the core
+workflow.
 
 ## Retrieved Invoice
 
@@ -133,8 +134,14 @@ defined in detail.
 
 ## Invoice Match
 
-The result of comparing an expected invoice with a candidate source invoice or
-OneDrive file.
+The result returned by a source or OneDrive integration after applying invoice
+search criteria to provider-specific candidates.
+
+An invoice match should indicate whether no match was found or an accepted match
+was found. Accepted matches should include the metadata needed by the core
+workflow to update invoice state, such as actual invoice date, amount, currency,
+source invoice ID where available, OneDrive location where available, and the
+reason the match was accepted.
 
 For Microsoft 365, amount and invoice date must both match within the configured
 tolerances. The source does not expose a stable product identifier before the PDF

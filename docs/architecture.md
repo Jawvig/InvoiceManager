@@ -80,10 +80,9 @@ The core workflow should be provider-independent. It should decide:
 
 - Which invoices are expected.
 - Which integration should be used.
-- Which expected date, amount, currency, and source hints should be passed to an
-  invoice source integration.
-- Whether a retrieved invoice matches the expectation.
-- Whether an existing OneDrive file matches the expectation.
+- Which expected date, amount, and currency should be passed to an invoice
+  source integration or OneDrive integration as search criteria.
+- How to interpret the match result returned by an integration.
 - Where the invoice should be saved.
 - Whether a FreeAgent bill needs to be created, updated, or attached to.
 - How invoice state should transition after each step.
@@ -91,6 +90,11 @@ The core workflow should be provider-independent. It should decide:
 
 The core workflow should not know the details of Microsoft Graph, OpenAI billing
 APIs, Azure billing APIs, OneDrive APIs, or FreeAgent APIs.
+
+The core workflow should not reimplement provider-specific matching rules. It
+passes criteria to the relevant integration and receives either no match, an
+unambiguous accepted match, or a failure/diagnostic result that can be persisted
+and logged.
 
 The database is the workflow ledger, but it is not the only source of truth for
 whether an invoice file has already been saved. OneDrive reconciliation is part
@@ -104,10 +108,11 @@ shared contract and be selected by configuration.
 
 Conceptual responsibilities:
 
-- Invoice source integrations retrieve invoice files and metadata using
-  provider-independent selection criteria supplied by the core workflow.
-- OneDrive integration searches configured folders for existing matching files
-  and saves files to configured folders.
+- Invoice source integrations search for and retrieve matching invoice files and
+  metadata using provider-independent selection criteria supplied by the core
+  workflow.
+- OneDrive integration searches configured folders for existing matching files,
+  returns match details, and saves files to configured folders.
 - FreeAgent integration finds bills, updates totals when required, and uploads
   invoice attachments.
 
@@ -116,14 +121,17 @@ support provider-independent workflow testing.
 
 The source integration contract should be able to accept search criteria such as
 expected invoice date, date tolerance, expected amount and currency. The 
-integration should return invoice content or a retrievable file reference plus 
-actual metadata such as source invoice ID, invoice date, amount, and currency.
+integration owns the provider-specific matching logic and should return either
+no match or an accepted invoice match with invoice content or a retrievable file
+reference plus actual metadata such as source invoice ID, invoice date, amount,
+and currency.
 
 The OneDrive integration contract should be able to search a configured
 destination for an existing file that satisfies the expected invoice metadata and
-return the saved location when a match is found. Matching rules belong in the
-core workflow, while provider-specific file listing and metadata extraction
-belong in the OneDrive integration.
+return the saved location and match details when a match is found. The OneDrive
+integration owns matching against OneDrive contents, including file listing,
+metadata extraction, and any filename/content inspection needed to decide whether
+a file satisfies the criteria.
 
 ## Storage
 

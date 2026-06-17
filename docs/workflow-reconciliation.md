@@ -1,7 +1,7 @@
 # Invoice Matching and OneDrive Reconciliation
 
-This document describes how InvoiceManager should match expected invoices to
-source invoices and to files that already exist in OneDrive.
+This document describes how InvoiceManager should use invoice search criteria to
+find source invoices and files that already exist in OneDrive.
 
 ## Purpose
 
@@ -25,12 +25,13 @@ follows:
 
 1. Load the expected invoice record and its configuration.
 2. Build provider-independent invoice search criteria from the expected record.
-3. Search the configured OneDrive destination for an existing matching file.
+3. Ask the OneDrive integration to search the configured destination for an
+   existing matching file.
 4. If a OneDrive match exists, update the invoice record as reconciled from
    OneDrive and continue the downstream workflow from that saved file.
 5. If no OneDrive match exists, call the source integration with the invoice
    search criteria.
-6. Validate that the retrieved invoice matches the expected invoice.
+6. Use the source integration's accepted match result as the retrieved invoice.
 7. Save the retrieved invoice to OneDrive.
 8. Continue with FreeAgent attachment behavior.
 9. Create the next expected invoice record once the configured success state is
@@ -57,12 +58,14 @@ values found during retrieval or reconciliation.
 ## Source Matching
 
 Source integrations should receive provider-independent search criteria and
-translate them into provider-specific behavior.
+translate them into provider-specific search and matching behavior.
 
-The core workflow owns the decision about whether a retrieved source invoice is
-acceptable. Source integrations should return the invoice file or file reference
-plus actual metadata such as invoice date, amount, currency, source invoice ID,
-and provider metadata.
+Source integrations own the decision about whether a source-system candidate
+satisfies the supplied criteria. They should return either no match or an
+accepted match with the invoice file or file reference plus actual metadata such
+as invoice date, amount, currency, source invoice ID, and provider metadata. The
+core workflow records and acts on that result; it does not duplicate the
+provider-specific matching logic.
 
 For Microsoft 365, amount and invoice date must both match within the configured
 tolerances. Microsoft 365 does not expose a stable product identifier before the
@@ -75,8 +78,9 @@ may be in USD while most other invoices are expected to be in GBP.
 
 ## OneDrive Reconciliation
 
-Before calling a source integration, the workflow should search the configured
-OneDrive destination for a file that satisfies the expected invoice criteria.
+Before calling a source integration, the workflow should ask the OneDrive
+integration to search the configured OneDrive destination for a file that
+satisfies the expected invoice criteria.
 
 If a matching file is found, the workflow should:
 
@@ -90,6 +94,12 @@ OneDrive matching should use the same date, amount, and currency tolerances as
 source matching. A match by amount and date is automatic when both values match
 within the configured tolerances.
 
+The OneDrive integration owns matching against OneDrive contents. It should
+return either no match or an accepted match with the OneDrive location, file
+identifier where available, and match details that explain why the file was
+accepted. The core workflow records the reconciliation result and continues the
+downstream workflow from the matched file.
+
 Reconciliation is normal workflow behavior, not an exceptional repair path.
 
 ## Ambiguity and Duplicates
@@ -98,9 +108,9 @@ The workflow should avoid creating duplicate OneDrive files and duplicate invoic
 records.
 
 If multiple candidate OneDrive files satisfy the same expected invoice criteria,
-the workflow should still accept an automatic match using the configured
-tolerances. The implementation should record enough match detail to explain
-which file was selected.
+the OneDrive integration should still return an automatic match using the
+configured tolerances. The implementation should record enough match detail to
+explain which file was selected.
 
 The service should avoid creating more than one expected invoice record for the
 same configuration and period. Next-record creation must be idempotent so a retry
