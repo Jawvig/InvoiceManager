@@ -4,6 +4,11 @@ InvoiceManager uses Terraform for infrastructure provisioning and GitHub Actions
 
 ## Environments
 
+Infrastructure names are environment-aware. Non-production resources include the
+environment suffix, for example `-test`. Production resources use the base name
+without a `production` or `prod` suffix. This keeps production names clean while
+making non-production resources visually distinct.
+
 ### Test Environment
 
 The test environment is for validating deployment changes, testing integrations, and staging new features before production.
@@ -11,7 +16,9 @@ The test environment is for validating deployment changes, testing integrations,
 - **Purpose**: Integration testing, validation, and pre-production verification.
 - **Automatic Deployment**: Deployed automatically on every successful build to the `main` branch.
 - **Data**: Test data only; credentials are non-production.
-- **Azure Resources**: Segregated resource group with naming convention `invoicemanager-test-*`.
+- **Azure Resources**: Segregated resource group with naming convention
+  `invoicemanager-test-*` for application resources and
+  `rg-invoicemanager-tfstate-test` for Terraform state.
 
 ### Production Environment
 
@@ -20,7 +27,9 @@ The production environment runs the live invoice management service.
 - **Purpose**: Live invoice retrieval, processing, and FreeAgent integration.
 - **Manual Approval**: Requires explicit approval after test environment deployment succeeds.
 - **Data**: Production data; credentials are production secrets from Azure Key Vault.
-- **Azure Resources**: Segregated resource group with naming convention `invoicemanager-prod-*`.
+- **Azure Resources**: Segregated resource group with unsuffixed production
+  names, for example `invoicemanager-*` for application resources and
+  `rg-invoicemanager-tfstate` for Terraform state.
 
 ## Deployment Pipeline
 
@@ -62,53 +71,84 @@ Terraform manages all Azure infrastructure including:
 ### Terraform Structure
 
 ```
-terraform/
+infra/terraform/
 ├── README.md
-├── environments/
-│   ├── test/
-│   │   ├── terraform.tfvars
-│   │   └── backend.tf
-│   └── production/
-│       ├── terraform.tfvars
-│       └── backend.tf
-├── modules/
-│   ├── cosmos_db/
-│   ├── functions/
-│   ├── key_vault/
-│   ├── application_insights/
-│   └── storage/
+├── locals.tf
 ├── main.tf
+├── outputs.tf
+├── production.tfvars
+├── test.tfvars
 ├── variables.tf
-└── outputs.tf
+└── versions.tf
 ```
 
-Each environment (test and production) has its own `terraform.tfvars` and backend configuration to maintain separate state files and resource naming.
+Each environment has its own `.tfvars` file and remote backend settings. The
+backend configuration is supplied by `scripts/Deploy-Infra.ps1` during
+`terraform init`, because the Azure Storage backend must exist before Terraform
+can use it.
+
+The initial Terraform configuration creates the Microsoft identity foundation:
+
+- An Entra app registration.
+- The tenant-local service principal / Enterprise Application.
+- Required delegated API permissions for Azure Resource Manager
+  `user_impersonation` and Microsoft Graph `User.Read`.
 
 ### Environment-Specific Configuration
 
 Environment-specific values are managed through:
 
 1. **terraform.tfvars**: Environment-specific variable overrides (committed to source control).
-2. **Backend State**: Separate Azure Storage containers for test and production Terraform state.
+2. **Backend State**: Separate Azure Storage accounts and resource groups for
+   test and production Terraform state.
 3. **Azure Key Vault**: Production secrets loaded by Azure Functions at runtime.
 
 Example `terraform.tfvars` differences:
 
-**test/terraform.tfvars**:
+**infra/terraform/test.tfvars**:
 ```hcl
 environment = "test"
-location    = "uksouth"
-sku         = "Y1"  # Functions consumption
-cosmos_throughput = 400  # Minimal for test
 ```
 
-**production/terraform.tfvars**:
+**infra/terraform/production.tfvars**:
 ```hcl
 environment = "production"
-location    = "uksouth"
-sku         = "Y1"  # Functions consumption
-cosmos_throughput = 4000  # Higher for production load
 ```
+
+### Local Infrastructure Deployment
+
+Use the PowerShell bootstrap script from the repository root:
+
+```powershell
+./scripts/Deploy-Infra.ps1 -Environment test
+./scripts/Deploy-Infra.ps1 -Environment production
+```
+
+The script:
+
+1. Checks that Terraform is installed.
+2. Checks that Azure CLI is installed.
+3. Prompts for Azure CLI login when needed.
+4. Creates the environment-specific Terraform state resource group, storage
+   account, and blob container if missing.
+5. Runs `terraform init`.
+6. Runs `terraform plan`.
+7. Runs `terraform apply`, unless `-PlanOnly` is supplied.
+
+The script does not install Terraform or Azure CLI automatically. If either tool
+is missing, it prints installation instructions for the current operator to
+follow.
+
+Use `-AutoApprove` only when the script should skip its confirmation prompt
+before applying the saved plan:
+
+```powershell
+./scripts/Deploy-Infra.ps1 -Environment test -AutoApprove
+```
+
+The script relies on normal user consent for the currently required delegated
+permissions. Permission declarations live in Terraform; interactive application
+authentication will be handled by the future admin site.
 
 ## GitHub Actions Workflow
 
