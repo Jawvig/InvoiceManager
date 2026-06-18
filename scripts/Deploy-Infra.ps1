@@ -87,17 +87,6 @@ function Invoke-CheckedCommand {
     }
 }
 
-function Invoke-CommandWithExitCode {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]] $Command
-    )
-
-    $arguments = @($Command | Select-Object -Skip 1)
-    & $Command[0] @arguments
-    return $LASTEXITCODE
-}
-
 function Get-ShortHash {
     param([string] $Value)
 
@@ -309,12 +298,11 @@ try {
 
     $tfVarsFile = "$Environment.tfvars"
 
-    $planExitCode = Invoke-CommandWithExitCode -Command @(
-        "terraform", "plan",
-        "-detailed-exitcode",
-        "-var-file=$tfVarsFile",
+    & terraform plan `
+        -detailed-exitcode `
+        "-var-file=$tfVarsFile" `
         "-out=$Environment.tfplan"
-    )
+    $planExitCode = $LASTEXITCODE
 
     if ($planExitCode -eq 0) {
         Write-Host "Terraform plan completed with no changes."
