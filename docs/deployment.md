@@ -139,7 +139,8 @@ The script:
    account, and blob container if missing.
 5. Runs `terraform init`.
 6. Runs `terraform plan`.
-7. Runs `terraform apply`, unless `-PlanOnly` is supplied.
+7. Runs `terraform apply` when the plan has changes, unless `-PlanOnly` is
+   supplied.
 
 The script does not install Terraform or Azure CLI automatically. If either tool
 is missing, it prints installation instructions for the current operator to
