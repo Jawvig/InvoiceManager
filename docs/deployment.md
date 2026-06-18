@@ -246,7 +246,7 @@ These are accessed in workflows via `${{ secrets.AZURE_SUBSCRIPTION_ID }}`.
 
 Production secrets are stored in Azure Key Vault and accessed by Azure Functions using Managed Identity:
 
-1. Each environment has its own Key Vault (`invoicemanager-test-kv`, `invoicemanager-prod-kv`).
+1. Each environment has its own Key Vault (`invoicemanager-test-kv`, `invoicemanager-kv`).
 2. Azure Functions use Managed Identity to authenticate to Key Vault.
 3. Secrets are referenced in code using `SecretClient` from `Azure.Security.KeyVault.Secrets`.
 
@@ -292,24 +292,23 @@ Azure Functions Application Settings (configured via Terraform and Azure Portal)
 ### Terraform Variables Pattern
 
 ```hcl
-# variables.tf - Shared variables
+# infra/terraform/variables.tf
 variable "environment" {
   description = "Environment name (test or production)"
   type        = string
 }
 
-variable "cosmos_throughput" {
-  description = "Cosmos DB provisioned throughput"
-  type        = number
+variable "redirect_uris" {
+  description = "Allowed web redirect URIs for the future admin authentication site."
+  type        = list(string)
+  default     = []
 }
 
-# test/terraform.tfvars
-environment      = "test"
-cosmos_throughput = 400
+# infra/terraform/test.tfvars
+environment = "test"
 
-# production/terraform.tfvars
-environment      = "production"
-cosmos_throughput = 4000
+# infra/terraform/production.tfvars
+environment = "production"
 ```
 
 ## CI/CD Service Principal

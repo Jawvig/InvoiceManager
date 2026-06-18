@@ -289,6 +289,7 @@ Push-Location $terraformRoot
 try {
     Invoke-CheckedCommand -Command @(
         "terraform", "init",
+        "-reconfigure",
         "-backend-config=resource_group_name=$stateResourceGroup",
         "-backend-config=storage_account_name=$stateStorageAccount",
         "-backend-config=container_name=$stateContainer",
