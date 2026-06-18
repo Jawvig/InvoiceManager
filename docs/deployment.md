@@ -124,6 +124,12 @@ Use the PowerShell bootstrap script from the repository root:
 ./scripts/Deploy-Infra.ps1 -Environment production
 ```
 
+Parameter syntax:
+
+```text
+./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove]
+```
+
 The script:
 
 1. Checks that Terraform is installed.
