@@ -1,233 +1,113 @@
 # Domain Model
 
-This document defines the shared vocabulary for InvoiceManager.
+This document defines shared InvoiceManager vocabulary. Storage fields and
+container design live in [data-model.md](data-model.md).
 
 ## Invoice Configuration
 
-A configuration entry describing an invoice that the service expects to retrieve
-on a recurring basis.
-
-Expected fields include:
-
-- Integration type.
-- Invoice name.
-- Expected frequency.
-- Expected amount and currency when needed for matching.
-- OneDrive destination.
-- FreeAgent matching information.
-- Active/inactive state.
+A recurring invoice expectation. It identifies the source integration, invoice
+name, expected schedule, matching defaults, OneDrive destination, FreeAgent
+matching information, and whether the expectation is active.
 
 ## Integration
 
-A provider-specific component that interacts with an external system.
-
-Examples:
-
-- Microsoft Azure invoice source.
-- Microsoft 365 invoice source.
-- Microsoft 365 email attachment source.
-- OpenAI invoice source.
-- OneDrive file destination.
-- FreeAgent bill destination.
+A provider-specific component that interacts with an external system, such as an
+Azure invoice source, Microsoft 365 invoice source, OpenAI invoice source,
+OneDrive destination, or FreeAgent bill destination.
 
 ## Integration Type
 
 The configured identifier used to select the correct integration for an invoice
-configuration.
-
-Examples:
-
-- `Azure`
-- `Microsoft365`
-- `OpenAI`
-- `Microsoft365Email`
-
-Exact values should be defined in code when implementation starts.
+configuration. Example values may include `Azure`, `Microsoft365`, `OpenAI`, and
+`Microsoft365Email`.
 
 ## Invoice Name
 
-The human-readable name of the expected invoice.
-
-Examples:
-
-- `ChatGPT Plus`
-- `Copilot 365`
-
-The invoice name may be used in generated filenames, logs, and user-facing
+The human-readable name of the expected invoice, such as `ChatGPT Plus` or
+`Copilot 365`. It is used for configuration identity, filenames, logs, and
 status records.
 
-For providers such as Microsoft 365, more than one expected invoice may share
-the same integration type and period. In that case the invoice name identifies
-the configured expectation and the generated filename, while date and amount are
-used to match the source invoice before the PDF contents are available.
+For providers that do not expose product metadata before the PDF is opened, the
+invoice name should not be treated as a source-system match key.
 
 ## Expected Frequency
 
-The recurrence pattern for an expected invoice.
-
-Examples may include:
-
-- Monthly.
-- Annual.
-- Custom schedule.
-
-The first implementation should only support frequencies that are needed by the
-configured invoices.
+The recurrence pattern for an expected invoice, such as monthly, annual, or a
+custom schedule. The first implementation should only support the schedules
+needed by configured invoices.
 
 ## Expected Invoice
 
-A record representing an invoice that should exist by a particular date.
-
-Expected invoice records allow the service to detect missing invoices, retry
-failed retrievals, and keep history separate from configuration.
-
-An expected invoice can include selection criteria used to find the matching
-source invoice or an existing OneDrive file:
-
-- Expected invoice date.
-- Expected amount.
-- Expected currency.
-- Date tolerance or matching window from configuration or stored data.
-- Invoice name or category for filenames and reporting.
-
-Expected metadata should be preserved separately from actual metadata collected
-after the invoice is retrieved or reconciled.
+A record representing an invoice that should exist by a particular date. It
+contains expected metadata used as matching criteria and remains separate from
+actual metadata collected after retrieval or reconciliation.
 
 ## Invoice Search Criteria
 
-The provider-independent criteria passed from the core workflow to an invoice
-source integration when requesting an invoice.
-
-Search criteria may include expected date, date tolerance, expected amount and
-currency.
-Source and OneDrive integrations translate those criteria into provider-specific
-search and matching behavior without exposing those details to the core
-workflow.
-
-## Retrieved Invoice
-
-An invoice that has been found by an integration.
-
-Retrieved invoice metadata may include:
-
-- Invoice date.
-- Invoice total.
-- Currency.
-- VAT inclusive/exclusive indicator.
-- Source integration.
-- Source identifier.
-- File content or file reference.
-
-## Reconciled Invoice
-
-An expected invoice that has been matched to a file already present in OneDrive
-before the source integration retrieves a new copy.
-
-Reconciliation allows the workflow to account for files that were downloaded
-manually, uploaded as a manual repair, or saved by a previous partial run. A
-reconciled invoice should record the OneDrive location, when reconciliation
-occurred, and the reason the match was accepted.
-
-Reconciled invoices should continue through the downstream workflow where
-appropriate, including FreeAgent attachment once that integration behavior is
-defined in detail.
+Provider-independent criteria passed from the core workflow to source and
+OneDrive integrations. Criteria may include expected date, date tolerance,
+expected amount, currency, VAT mode, source invoice identifier where available,
+and invoice name for reporting or filenames.
 
 ## Invoice Match
 
-The result returned by a source or OneDrive integration after applying invoice
-search criteria to provider-specific candidates.
+The result returned after an integration applies search criteria to external
+candidates. A match should indicate no match, an accepted match, or a failure
+with diagnostics. Accepted matches include the metadata needed to update invoice
+state and explain why the candidate was accepted.
 
-An invoice match should indicate whether no match was found or an accepted match
-was found. Accepted matches should include the metadata needed by the core
-workflow to update invoice state, such as actual invoice date, amount, currency,
-source invoice ID where available, OneDrive location where available, and the
-reason the match was accepted.
+## Retrieved Invoice
 
-For Microsoft 365, amount and invoice date must both match within the configured
-tolerances. The source does not expose a stable product identifier before the PDF
-is opened, so product or category labels should not be required as source-system
-match keys.
+An invoice found by a source integration. Retrieved metadata may include invoice
+date, total, currency, VAT mode, source integration, source identifier, provider
+metadata, and file content or a retrievable file reference.
+
+## Reconciled Invoice
+
+An expected invoice matched to a file already present in OneDrive before a fresh
+source retrieval occurs. Reconciliation should record the OneDrive location,
+when reconciliation occurred, and why the file was accepted.
 
 ## Invoice Date
 
-The date shown on the invoice. This date is used in the saved OneDrive filename
-and should be represented in ISO format when included in filenames.
+The date shown on the invoice. When used in filenames, it should be represented
+in ISO format.
 
 ## Invoice Total
 
-The monetary total from the invoice.
+The monetary total from the invoice, including amount, currency, and whether the
+amount is VAT inclusive (`inc`) or VAT exclusive (`exc`).
 
-Invoice totals must preserve:
-
-- Amount.
-- Currency.
-- Whether the amount is VAT inclusive (`inc`) or VAT exclusive (`exc`).
-
-Currency must be part of all amount comparisons. For example, OpenAI invoices
-may be in USD while most other invoices are expected to be in GBP, so raw decimal
-amounts must not be compared without currency.
+Currency is part of the value. Raw decimal amounts must not be compared without
+currency.
 
 ## Money Amount
 
-A strongly typed value representing an amount and currency.
-
-The implementation should prefer a widely used .NET money library rather than
-passing loose decimal and string pairs through the application. `NodaMoney` is a
-candidate package because it provides money and currency types backed by ISO
-4217 currency data. The domain should still wrap library types where useful so
-persistence and workflow rules remain stable if the implementation package
-changes.
+A strongly typed value representing amount and currency. The implementation
+should prefer a widely used .NET money library, such as `NodaMoney`, while
+wrapping library types where useful so persistence and workflow rules remain
+stable.
 
 ## OneDrive Destination
 
-The configured OneDrive folder where a retrieved invoice should be saved.
-
-The saved location should be stored after upload so later runs can avoid
-duplicating files and can show where the invoice was saved.
-
-OneDrive may already contain files that satisfy expected invoice records. The
-workflow should treat OneDrive reconciliation as normal behavior rather than an
-exception path.
+The configured OneDrive folder where an invoice should be saved. Saved file
+locations should be recorded so later runs can avoid duplicates and continue
+downstream work.
 
 ## FreeAgent Bill
 
-The FreeAgent bill that corresponds to a retrieved invoice.
-
-The service should store the FreeAgent bill URL after matching or upload. If the
-bill total does not match the invoice total, the service may update the bill
-where the integration and configuration allow it.
+The FreeAgent bill that corresponds to a retrieved or reconciled invoice. The
+service should store the bill URL after matching or upload. If allowed by
+configuration, the FreeAgent integration may update a bill total so it matches
+the invoice total.
 
 ## Processing Run
 
-A single execution of the background service.
-
-A processing run should record start time, finish time, status, and summary
-counts so failures can be inspected through storage and monitoring.
-
-## Processing Status
-
-The current state of an expected or retrieved invoice.
-
-Initial statuses may include:
-
-- `Expected`
-- `NotFound`
-- `Retrieved`
-- `ReconciledFromOneDrive`
-- `SavedToOneDrive`
-- `UploadedToFreeAgent`
-- `NextExpectedCreated`
-- `Failed`
-- `Skipped`
-
-Exact status names should be finalized during implementation and kept stable
-once persisted.
+A single execution of the background service. It records timing, trigger type,
+status, and summary counts for monitoring and diagnosis.
 
 ## Next Expected Invoice
 
 The future expected invoice record created after the current invoice reaches the
-configured success state.
-
-The next expected invoice is derived from the invoice configuration, recurrence
-rule, and completed invoice metadata. Creation should be idempotent so retries
-or repeated runs do not create duplicate records for the same configured period.
+configured success state. Creation must be idempotent so retries or reruns do
+not create duplicates for the same configured period.

@@ -1,10 +1,8 @@
 # Data Model
 
-InvoiceManager should use Azure Cosmos DB for NoSQL in serverless mode as the
-initial persistent storage option.
-
-The data model should be optimized for the service's operational queries rather
-than normalized like a relational database.
+InvoiceManager uses Azure Cosmos DB for NoSQL in serverless mode. The model
+should be optimized for operational queries rather than normalized like a
+relational database.
 
 ## Containers
 
@@ -14,20 +12,12 @@ Initial containers:
 - `invoice-records`
 - `processing-runs`
 
-This can be adjusted during implementation if query patterns require fewer or
-more containers.
+This can change during implementation if concrete query patterns show a better
+shape.
 
 ## invoice-configurations
 
 Stores recurring invoice expectations and provider configuration references.
-
-Purpose:
-
-- List active invoice configurations.
-- Select the correct invoice integration.
-- Determine expected invoice frequency.
-- Determine default expected amount and currency where useful for matching.
-- Determine OneDrive and FreeAgent behavior.
 
 Suggested partition key:
 
@@ -51,24 +41,17 @@ Candidate fields:
 Notes:
 
 - Do not store secrets in configuration records.
-- Store references to secret names or configuration keys when needed.
+- Store secret names or configuration-key references where needed.
 - Separate Microsoft 365 invoices, such as Copilot and Office 365 extensions,
-  should usually be separate configuration records even when they use the same
-  `integrationType`.
+  should usually be separate configuration records even when they share an
+  integration type.
 - If multi-company support becomes necessary, reconsider the partition key and
   include a company or tenant identifier.
 
 ## invoice-records
 
-Stores expected and retrieved invoice history.
-
-Purpose:
-
-- Track the next expected invoice.
-- Track whether an expected invoice has been retrieved.
-- Track OneDrive saved location.
-- Track FreeAgent bill URL.
-- Support retry and audit history.
+Stores expected invoice history, retrieval state, reconciliation state, and
+downstream attachment state.
 
 Suggested partition key:
 
@@ -110,30 +93,20 @@ Candidate fields:
 
 Notes:
 
-- Expected fields are the criteria used to find the invoice. Actual fields are
-  populated after retrieval or OneDrive reconciliation and should not overwrite
-  the expected values.
-- `expectedVatMode` and `actualVatMode` should distinguish VAT inclusive (`inc`)
-  and VAT exclusive (`exc`) totals.
-- Amount comparisons must include currency. OpenAI invoices may be in USD while
-  most other invoices are expected to be in GBP.
+- Expected fields are criteria and should not be overwritten by actual values.
+- `expectedVatMode` and `actualVatMode` distinguish VAT inclusive (`inc`) and
+  VAT exclusive (`exc`) totals.
+- Amount comparisons must include currency.
 - `sourceMetadata` may contain provider-specific non-secret metadata.
-- `matchReason` should preserve why a candidate was accepted, such as matching
-  expected date and amount within the configured tolerance.
+- `matchReason` should preserve why a candidate was accepted.
 - `reconciliationSource` can distinguish automatic OneDrive scans from future
-  manual override or migration tooling without requiring an admin UI now.
-- The service should avoid creating duplicate records for the same expected
-  invoice period.
+  manual override or migration tooling.
+- The service should avoid duplicate records for the same configuration, period,
+  amount, and currency.
 
 ## processing-runs
 
 Stores summary information for each service execution.
-
-Purpose:
-
-- Review recent runs.
-- Link logs and failures to a specific run.
-- Record summary counts for monitoring and diagnosis.
 
 Suggested partition key:
 
@@ -159,23 +132,21 @@ Candidate fields:
 
 ## Query Patterns
 
-The initial model should support these queries:
+The initial model should support:
 
-- Find all active invoice configurations.
-- Find invoice records for a configuration.
-- Find invoices expected on or before a date.
-- Find invoice records that need OneDrive reconciliation.
-- Find invoices with failed or retryable status.
-- Find recent processing runs.
-- Find the latest record for a configured invoice.
-- Find whether the next expected record already exists for a configuration and
-  period.
-- Find possible duplicate records by configuration, expected date, amount, and
-  currency.
+- Finding active invoice configurations.
+- Finding invoice records for a configuration.
+- Finding invoices expected on or before a date.
+- Finding records that need OneDrive reconciliation or retry.
+- Finding recent processing runs.
+- Finding the latest completed record for a configured invoice.
+- Detecting whether the next expected record already exists.
+- Finding possible duplicate records by configuration, expected date, amount,
+  and currency.
 
 ## Consistency Expectations
 
-The workflow should persist state after meaningful steps:
+The workflow should persist after these meaningful steps:
 
 1. Expected invoice identified.
 2. Existing OneDrive file checked.
@@ -186,18 +157,13 @@ The workflow should persist state after meaningful steps:
 7. Next expected invoice record created.
 8. Processing completed or failed.
 
-This allows retry after partial failure without losing progress.
-
 Creating the next expected invoice record must be idempotent. A retry or manual
-re-run should detect an existing next record for the same configuration and
+rerun should detect an existing next record for the same configuration and
 period rather than creating a duplicate.
 
-## Open Data Decisions
-
-These decisions should be revisited during implementation:
+## Open Decisions
 
 - Exact partition keys after concrete query patterns are known.
-- Whether expected and retrieved invoices remain in one container.
+- Whether expected and retrieved invoice state remains in one container.
 - Whether provider-specific metadata needs separate typed records.
-- Whether manual override events need their own records or can be represented by
-  reconciliation fields on invoice records.
+- Whether manual override events need their own records.

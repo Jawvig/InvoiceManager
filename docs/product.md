@@ -1,129 +1,91 @@
 # Product Overview
 
-InvoiceManager manages company invoices that arrive across several external
-systems. It should retrieve expected invoices, save them into the correct
-OneDrive folders, and upload them to the matching FreeAgent bills.
+InvoiceManager collects company invoices from external systems, saves them to
+the right OneDrive folders, and attaches them to the matching FreeAgent bills.
+It is intended to run unattended, while still being safe to retry after partial
+failures or manual repairs.
 
 ## Goals
 
-- Obtain invoices from the places they currently exist.
-- Save each invoice to the correct OneDrive location.
-- Generate consistent invoice filenames.
-- Track which invoices were expected and which were retrieved.
+- Retrieve expected invoices from configured sources.
+- Save each invoice to its configured OneDrive destination.
+- Generate consistent filenames from invoice date, description, total, currency,
+  and VAT mode.
+- Track expected, missing, retrieved, reconciled, saved, and attached invoices.
 - Upload invoices to the relevant FreeAgent bills.
-- Adjust FreeAgent bill totals when needed so they match the invoice total.
-- Run unattended from either scheduled triggers or external triggers.
+- Update FreeAgent bill totals where configuration allows and the invoice total
+  is authoritative.
+- Run from scheduled triggers, with an optional operational rerun trigger.
 
 ## Non-Goals
 
 - Invoice generation.
 - Customer billing.
 - Payment collection.
-- Full accounting replacement.
-- Manual document management outside the invoice workflow.
+- A replacement for accounting software.
+- General-purpose document management outside the invoice workflow.
 
 ## Invoice Sources
 
-Initial planned invoice sources include:
+Initial planned sources are:
 
 - Microsoft Azure.
 - Microsoft 365.
 - OpenAI.
-- Email attachments from Microsoft 365 mailboxes.
+- Microsoft 365 mailbox attachments.
 
-Each source should be implemented as an invoice integration. The product should
-be able to add more integrations without changing the core workflow.
+Each source should be implemented behind an integration interface so new sources
+can be added without changing the core workflow.
 
-Some providers expose limited metadata before the invoice document is opened.
-For example, Microsoft 365 invoices may only be distinguishable by invoice date,
-amount, and source invoice identifier in the source system. InvoiceManager must
-therefore support matching expected invoices by provider-specific selection
-criteria such as expected date, expected amount, currency, and source invoice
-identifier where available.
-
-Microsoft 365 may produce more than one invoice for the same period, such as
-separate invoices for Copilot and Office 365 extensions. These should be modeled
-as separate expected invoices even when they use the same source integration.
-Where the source does not expose a product identifier before the PDF is opened,
-the expected amount and invoice date together are the matching criteria. Product
-or category labels should be used for configuration, reporting, and generated
-filenames, not as a required source-system match key.
+Some providers expose limited metadata before the invoice document is opened. For
+example, Microsoft 365 invoices may need to be matched by expected date, amount,
+currency, and source invoice identifier where available. Product labels such as
+`Copilot 365` are useful for configuration, reporting, and filenames, but should
+not be required as source-system match keys unless the provider exposes them
+reliably.
 
 ## Invoice Destinations
 
-Retrieved invoices should be saved to configured OneDrive folders. The saved
-filename should include:
+Retrieved invoices are saved to configured OneDrive folders. The saved filename
+should include:
 
-- The ISO date of the invoice.
-- A description of what the invoice is for.
-- The invoice total.
-- Whether the total is VAT inclusive (`inc`) or VAT exclusive (`exc`).
+- ISO invoice date.
+- Description of what the invoice is for.
+- Invoice total and currency.
+- VAT mode: inclusive (`inc`) or exclusive (`exc`).
 
-The exact filename format should be treated as domain logic and covered by
-tests once implemented.
+InvoiceManager must also account for files that already exist in OneDrive. This
+can happen after historical manual downloads, manual repairs, or retries after a
+partial failure. The workflow should check OneDrive before retrieving a fresh
+copy from the source system.
 
-InvoiceManager must also handle invoices that are already present in OneDrive.
-This can happen because invoices were downloaded manually before InvoiceManager
-existed, because a person fixed a previous processing problem by uploading a
-file directly, or because a retry is running after a partial failure. Before
-attempting to retrieve an invoice from its source, the workflow should check the
-configured OneDrive destination for an existing matching file and update invoice
-state when one is found.
+## Expected Invoice Lifecycle
 
-## Expected Invoice Workflow
+The service maintains configuration for recurring invoice expectations. From that
+configuration it creates expected invoice records with matching criteria such as
+expected date, amount, currency, and date tolerance.
 
-InvoiceManager should maintain configuration for expected invoices. Each
-configuration entry should include:
+For each due or retryable expected invoice, the service should:
 
-- Integration type.
-- Invoice name.
-- Expected frequency.
-- OneDrive destination.
-- FreeAgent matching information.
+1. Check the configured OneDrive destination for an existing matching file.
+2. Retrieve the invoice from the source integration if no OneDrive match exists.
+3. Save newly retrieved invoices to OneDrive.
+4. Attach the saved or reconciled invoice to the matching FreeAgent bill.
+5. Create the next expected invoice record when the configured success state is
+   reached.
 
-The service should use this configuration to determine which invoice is expected
-next. For each expected invoice, the service should track:
-
-- Invoice name.
-- Expected date.
-- Expected amount.
-- Expected currency.
-- Date retrieved.
-- OneDrive location for the saved invoice.
-- FreeAgent bill URL.
-
-Expected invoice records should distinguish expected metadata from actual
-metadata. Expected date, amount, and currency are used to locate likely matches.
-Actual invoice date, amount, currency, source invoice ID, and saved file location
-are recorded once the invoice has been found or reconciled.
-
-After an invoice reaches the appropriate success state, the service should create
-the next expected invoice record for the following period based on the invoice
-configuration, recurrence rule, and completed invoice metadata. Creating the
-next expected record must be idempotent so retries do not create duplicates.
-
-See [workflow-reconciliation.md](workflow-reconciliation.md) for matching and
-OneDrive reconciliation behavior.
-
-## FreeAgent Workflow
-
-After an invoice is retrieved and saved, the service should upload it to the
-relevant FreeAgent bill.
-
-If the existing bill total does not match the retrieved invoice total, the
-service may need to update the FreeAgent bill total before or during attachment.
-This behavior should be explicit, logged, and testable.
+Expected metadata should remain separate from actual metadata. Expected values
+help locate the invoice; actual values record what was found.
 
 ## Failure Handling
 
-The service should be able to record failures without losing invoice state.
-Examples include:
+The service should persist state after meaningful steps so a later run can retry
+without losing progress or duplicating work.
+
+Examples of failures to record:
 
 - Expected invoice not found.
-- Invoice found but file save failed.
+- Invoice found but OneDrive save failed.
 - File saved but FreeAgent upload failed.
-- FreeAgent bill found but total mismatch could not be resolved.
+- FreeAgent bill total mismatch could not be resolved.
 - External provider authentication failure.
-
-Failures should be observable through logs and monitoring, and the persisted
-invoice state should support retry.
