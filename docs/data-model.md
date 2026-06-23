@@ -60,7 +60,8 @@ Notes:
 
 ## invoice-records
 
-Stores expected and retrieved invoice history.
+Stores expected invoice processing history, including retrieval and
+reconciliation outcomes.
 
 Purpose:
 
@@ -175,29 +176,22 @@ The initial model should support these queries:
 
 ## Consistency Expectations
 
-The workflow should persist state after meaningful steps:
+The workflow should persist enough state after meaningful steps to allow retry
+after partial failure without losing progress. The data model supports those
+steps through status, retry, reconciliation, OneDrive, FreeAgent, and
+next-invoice fields on `invoice-records`.
 
-1. Expected invoice identified.
-2. Existing OneDrive file checked.
-3. Existing OneDrive file reconciled, if present.
-4. Invoice retrieved from source, if not already present in OneDrive.
-5. Invoice saved to OneDrive, if newly retrieved.
-6. Invoice uploaded to FreeAgent.
-7. Next expected invoice record created.
-8. Processing completed or failed.
-
-This allows retry after partial failure without losing progress.
-
-Creating the next expected invoice record must be idempotent. A retry or manual
-re-run should detect an existing next record for the same configuration and
-period rather than creating a duplicate.
+See
+[workflow-reconciliation.md#status-transitions](workflow-reconciliation.md#status-transitions)
+for the processing sequence and retry behavior.
 
 ## Open Data Decisions
 
 These decisions should be revisited during implementation:
 
 - Exact partition keys after concrete query patterns are known.
-- Whether expected and retrieved invoices remain in one container.
+- Whether expected invoice records and processing outcomes remain in one
+  container.
 - Whether provider-specific metadata needs separate typed records.
 - Whether manual override events need their own records or can be represented by
   reconciliation fields on invoice records.

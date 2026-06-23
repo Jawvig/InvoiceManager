@@ -18,8 +18,8 @@ orchestrated with Aspire.
 - Catch up on downloading bills if there are some missing (e.g. missed 
   downloading the previous month, now two are available).
 - Upload each invoice to the relevant FreeAgent bill.
-- Update a FreeAgent bill total when needed so it matches the retrieved invoice.
-- Track expected invoices, retrieved invoices, saved file locations, and
+- Update a FreeAgent bill total when needed so it matches the processed invoice.
+- Track expected invoices, processed invoice outcomes, saved file locations, and
   FreeAgent bill URLs.
 
 ## Architecture
@@ -29,7 +29,7 @@ The planned architecture uses:
 - C# and .NET.
 - Azure Functions isolated worker for scheduled/background execution.
 - Azure Cosmos DB for NoSQL in serverless mode for invoice configuration,
-  expected invoice records, retrieved invoice records, and processing runs.
+  invoice processing records, and processing runs.
 - Azure Key Vault for secrets.
 - Application Insights and Azure Monitor for observability.
 - Aspire for local orchestration.
@@ -48,6 +48,8 @@ See [docs/architecture.md](docs/architecture.md) for the detailed architecture.
 - [docs/architecture.md](docs/architecture.md) - runtime, hosting, integration,
   storage, and monitoring design.
 - [docs/data-model.md](docs/data-model.md) - initial Cosmos DB data model.
+- [docs/workflow-reconciliation.md](docs/workflow-reconciliation.md) - invoice
+  matching, OneDrive reconciliation, and retry flow.
 - [docs/deployment.md](docs/deployment.md) - deployment strategy, CI/CD pipeline,
   and infrastructure as code.
 - [infra/terraform/README.md](infra/terraform/README.md) - Terraform entry point
