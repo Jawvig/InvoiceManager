@@ -31,12 +31,15 @@ follows:
    OneDrive and continue the downstream workflow from that saved file.
 5. If no OneDrive match exists, call the source integration with the invoice
    search criteria.
-6. Use the source integration's accepted match result as the retrieved invoice.
-7. Save the retrieved invoice to OneDrive.
-8. Continue with FreeAgent attachment behavior.
-9. Create the next expected invoice record once the configured success state is
+6. If the source integration returns no match, record the invoice as not found
+   or retryable according to the configured retry policy.
+7. If the source integration returns an accepted match, use it as the retrieved
+   invoice.
+8. Save the retrieved invoice to OneDrive.
+9. Continue with FreeAgent attachment behavior.
+10. Create the next expected invoice record once the configured success state is
    reached.
-10. Persist state and telemetry after each meaningful step.
+11. Persist state and telemetry after each meaningful step.
 
 FreeAgent behavior is intentionally left at a high level here and should be
 expanded when the FreeAgent integration is designed in detail.

@@ -35,19 +35,16 @@ Each source should be implemented as an invoice integration. The product should
 be able to add more integrations without changing the core workflow.
 
 Some providers expose limited metadata before the invoice document is opened.
-For example, Microsoft 365 invoices may only be distinguishable by invoice date,
-amount, and source invoice identifier in the source system. InvoiceManager must
-therefore support matching expected invoices by provider-specific selection
-criteria such as expected date, expected amount, currency, and source invoice
-identifier where available.
+InvoiceManager must therefore support matching expected invoices by
+provider-specific selection criteria while keeping those provider details out of
+the core workflow.
 
 Microsoft 365 may produce more than one invoice for the same period, such as
 separate invoices for Copilot and Office 365 extensions. These should be modeled
-as separate expected invoices even when they use the same source integration.
-Where the source does not expose a product identifier before the PDF is opened,
-the expected amount and invoice date together are the matching criteria. Product
-or category labels should be used for configuration, reporting, and generated
-filenames, not as a required source-system match key.
+as separate expected invoices even when they use the same source integration. See
+[workflow-reconciliation.md#source-matching](workflow-reconciliation.md#source-matching)
+for the matching rules used when a provider does not expose a stable product
+identifier before the PDF is opened.
 
 ## Invoice Destinations
 
@@ -62,14 +59,6 @@ filename should include:
 The exact filename format should be treated as domain logic and covered by
 tests once implemented.
 
-InvoiceManager must also handle invoices that are already present in OneDrive.
-This can happen because invoices were downloaded manually before InvoiceManager
-existed, because a person fixed a previous processing problem by uploading a
-file directly, or because a retry is running after a partial failure. Before
-attempting to retrieve an invoice from its source, the workflow should check the
-configured OneDrive destination for an existing matching file and update invoice
-state when one is found.
-
 ## Expected Invoice Workflow
 
 InvoiceManager should maintain configuration for expected invoices. Each
@@ -82,35 +71,20 @@ configuration entry should include:
 - FreeAgent matching information.
 
 The service should use this configuration to determine which invoice is expected
-next. For each expected invoice, the service should track:
+next, track whether that invoice has been found, and continue the recurring
+sequence after successful processing.
 
-- Invoice name.
-- Expected date.
-- Expected amount.
-- Expected currency.
-- Date retrieved.
-- OneDrive location for the saved invoice.
-- FreeAgent bill URL.
-
-Expected invoice records should distinguish expected metadata from actual
-metadata. Expected date, amount, and currency are used to locate likely matches.
-Actual invoice date, amount, currency, source invoice ID, and saved file location
-are recorded once the invoice has been found or reconciled.
-
-After an invoice reaches the appropriate success state, the service should create
-the next expected invoice record for the following period based on the invoice
-configuration, recurrence rule, and completed invoice metadata. Creating the
-next expected record must be idempotent so retries do not create duplicates.
-
-See [workflow-reconciliation.md](workflow-reconciliation.md) for matching and
-OneDrive reconciliation behavior.
+See [Domain Model: Expected Invoice](domain-model.md#expected-invoice) for the
+shared vocabulary, [data-model.md](data-model.md) for persisted fields, and
+[workflow-reconciliation.md](workflow-reconciliation.md) for matching,
+reconciliation, retry, and next-record behavior.
 
 ## FreeAgent Workflow
 
-After an invoice is retrieved and saved, the service should upload it to the
-relevant FreeAgent bill.
+After an invoice is available in OneDrive, either from retrieval or
+reconciliation, the service should upload it to the relevant FreeAgent bill.
 
-If the existing bill total does not match the retrieved invoice total, the
+If the existing bill total does not match the invoice total, the
 service may need to update the FreeAgent bill total before or during attachment.
 This behavior should be explicit, logged, and testable.
 

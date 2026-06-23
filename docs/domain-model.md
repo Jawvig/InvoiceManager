@@ -104,6 +104,9 @@ Source and OneDrive integrations translate those criteria into provider-specific
 search and matching behavior without exposing those details to the core
 workflow.
 
+See [workflow-reconciliation.md#search-criteria](workflow-reconciliation.md#search-criteria)
+for the workflow rules that use these criteria.
+
 ## Retrieved Invoice
 
 An invoice that has been found by an integration.
@@ -143,10 +146,8 @@ workflow to update invoice state, such as actual invoice date, amount, currency,
 source invoice ID where available, OneDrive location where available, and the
 reason the match was accepted.
 
-For Microsoft 365, amount and invoice date must both match within the configured
-tolerances. The source does not expose a stable product identifier before the PDF
-is opened, so product or category labels should not be required as source-system
-match keys.
+Provider-specific matching behavior is defined in
+[workflow-reconciliation.md#source-matching](workflow-reconciliation.md#source-matching).
 
 ## Invoice Date
 
@@ -185,13 +186,12 @@ The configured OneDrive folder where a retrieved invoice should be saved.
 The saved location should be stored after upload so later runs can avoid
 duplicating files and can show where the invoice was saved.
 
-OneDrive may already contain files that satisfy expected invoice records. The
-workflow should treat OneDrive reconciliation as normal behavior rather than an
-exception path.
+OneDrive reconciliation behavior is defined in
+[workflow-reconciliation.md#onedrive-reconciliation](workflow-reconciliation.md#onedrive-reconciliation).
 
 ## FreeAgent Bill
 
-The FreeAgent bill that corresponds to a retrieved invoice.
+The FreeAgent bill that corresponds to a processed invoice.
 
 The service should store the FreeAgent bill URL after matching or upload. If the
 bill total does not match the invoice total, the service may update the bill
@@ -206,7 +206,8 @@ counts so failures can be inspected through storage and monitoring.
 
 ## Processing Status
 
-The current state of an expected or retrieved invoice.
+The current state of an expected invoice record as it moves through retrieval,
+reconciliation, save, and attachment steps.
 
 Initial statuses may include:
 
