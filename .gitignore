@@ -68,6 +68,12 @@ artifacts/
 # Tye
 .tye/
 
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 
