@@ -12,15 +12,8 @@ Initial triggers:
 - Timer trigger for scheduled invoice checks.
 - Optional HTTP trigger for manual local or operational re-runs.
 
-The timer-triggered workflow should coordinate the invoice processing loop:
-
-1. Load invoice configuration from storage.
-2. Find expected invoice records that are due or retryable.
-3. Delegate matching and OneDrive reconciliation to the workflow described in
-   [workflow-reconciliation.md](workflow-reconciliation.md).
-4. Save newly retrieved invoice files to OneDrive.
-5. Upload saved or reconciled invoices to FreeAgent bills.
-6. Persist invoice state, logs, metrics, and failures.
+The timer-triggered workflow should coordinate the invoice processing loop
+described in [workflow-reconciliation.md](workflow-reconciliation.md).
 
 ## Azure Hosting
 
