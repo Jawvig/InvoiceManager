@@ -22,3 +22,18 @@ output "service_principal_object_id" {
   description = "Object ID for the tenant-local Enterprise Application/service principal."
   value       = azuread_service_principal.invoice_manager.object_id
 }
+
+output "resource_group_name" {
+  description = "Resource group for the InvoiceManager environment resources."
+  value       = azurerm_resource_group.invoice_manager.name
+}
+
+output "key_vault_name" {
+  description = "Key Vault name for environment secrets."
+  value       = azurerm_key_vault.invoice_manager.name
+}
+
+output "key_vault_uri" {
+  description = "Key Vault URI for environment secrets."
+  value       = azurerm_key_vault.invoice_manager.vault_uri
+}
