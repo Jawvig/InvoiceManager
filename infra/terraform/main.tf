@@ -41,12 +41,17 @@ resource "azuread_service_principal" "invoice_manager" {
   client_id = azuread_application.invoice_manager.client_id
 }
 
+resource "time_rotating" "admin_web_password" {
+  rotation_days = 365
+}
+
 resource "azuread_application_password" "admin_web" {
   application_id = azuread_application.invoice_manager.id
   display_name   = "InvoiceManager Admin Web"
-  end_date       = timeadd(timestamp(), "8760h")
+  end_date       = time_rotating.admin_web_password.rotation_rfc3339
   rotate_when_changed = {
     application_object_id = azuread_application.invoice_manager.object_id
+    rotation              = time_rotating.admin_web_password.id
   }
 }
 
@@ -57,20 +62,13 @@ resource "azurerm_key_vault" "invoice_manager" {
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
   soft_delete_retention_days = 7
+  rbac_authorization_enabled = true
+}
 
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
-
-    secret_permissions = [
-      "Delete",
-      "Get",
-      "List",
-      "Purge",
-      "Recover",
-      "Set",
-    ]
-  }
+resource "azurerm_role_assignment" "terraform_key_vault_secrets_officer" {
+  scope                = azurerm_key_vault.invoice_manager.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 resource "azurerm_key_vault_secret" "microsoft_authorization_client_secret" {
@@ -78,4 +76,8 @@ resource "azurerm_key_vault_secret" "microsoft_authorization_client_secret" {
   value        = azuread_application_password.admin_web.value
   key_vault_id = azurerm_key_vault.invoice_manager.id
   content_type = "Entra application password for InvoiceManager Admin Web"
+
+  depends_on = [
+    azurerm_role_assignment.terraform_key_vault_secrets_officer
+  ]
 }

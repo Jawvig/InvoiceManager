@@ -97,6 +97,11 @@ The initial Terraform configuration creates the Microsoft identity foundation:
   `user_impersonation` and Microsoft Graph `User.Read`.
 - An environment Key Vault used by the admin website to store its client secret
   and captured Microsoft authorization token-cache material.
+- Azure RBAC assignments for Key Vault data-plane access. Terraform grants the
+  deployment identity `Key Vault Secrets Officer` on the environment vault so it
+  can write Terraform-managed secrets during apply. Runtime applications should
+  use their own managed identities and narrower Key Vault roles when those Azure
+  hosting resources are added.
 
 ### Environment-Specific Configuration
 
@@ -194,6 +199,8 @@ When the admin website starts, it uses `MicrosoftAuthorization:KeyVaultUri` and
 `DefaultAzureCredential` to load `MicrosoftAuthorization:ClientSecret` from Key
 Vault before binding and validating the final authentication configuration.
 Local developers must be signed in to Azure with access to the test Key Vault.
+Key Vault access is controlled through Azure RBAC rather than legacy vault
+access policies.
 
 The admin website does not configure invoices, manually reconcile OneDrive
 files, or manage FreeAgent authorization in this first implementation.
@@ -296,7 +303,8 @@ Production secrets are stored in Azure Key Vault and accessed by Azure Functions
 
 1. Each environment has its own Key Vault (`invoicemanager-test-kv`, `invoicemanager-kv`).
 2. Azure Functions use Managed Identity to authenticate to Key Vault.
-3. Secrets are referenced in code using `SecretClient` from `Azure.Security.KeyVault.Secrets`.
+3. Key Vault data-plane access is granted through Azure RBAC roles.
+4. Secrets are referenced in code using `SecretClient` from `Azure.Security.KeyVault.Secrets`.
 
 Example secrets in Key Vault:
 
@@ -315,7 +323,7 @@ Cosmos DB connection is configured via:
 
 1. **Local Development**: Cosmos DB emulator connection string in `local.settings.json` (not committed).
 2. **Test Environment**: Connection endpoint and key stored in Key Vault.
-3. **Production Environment**: Connection endpoint and key stored in Key Vault with stricter access policies.
+3. **Production Environment**: Connection endpoint and key stored in Key Vault with stricter RBAC assignments.
 
 ### Environment-Specific Application Settings
 
