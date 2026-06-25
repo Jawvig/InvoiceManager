@@ -29,6 +29,21 @@ public class IndexModel : PageModel
 
     public bool CanAuthorize { get; private set; }
 
+    public bool ShowAuthorizeButton => CanAuthorize && (!IsSignedIn || !IsAuthorizationCaptured);
+
+    public string AuthorizeButtonCaption
+    {
+        get
+        {
+            if (IsSignedIn)
+            {
+                return "Authorize";
+            }
+
+            return IsAuthorizationCaptured ? "Sign in" : "Sign in and authorize";
+        }
+    }
+
     public string? StatusMessage { get; private set; }
 
     public IReadOnlyList<string> ConfigurationMessages { get; private set; } = [];

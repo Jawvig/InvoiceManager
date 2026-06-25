@@ -43,12 +43,18 @@
     </div>
 
     <form method="post" class="actions">
-        <button asp-page-handler="Authorize" class="primary-action" disabled="@(!Model.CanAuthorize)">
-            Authorize Microsoft
-        </button>
-        <button asp-page-handler="Reset" class="secondary-action" disabled="@(!Model.IsAuthorizationCaptured)">
-            Reset authorization
-        </button>
+        @if (Model.ShowAuthorizeButton)
+        {
+            <button asp-page-handler="Authorize" class="primary-action">
+                @Model.AuthorizeButtonCaption
+            </button>
+        }
+        @if (Model.IsAuthorizationCaptured)
+        {
+            <button asp-page-handler="Reset" class="secondary-action">
+                Reset authorization
+            </button>
+        }
         @if (Model.IsSignedIn)
         {
             <button asp-page-handler="SignOut" class="secondary-action">
