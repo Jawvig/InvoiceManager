@@ -34,6 +34,7 @@ The planned architecture uses:
 - Application Insights and Azure Monitor for observability.
 - Aspire for local orchestration.
 - xUnit.net for unit tests.
+- A local-first admin website for capturing delegated Microsoft authorization.
 
 See [docs/architecture.md](docs/architecture.md) for the detailed architecture.
 

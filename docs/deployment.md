@@ -67,6 +67,8 @@ Terraform manages all Azure infrastructure including:
 - **Azure Key Vault**: Secrets storage for credentials and API keys.
 - **Application Insights**: Telemetry and monitoring.
 - **Storage Accounts**: For function app staging and application storage.
+- **Microsoft Identity Setup**: Entra app registration, service principal, and
+  local admin redirect URIs used for delegated authorization capture.
 
 ### Terraform Structure
 
@@ -93,6 +95,13 @@ The initial Terraform configuration creates the Microsoft identity foundation:
 - The tenant-local service principal / Enterprise Application.
 - Required delegated API permissions for Azure Resource Manager
   `user_impersonation` and Microsoft Graph `User.Read`.
+- An environment Key Vault used by the admin website to store its client secret
+  and captured Microsoft authorization token-cache material.
+- Azure RBAC assignments for Key Vault data-plane access. Terraform grants the
+  deployment identity `Key Vault Secrets Officer` on the environment vault so it
+  can write Terraform-managed secrets during apply. Runtime applications should
+  use their own managed identities and narrower Key Vault roles when those Azure
+  hosting resources are added.
 
 ### Environment-Specific Configuration
 
@@ -156,6 +165,45 @@ before applying the saved plan:
 The script relies on normal user consent for the currently required delegated
 permissions. Permission declarations live in Terraform; interactive application
 authentication will be handled by the future admin site.
+
+### Local Admin Authorization Website
+
+The local admin website runs from `src/InvoiceManager.AdminWeb` and uses the
+Terraform-managed Entra app registration. It captures Microsoft delegated
+authorization for Azure Resource Manager and Microsoft Graph, then persists the
+serialized MSAL token cache in the environment Key Vault as
+`MicrosoftAuthorization--MsalTokenCache`.
+
+The first version is local-first. Terraform configures
+`https://localhost:5001/signin-oidc` as the callback URI for both test and
+production app registrations. Deployed hosting for the admin website is a later
+decision.
+
+Terraform creates the admin website application password for every environment
+and stores it in Key Vault as `MicrosoftAuthorization--ClientSecret`. The secret
+value is not emitted as a Terraform output and should not be stored in local
+user secrets. Terraform state must still be treated as sensitive because it
+contains generated application password values.
+
+For the `test` environment, `scripts/Deploy-Infra.ps1` configures local user
+secrets after a successful apply, or when Terraform reports no changes. Local
+user secrets contain only non-secret settings:
+
+```bash
+dotnet user-secrets set "MicrosoftAuthorization:TenantId" "<tenant-id>" --project src/InvoiceManager.AdminWeb
+dotnet user-secrets set "MicrosoftAuthorization:ClientId" "<application-client-id>" --project src/InvoiceManager.AdminWeb
+dotnet user-secrets set "MicrosoftAuthorization:KeyVaultUri" "https://<key-vault-name>.vault.azure.net/" --project src/InvoiceManager.AdminWeb
+```
+
+When the admin website starts, it uses `MicrosoftAuthorization:KeyVaultUri` and
+`DefaultAzureCredential` to load `MicrosoftAuthorization:ClientSecret` from Key
+Vault before binding and validating the final authentication configuration.
+Local developers must be signed in to Azure with access to the test Key Vault.
+Key Vault access is controlled through Azure RBAC rather than legacy vault
+access policies.
+
+The admin website does not configure invoices, manually reconcile OneDrive
+files, or manage FreeAgent authorization in this first implementation.
 
 ## GitHub Actions Workflow
 
@@ -255,10 +303,13 @@ Production secrets are stored in Azure Key Vault and accessed by Azure Functions
 
 1. Each environment has its own Key Vault (`invoicemanager-test-kv`, `invoicemanager-kv`).
 2. Azure Functions use Managed Identity to authenticate to Key Vault.
-3. Secrets are referenced in code using `SecretClient` from `Azure.Security.KeyVault.Secrets`.
+3. Key Vault data-plane access is granted through Azure RBAC roles.
+4. Secrets are referenced in code using `SecretClient` from `Azure.Security.KeyVault.Secrets`.
 
 Example secrets in Key Vault:
 
+- `MicrosoftAuthorization--ClientSecret`
+- `MicrosoftAuthorization--MsalTokenCache`
 - `InvoiceIntegrations--AzureTenantId`
 - `InvoiceIntegrations--AzureClientId`
 - `InvoiceIntegrations--AzureClientSecret`
@@ -272,7 +323,7 @@ Cosmos DB connection is configured via:
 
 1. **Local Development**: Cosmos DB emulator connection string in `local.settings.json` (not committed).
 2. **Test Environment**: Connection endpoint and key stored in Key Vault.
-3. **Production Environment**: Connection endpoint and key stored in Key Vault with stricter access policies.
+3. **Production Environment**: Connection endpoint and key stored in Key Vault with stricter RBAC assignments.
 
 ### Environment-Specific Application Settings
 

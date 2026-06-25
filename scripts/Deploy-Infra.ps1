@@ -235,6 +235,52 @@ function Ensure-StorageContainer {
     )
 }
 
+function Set-AdminWebUserSecret {
+    param(
+        [string] $ProjectPath,
+        [string] $Key,
+        [string] $Value
+    )
+
+    Invoke-CheckedCommand -Command @(
+        "dotnet", "user-secrets", "set",
+        $Key,
+        $Value,
+        "--project",
+        $ProjectPath
+    )
+}
+
+function Set-TestAdminWebLocalConfiguration {
+    param(
+        [string] $TerraformRoot,
+        [string] $RepoRoot
+    )
+
+    if (-not (Test-Command "dotnet")) {
+        throw ".NET SDK is required to configure local admin website user secrets."
+    }
+
+    Write-Section "Configuring local admin website"
+
+    Push-Location $TerraformRoot
+    try {
+        $outputs = Invoke-JsonCommand -Command @("terraform", "output", "-json")
+    }
+    finally {
+        Pop-Location
+    }
+
+    $adminWebProject = Join-Path $RepoRoot "src/InvoiceManager.AdminWeb/InvoiceManager.AdminWeb.csproj"
+
+    Set-AdminWebUserSecret -ProjectPath $adminWebProject -Key "MicrosoftAuthorization:TenantId" -Value $outputs.tenant_id.value
+    Set-AdminWebUserSecret -ProjectPath $adminWebProject -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
+    Set-AdminWebUserSecret -ProjectPath $adminWebProject -Key "MicrosoftAuthorization:KeyVaultUri" -Value $outputs.key_vault_uri.value
+
+    Write-Host "Local admin website user secrets configured for the test environment."
+    Write-Host "Client secret remains in Key Vault as MicrosoftAuthorization--ClientSecret."
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $terraformRoot = Join-Path $repoRoot "infra/terraform"
 
@@ -301,16 +347,21 @@ try {
     & terraform plan `
         -detailed-exitcode `
         "-var-file=$tfVarsFile" `
+        "-var=location=$Location" `
+        "-var=application_name=$ApplicationName" `
         "-out=$Environment.tfplan"
     $planExitCode = $LASTEXITCODE
 
     if ($planExitCode -eq 0) {
         Write-Host "Terraform plan completed with no changes."
+        if ($Environment -eq "test" -and -not $PlanOnly) {
+            Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
+        }
         return
     }
 
     if ($planExitCode -ne 2) {
-        throw "Command failed: terraform plan -detailed-exitcode -var-file=$tfVarsFile -out=$Environment.tfplan"
+        throw "Command failed: terraform plan -detailed-exitcode -var-file=$tfVarsFile -var=location=$Location -var=application_name=$ApplicationName -out=$Environment.tfplan"
     }
 
     if ($PlanOnly) {
@@ -330,6 +381,10 @@ try {
     $applyCommand += "$Environment.tfplan"
 
     Invoke-CheckedCommand -Command $applyCommand
+
+    if ($Environment -eq "test") {
+        Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
+    }
 }
 finally {
     Pop-Location

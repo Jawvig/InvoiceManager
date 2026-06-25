@@ -2,6 +2,9 @@ locals {
   environment_suffix = var.environment == "production" ? "" : "-${var.environment}"
 
   application_display_name = "${var.display_name}${local.environment_suffix}"
+  resource_name_prefix     = "${var.application_name}${local.environment_suffix}"
+  resource_group_name      = "rg-${local.resource_name_prefix}"
+  key_vault_name           = "${local.resource_name_prefix}-kv"
 
   api_permissions = {
     azure_resource_manager = {

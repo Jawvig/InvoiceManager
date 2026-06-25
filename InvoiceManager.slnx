@@ -1,2 +1,10 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/InvoiceManager.AdminWeb/InvoiceManager.AdminWeb.csproj" />
+    <Project Path="src/InvoiceManager.Infrastructure/InvoiceManager.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/InvoiceManager.AdminWeb.Tests/InvoiceManager.AdminWeb.Tests.csproj" />
+    <Project Path="tests/InvoiceManager.Infrastructure.Tests/InvoiceManager.Infrastructure.Tests.csproj" />
+  </Folder>
 </Solution>

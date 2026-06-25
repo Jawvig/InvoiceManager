@@ -32,6 +32,7 @@ Local development should use Aspire as the orchestration entry point.
 The Aspire AppHost should eventually coordinate:
 
 - The Azure Functions project.
+- The local admin website used to capture delegated Microsoft authorization.
 - Local or emulator-backed development dependencies where practical.
 - Configuration needed for local development.
 - Observability views useful during development.
@@ -46,6 +47,7 @@ The intended project layout is:
 ```text
 src/
   InvoiceManager.AppHost/
+  InvoiceManager.AdminWeb/
   InvoiceManager.Functions/
   InvoiceManager.Core/
   InvoiceManager.Infrastructure/
@@ -55,6 +57,7 @@ src/
   InvoiceManager.Integrations.FreeAgent/
 
 tests/
+  InvoiceManager.AdminWeb.Tests/
   InvoiceManager.Core.Tests/
   InvoiceManager.Functions.Tests/
   InvoiceManager.Infrastructure.Tests/
@@ -132,6 +135,17 @@ Do not store secrets in:
 
 Local development should use safe local secret mechanisms and Aspire-supported
 configuration where appropriate.
+
+## Admin Website
+
+The admin website is a local-first ASP.NET Core app for operational setup. Its
+first responsibility is to capture delegated Microsoft authorization for the
+Terraform-managed Entra app registration and store the resulting MSAL token
+cache material in Azure Key Vault.
+
+The admin website is not part of the provider-independent core workflow. It
+should not own invoice matching, OneDrive reconciliation, invoice configuration
+editing, or FreeAgent behavior. Those remain workflow and integration concerns.
 
 ## Monitoring
 
