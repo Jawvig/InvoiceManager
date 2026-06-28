@@ -1,6 +1,16 @@
+using System.Globalization;
 using NodaMoney;
 
 namespace InvoiceManager.Core;
+
+/// <summary>Settings used when generating invoice filenames.</summary>
+public sealed record InvoiceFilenameSettings
+{
+    public static InvoiceFilenameSettings Default { get; } = new();
+
+    /// <summary>The culture used for date and amount formatting in filenames.</summary>
+    public CultureInfo Culture { get; init; } = CultureInfo.GetCultureInfo("en-GB");
+}
 
 /// <summary>
 /// Generates the canonical OneDrive filename for a saved invoice.
@@ -12,28 +22,31 @@ public static class InvoiceFilename
         string invoiceDescription,
         string invoiceName,
         Money amount,
-        VatMode vatMode)
+        VatMode vatMode,
+        InvoiceFilenameSettings? settings = null)
     {
-        var date = invoiceDate.ToString("yyyy-MM-dd");
-        var money = FormatMoney(amount);
+        var filenameSettings = settings ?? InvoiceFilenameSettings.Default;
+        var date = invoiceDate.ToString("yyyy-MM-dd", filenameSettings.Culture);
+        var money = FormatMoney(amount, filenameSettings.Culture);
         var vat = vatMode == VatMode.Inclusive ? "inc" : "exc";
 
         return $"{date} {invoiceDescription} {invoiceName} {money} {vat}.pdf";
     }
 
-    private static string FormatMoney(Money amount)
+    private static string FormatMoney(Money amount, CultureInfo culture)
     {
         var currency = amount.Currency;
+        var formattedAmount = amount.Amount.ToString(culture);
 
         // The three currencies expected to comprise the vast majority of invoices
         // are shown with their symbol alone. Every other currency adds the ISO
         // 4217 code to disambiguate shared symbols (for example AUD/CAD using "$").
         return currency.Code switch
         {
-            "GBP" => $"£{amount.Amount}",
-            "USD" => $"${amount.Amount}",
-            "EUR" => $"€{amount.Amount}",
-            _ => $"{currency.Symbol}{amount.Amount} {currency.Code}",
+            "GBP" => $"£{formattedAmount}",
+            "USD" => $"${formattedAmount}",
+            "EUR" => $"€{formattedAmount}",
+            _ => $"{currency.Symbol}{formattedAmount} {currency.Code}",
         };
     }
 }

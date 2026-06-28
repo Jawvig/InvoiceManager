@@ -1,3 +1,4 @@
+using System.Globalization;
 using InvoiceManager.Core;
 using NodaMoney;
 
@@ -78,5 +79,40 @@ public sealed class InvoiceFilenameTests
         Assert.Equal(
             "2026-07-10 Some Service INV-004 ¥1500 JPY exc.pdf",
             filename);
+    }
+
+    [Fact]
+    public void Generate_UsesConfiguredCultureRatherThanAmbientCulture()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
+
+            var filename = InvoiceFilename.Generate(
+                invoiceDate: new DateOnly(2026, 7, 10),
+                invoiceDescription: "Microsoft 365 Business Basic",
+                invoiceName: "G152207778",
+                amount: new Money(11.59m, "GBP"),
+                vatMode: VatMode.Exclusive);
+
+            Assert.Equal(
+                "2026-07-10 Microsoft 365 Business Basic G152207778 £11.59 exc.pdf",
+                filename);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
+    }
+
+    [Fact]
+    public void DefaultSettings_UseEnGbCulture()
+    {
+        Assert.Equal("en-GB", InvoiceFilenameSettings.Default.Culture.Name);
     }
 }
