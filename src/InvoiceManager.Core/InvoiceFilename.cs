@@ -26,7 +26,11 @@ public static class InvoiceFilename
         InvoiceFilenameSettings? settings = null)
     {
         var filenameSettings = settings ?? InvoiceFilenameSettings.Default;
-        var date = invoiceDate.ToString("yyyy-MM-dd", filenameSettings.Culture);
+        // The date is an ISO 8601 value and must stay calendar-invariant. Formatting
+        // it with the configured culture would render the year in that culture's
+        // default calendar (for example a Thai Buddhist or Hijri year), so the
+        // invariant culture is used here regardless of the configured culture.
+        var date = invoiceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var money = FormatMoney(amount, filenameSettings.Culture);
         var vat = vatMode == VatMode.Inclusive ? "inc" : "exc";
 

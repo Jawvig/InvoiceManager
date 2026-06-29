@@ -115,4 +115,23 @@ public sealed class InvoiceFilenameTests
     {
         Assert.Equal("en-GB", InvoiceFilenameSettings.Default.Culture.Name);
     }
+
+    [Fact]
+    public void Generate_KeepsGregorianIsoDate_WhenConfiguredCultureUsesAnotherCalendar()
+    {
+        var settings = new InvoiceFilenameSettings
+        {
+            Culture = CultureInfo.GetCultureInfo("th-TH"),
+        };
+
+        var filename = InvoiceFilename.Generate(
+            invoiceDate: new DateOnly(2026, 7, 10),
+            invoiceDescription: "Microsoft 365 Business Basic",
+            invoiceName: "G152207778",
+            amount: new Money(11.59m, "GBP"),
+            vatMode: VatMode.Exclusive,
+            settings: settings);
+
+        Assert.StartsWith("2026-07-10 ", filename);
+    }
 }
