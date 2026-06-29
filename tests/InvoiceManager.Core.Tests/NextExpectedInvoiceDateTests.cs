@@ -7,11 +7,9 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsStartDate_WhenNoRecordsExist()
     {
-        var config = new InvoiceConfiguration
-        {
-            StartDate = new DateOnly(2025, 7, 10),
-            Frequency = InvoiceFrequency.Monthly,
-        };
+        var config = new InvoiceConfiguration(
+            new DateOnly(2025, 7, 10),
+            InvoiceFrequency.Monthly);
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, new None());
 
@@ -21,16 +19,12 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsActualDatePlusFrequency_WhenMostRecentRecordIsSaved()
     {
-        var config = new InvoiceConfiguration
-        {
-            StartDate = new DateOnly(2025, 7, 10),
-            Frequency = InvoiceFrequency.Monthly,
-        };
-        var mostRecent = new InvoiceRecord
-        {
-            Status = ProcessingStatus.SavedToOneDrive,
-            ActualInvoiceDate = new DateOnly(2026, 6, 10),
-        };
+        var config = new InvoiceConfiguration(
+            new DateOnly(2025, 7, 10),
+            InvoiceFrequency.Monthly);
+        var mostRecent = new InvoiceRecord(
+            ProcessingStatus.SavedToOneDrive,
+            new DateOnly(2026, 6, 10));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 
@@ -40,15 +34,10 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsInProgress_WhenMostRecentRecordIsBeforeSaved()
     {
-        var config = new InvoiceConfiguration
-        {
-            StartDate = new DateOnly(2025, 7, 10),
-            Frequency = InvoiceFrequency.Monthly,
-        };
-        var mostRecent = new InvoiceRecord
-        {
-            Status = ProcessingStatus.Expected,
-        };
+        var config = new InvoiceConfiguration(
+            new DateOnly(2025, 7, 10),
+            InvoiceFrequency.Monthly);
+        var mostRecent = new InvoiceRecord(ProcessingStatus.Expected);
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 
@@ -58,16 +47,12 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsActualDatePlusFrequency_WhenMostRecentRecordIsReconciled()
     {
-        var config = new InvoiceConfiguration
-        {
-            StartDate = new DateOnly(2025, 7, 10),
-            Frequency = InvoiceFrequency.Monthly,
-        };
-        var mostRecent = new InvoiceRecord
-        {
-            Status = ProcessingStatus.ReconciledFromOneDrive,
-            ActualInvoiceDate = new DateOnly(2026, 6, 10),
-        };
+        var config = new InvoiceConfiguration(
+            new DateOnly(2025, 7, 10),
+            InvoiceFrequency.Monthly);
+        var mostRecent = new InvoiceRecord(
+            ProcessingStatus.ReconciledFromOneDrive,
+            new DateOnly(2026, 6, 10));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 
