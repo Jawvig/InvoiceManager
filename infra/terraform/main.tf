@@ -63,6 +63,10 @@ resource "azurerm_key_vault" "invoice_manager" {
   sku_name                   = "standard"
   soft_delete_retention_days = 7
   rbac_authorization_enabled = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_role_assignment" "terraform_key_vault_secrets_officer" {
@@ -80,4 +84,8 @@ resource "azurerm_key_vault_secret" "microsoft_authorization_client_secret" {
   depends_on = [
     azurerm_role_assignment.terraform_key_vault_secrets_officer
   ]
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
