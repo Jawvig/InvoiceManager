@@ -215,7 +215,7 @@ Triggered on: Push to `main` branch or pull request.
 
 **Steps**:
 1. Checkout code.
-2. Setup .NET 10.
+2. Setup .NET 11 preview SDK, as pinned by `global.json`.
 3. Restore NuGet dependencies.
 4. Build solution.
 5. Run unit tests.
