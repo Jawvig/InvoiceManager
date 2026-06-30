@@ -7,7 +7,7 @@ namespace InvoiceManager.Core;
 public sealed record InvoiceRecord(ProcessingStatus Status, Option<DateOnly> ActualInvoiceDate)
 {
     public InvoiceRecord(ProcessingStatus status)
-        : this(status, new None())
+        : this(status, Option.None)
     {
     }
 }

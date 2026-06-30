@@ -11,7 +11,7 @@ public sealed class NextExpectedInvoiceDateTests
             new DateOnly(2025, 7, 10),
             InvoiceFrequency.Monthly);
 
-        var result = NextExpectedInvoiceDate.CalculateNext(config, new None());
+        var result = NextExpectedInvoiceDate.CalculateNext(config, Option.None);
 
         Assert.Equal(new DateOnly(2025, 7, 10), ExpectedDate(result));
     }

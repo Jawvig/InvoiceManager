@@ -6,10 +6,18 @@ namespace InvoiceManager.Core.Tests;
 
 public sealed class InvoiceFilenameTests
 {
+    private readonly InvoiceFilename invoiceFilename;
+
+    public InvoiceFilenameTests()
+    {
+        invoiceFilename = new InvoiceFilename(
+            new InvoiceFilenameSettings { Culture = CultureInfo.GetCultureInfo("en-GB") });
+    }
+
     [Fact]
     public void Generate_AssemblesAllComponents_ForGbpInvoice()
     {
-        var filename = InvoiceFilename.Generate(
+        var filename = invoiceFilename.Generate(
             invoiceDate: new DateOnly(2026, 7, 10),
             invoiceDescription: "Microsoft 365 Business Basic",
             invoiceName: "G152207778",
@@ -24,7 +32,7 @@ public sealed class InvoiceFilenameTests
     [Fact]
     public void Generate_UsesDollarSymbolWithoutIsoSuffix_ForUsd()
     {
-        var filename = InvoiceFilename.Generate(
+        var filename = invoiceFilename.Generate(
             invoiceDate: new DateOnly(2026, 7, 10),
             invoiceDescription: "ChatGPT Plus",
             invoiceName: "INV-001",
@@ -39,7 +47,7 @@ public sealed class InvoiceFilenameTests
     [Fact]
     public void Generate_UsesEuroSymbolWithoutIsoSuffix_ForEur()
     {
-        var filename = InvoiceFilename.Generate(
+        var filename = invoiceFilename.Generate(
             invoiceDate: new DateOnly(2026, 7, 10),
             invoiceDescription: "Some Service",
             invoiceName: "INV-002",
@@ -54,7 +62,7 @@ public sealed class InvoiceFilenameTests
     [Fact]
     public void Generate_AppendsIsoCode_ForNonBigThreeCurrencySharingASymbol()
     {
-        var filename = InvoiceFilename.Generate(
+        var filename = invoiceFilename.Generate(
             invoiceDate: new DateOnly(2026, 7, 10),
             invoiceDescription: "Some Service",
             invoiceName: "INV-003",
@@ -69,7 +77,7 @@ public sealed class InvoiceFilenameTests
     [Fact]
     public void Generate_UsesNativeSymbolAndIsoCode_ForCurrencyWithItsOwnSymbol()
     {
-        var filename = InvoiceFilename.Generate(
+        var filename = invoiceFilename.Generate(
             invoiceDate: new DateOnly(2026, 7, 10),
             invoiceDescription: "Some Service",
             invoiceName: "INV-004",
@@ -92,7 +100,7 @@ public sealed class InvoiceFilenameTests
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
             CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
 
-            var filename = InvoiceFilename.Generate(
+            var filename = invoiceFilename.Generate(
                 invoiceDate: new DateOnly(2026, 7, 10),
                 invoiceDescription: "Microsoft 365 Business Basic",
                 invoiceName: "G152207778",
@@ -111,26 +119,17 @@ public sealed class InvoiceFilenameTests
     }
 
     [Fact]
-    public void DefaultSettings_UseEnGbCulture()
-    {
-        Assert.Equal("en-GB", InvoiceFilenameSettings.Default.Culture.Name);
-    }
-
-    [Fact]
     public void Generate_KeepsGregorianIsoDate_WhenConfiguredCultureUsesAnotherCalendar()
     {
-        var settings = new InvoiceFilenameSettings
-        {
-            Culture = CultureInfo.GetCultureInfo("th-TH"),
-        };
+        var thaiInvoiceFilename = new InvoiceFilename(
+            new InvoiceFilenameSettings { Culture = CultureInfo.GetCultureInfo("th-TH") });
 
-        var filename = InvoiceFilename.Generate(
+        var filename = thaiInvoiceFilename.Generate(
             invoiceDate: new DateOnly(2026, 7, 10),
             invoiceDescription: "Microsoft 365 Business Basic",
             invoiceName: "G152207778",
             amount: new Money(11.59m, "GBP"),
-            vatMode: VatMode.Exclusive,
-            settings: settings);
+            vatMode: VatMode.Exclusive);
 
         Assert.StartsWith("2026-07-10 ", filename);
     }
