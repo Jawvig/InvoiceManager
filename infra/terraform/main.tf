@@ -84,6 +84,10 @@ resource "azurerm_cosmosdb_sql_database" "invoice_manager" {
   name                = local.cosmos_database_name
   resource_group_name = azurerm_cosmosdb_account.invoice_manager.resource_group_name
   account_name        = azurerm_cosmosdb_account.invoice_manager.name
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_cosmosdb_sql_container" "invoice_configurations" {
@@ -92,6 +96,10 @@ resource "azurerm_cosmosdb_sql_container" "invoice_configurations" {
   account_name        = azurerm_cosmosdb_account.invoice_manager.name
   database_name       = azurerm_cosmosdb_sql_database.invoice_manager.name
   partition_key_paths = ["/integrationType"]
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Grants the deploying identity Cosmos DB data-plane write access so the seeder
