@@ -1,13 +1,18 @@
+using NodaMoney;
+
 namespace InvoiceManager.Core;
 
 /// <summary>
 /// A record representing an invoice that should exist by a particular date,
 /// tracking its progress through retrieval, reconciliation, save, and beyond.
 /// </summary>
-public sealed record InvoiceRecord(ProcessingStatus Status, Option<DateOnly> ActualInvoiceDate)
-{
-    public InvoiceRecord(ProcessingStatus status)
-        : this(status, Option.None)
-    {
-    }
-}
+public sealed record InvoiceRecord(
+    InvoiceRecordId Id,
+    InvoiceConfigurationId ConfigurationId,
+    string InvoiceDescription,
+    DateOnly ExpectedDate,
+    int DateToleranceDays,
+    Money ExpectedAmount,
+    VatMode ExpectedVatMode,
+    ProcessingStatus Status,
+    Option<DateOnly> ActualInvoiceDate);
