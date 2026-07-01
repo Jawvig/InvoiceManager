@@ -310,6 +310,10 @@ function Invoke-ConfigurationSeeder {
     $env:COSMOS_ENDPOINT = $cosmosEndpoint
     $env:COSMOS_DATABASE = $cosmosDatabase
     try {
+        # Build once so every retry runs the pre-compiled binary rather than
+        # triggering a fresh compilation on each attempt.
+        Invoke-CheckedCommand -Command @("dotnet", "build", "--project", $seederProject)
+
         # Cosmos DB data-plane RBAC can take up to ~60 s to propagate after
         # terraform apply creates the role assignment. Retry with backoff so the
         # seeder succeeds on first provision without requiring a manual re-run.
@@ -319,6 +323,7 @@ function Invoke-ConfigurationSeeder {
                 Invoke-CheckedCommand -Command @(
                     "dotnet", "run",
                     "--project", $seederProject,
+                    "--no-build",
                     "--",
                     $seedFile
                 )
