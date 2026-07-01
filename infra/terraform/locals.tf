@@ -5,6 +5,8 @@ locals {
   resource_name_prefix     = "${var.application_name}${local.environment_suffix}"
   resource_group_name      = "rg-${local.resource_name_prefix}"
   key_vault_name           = "${local.resource_name_prefix}-kv"
+  cosmos_account_name      = "${local.resource_name_prefix}-cosmos"
+  cosmos_database_name     = "invoicemanager"
 
   api_permissions = {
     azure_resource_manager = {

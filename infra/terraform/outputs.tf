@@ -28,6 +28,16 @@ output "resource_group_name" {
   value       = azurerm_resource_group.invoice_manager.name
 }
 
+output "cosmos_endpoint" {
+  description = "Cosmos DB account endpoint URI used by the seeder and Functions app."
+  value       = azurerm_cosmosdb_account.invoice_manager.endpoint
+}
+
+output "cosmos_database_name" {
+  description = "Cosmos DB database name."
+  value       = azurerm_cosmosdb_sql_database.invoice_manager.name
+}
+
 output "key_vault_name" {
   description = "Key Vault name for environment secrets."
   value       = azurerm_key_vault.invoice_manager.name

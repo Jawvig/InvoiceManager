@@ -7,9 +7,7 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsStartDate_WhenNoRecordsExist()
     {
-        var config = new InvoiceConfiguration(
-            new DateOnly(2025, 7, 10),
-            InvoiceFrequency.Monthly);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, Option.None);
 
@@ -19,9 +17,7 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsActualDatePlusFrequency_WhenMostRecentRecordIsSaved()
     {
-        var config = new InvoiceConfiguration(
-            new DateOnly(2025, 7, 10),
-            InvoiceFrequency.Monthly);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = new InvoiceRecord(
             ProcessingStatus.SavedToOneDrive,
             new DateOnly(2026, 6, 10));
@@ -34,9 +30,7 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsInProgress_WhenMostRecentRecordIsBeforeSaved()
     {
-        var config = new InvoiceConfiguration(
-            new DateOnly(2025, 7, 10),
-            InvoiceFrequency.Monthly);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = new InvoiceRecord(ProcessingStatus.Expected);
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
@@ -47,9 +41,7 @@ public sealed class NextExpectedInvoiceDateTests
     [Fact]
     public void CalculateNext_ReturnsActualDatePlusFrequency_WhenMostRecentRecordIsReconciled()
     {
-        var config = new InvoiceConfiguration(
-            new DateOnly(2025, 7, 10),
-            InvoiceFrequency.Monthly);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = new InvoiceRecord(
             ProcessingStatus.ReconciledFromOneDrive,
             new DateOnly(2026, 6, 10));

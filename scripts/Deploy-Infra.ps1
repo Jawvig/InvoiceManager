@@ -281,6 +281,66 @@ function Set-TestAdminWebLocalConfiguration {
     Write-Host "Client secret remains in Key Vault as MicrosoftAuthorization--ClientSecret."
 }
 
+function Invoke-ConfigurationSeeder {
+    param(
+        [string] $TerraformRoot,
+        [string] $RepoRoot
+    )
+
+    Write-Section "Seeding invoice configurations"
+
+    Push-Location $TerraformRoot
+    try {
+        $outputs = Invoke-JsonCommand -Command @("terraform", "output", "-json")
+    }
+    finally {
+        Pop-Location
+    }
+
+    $cosmosEndpoint = $outputs.cosmos_endpoint.value
+    $cosmosDatabase = $outputs.cosmos_database_name.value
+    $seedFile = Join-Path $RepoRoot "data/seed/invoice-configurations.json"
+    $seederProject = Join-Path $RepoRoot "tools/InvoiceManager.Seeder/InvoiceManager.Seeder.csproj"
+
+    # Remove the Terraform state storage key from the seeder's environment so it
+    # is not visible to the seeder process or any diagnostic output it produces.
+    $savedArmKey = $env:ARM_ACCESS_KEY
+    Remove-Item Env:\ARM_ACCESS_KEY -ErrorAction SilentlyContinue
+
+    $env:COSMOS_ENDPOINT = $cosmosEndpoint
+    $env:COSMOS_DATABASE = $cosmosDatabase
+    try {
+        # Build once so every retry runs the pre-compiled binary rather than
+        # triggering a fresh compilation on each attempt.
+        Invoke-CheckedCommand -Command @("dotnet", "build", "--project", $seederProject)
+
+        # Cosmos DB data-plane RBAC can take up to ~60 s to propagate after
+        # terraform apply creates the role assignment. The seeder exits 2 on a
+        # transient 403; all other non-zero exits are permanent failures.
+        $maxAttempts = 5
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            & dotnet run --project $seederProject --no-build -- $seedFile
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) { return }
+
+            # Exit code 2 = Cosmos 403 (RBAC propagation delay) — retry.
+            # Any other non-zero exit is a permanent failure; surface immediately.
+            if ($exitCode -ne 2 -or $attempt -ge $maxAttempts) {
+                throw "Seeder failed with exit code $exitCode (attempt $attempt/$maxAttempts)."
+            }
+
+            Write-Host "Seeder attempt $attempt/$maxAttempts: Cosmos 403 (RBAC propagation delay). Retrying in 30 s..."
+            Start-Sleep -Seconds 30
+        }
+    }
+    finally {
+        Remove-Item Env:\COSMOS_ENDPOINT -ErrorAction SilentlyContinue
+        Remove-Item Env:\COSMOS_DATABASE -ErrorAction SilentlyContinue
+        if ($null -ne $savedArmKey) { $env:ARM_ACCESS_KEY = $savedArmKey }
+    }
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $terraformRoot = Join-Path $repoRoot "infra/terraform"
 
@@ -354,8 +414,11 @@ try {
 
     if ($planExitCode -eq 0) {
         Write-Host "Terraform plan completed with no changes."
-        if ($Environment -eq "test" -and -not $PlanOnly) {
-            Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
+        if (-not $PlanOnly) {
+            Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot
+            if ($Environment -eq "test") {
+                Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
+            }
         }
         return
     }
@@ -381,6 +444,8 @@ try {
     $applyCommand += "$Environment.tfplan"
 
     Invoke-CheckedCommand -Command $applyCommand
+
+    Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot
 
     if ($Environment -eq "test") {
         Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot

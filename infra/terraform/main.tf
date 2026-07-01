@@ -55,6 +55,63 @@ resource "azuread_application_password" "admin_web" {
   }
 }
 
+resource "azurerm_cosmosdb_account" "invoice_manager" {
+  name                = local.cosmos_account_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  offer_type          = "Standard"
+  kind                = "GlobalDocumentDB"
+
+  consistency_policy {
+    consistency_level = "Session"
+  }
+
+  geo_location {
+    location          = azurerm_resource_group.invoice_manager.location
+    failover_priority = 0
+  }
+
+  capabilities {
+    name = "EnableServerless"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azurerm_cosmosdb_sql_database" "invoice_manager" {
+  name                = local.cosmos_database_name
+  resource_group_name = azurerm_cosmosdb_account.invoice_manager.resource_group_name
+  account_name        = azurerm_cosmosdb_account.invoice_manager.name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azurerm_cosmosdb_sql_container" "invoice_configurations" {
+  name                = "invoice-configurations"
+  resource_group_name = azurerm_cosmosdb_account.invoice_manager.resource_group_name
+  account_name        = azurerm_cosmosdb_account.invoice_manager.name
+  database_name       = azurerm_cosmosdb_sql_database.invoice_manager.name
+  partition_key_paths = ["/integrationType"]
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Grants the deploying identity Cosmos DB data-plane write access so the seeder
+# can run immediately after terraform apply without a separate auth step.
+resource "azurerm_cosmosdb_sql_role_assignment" "deployer_data_contributor" {
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  account_name        = azurerm_cosmosdb_account.invoice_manager.name
+  role_definition_id  = "${azurerm_cosmosdb_account.invoice_manager.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+  principal_id        = data.azurerm_client_config.current.object_id
+  scope               = azurerm_cosmosdb_account.invoice_manager.id
+}
+
 resource "azurerm_key_vault" "invoice_manager" {
   name                       = local.key_vault_name
   location                   = azurerm_resource_group.invoice_manager.location
