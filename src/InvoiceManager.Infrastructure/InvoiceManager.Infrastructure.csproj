@@ -5,6 +5,10 @@
     <LangVersion>preview</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Cosmos SDK v3 requires Newtonsoft.Json to be explicitly referenced unless bypassed.
+         We configure CosmosSystemTextJsonSerializer at runtime instead of using the default
+         Newtonsoft-based serializer, so suppress the build-time package check. -->
+    <AzureCosmosDisableNewtonsoftJsonCheck>true</AzureCosmosDisableNewtonsoftJsonCheck>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +20,12 @@
   <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.61.0" />
 <PackageReference Include="Microsoft.Identity.Client" Version="4.85.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InvoiceManager.Core\InvoiceManager.Core.csproj" />
   </ItemGroup>
 
 </Project>

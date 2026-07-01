@@ -224,6 +224,22 @@ Initial statuses may include:
 Exact status names should be finalized during implementation and kept stable
 once persisted.
 
+## Identifier Types
+
+Domain identifiers should use small typed wrappers rather than raw strings wherever
+practical. For example, `InvoiceConfigurationId` is a `readonly record struct` that
+wraps a stable slug string rather than exposing `string` directly.
+
+Typed identifiers:
+
+- Prevent parameter-order bugs at compile time (e.g. swapping two `string` IDs).
+- Centralise parsing and validation at the type boundary.
+- Should implement `TypeConverter` for binding frameworks and `JsonConverter` (STJ)
+  for JSON serialisation, so they round-trip as plain strings in Cosmos DB and
+  seed files without any call-site conversion.
+
+New identifier types should follow the pattern established by `InvoiceConfigurationId`.
+
 ## Next Expected Invoice
 
 The future expected invoice record created after the current invoice reaches the

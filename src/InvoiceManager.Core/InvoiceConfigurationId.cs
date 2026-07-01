@@ -1,0 +1,46 @@
+using System.ComponentModel;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace InvoiceManager.Core;
+
+/// <summary>
+/// The stable slug that uniquely identifies an invoice configuration.
+/// Serialises as a plain string in JSON and Cosmos DB.
+/// </summary>
+[TypeConverter(typeof(InvoiceConfigurationIdTypeConverter))]
+[JsonConverter(typeof(InvoiceConfigurationIdJsonConverter))]
+public sealed record InvoiceConfigurationId(string Value)
+{
+    public string Value { get; } = !string.IsNullOrEmpty(Value)
+        ? Value
+        : throw new ArgumentException("InvoiceConfigurationId cannot be null or empty.", nameof(Value));
+
+    public override string ToString() => Value;
+
+    private sealed class InvoiceConfigurationIdTypeConverter : TypeConverter
+    {
+        public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) =>
+            sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
+
+        public override object? ConvertFrom(ITypeDescriptorContext? context, System.Globalization.CultureInfo? culture, object value) =>
+            value is string s ? new InvoiceConfigurationId(s) : base.ConvertFrom(context, culture, value);
+
+        public override bool CanConvertTo(ITypeDescriptorContext? context, Type? destinationType) =>
+            destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
+
+        public override object? ConvertTo(ITypeDescriptorContext? context, System.Globalization.CultureInfo? culture, object? value, Type destinationType) =>
+            destinationType == typeof(string) && value is InvoiceConfigurationId id
+                ? id.Value
+                : base.ConvertTo(context, culture, value, destinationType);
+    }
+
+    private sealed class InvoiceConfigurationIdJsonConverter : JsonConverter<InvoiceConfigurationId>
+    {
+        public override InvoiceConfigurationId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            new(reader.GetString() ?? throw new JsonException("InvoiceConfigurationId cannot be null."));
+
+        public override void Write(Utf8JsonWriter writer, InvoiceConfigurationId value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(value.Value);
+    }
+}

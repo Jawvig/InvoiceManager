@@ -1,0 +1,30 @@
+[
+  {
+    "id": "m365-business-basic",
+    "integrationType": "Microsoft365",
+    "invoiceDescription": "Microsoft 365 Business Basic",
+    "frequency": "Monthly",
+    "defaultExpectedAmount": 11.59,
+    "defaultExpectedCurrency": "GBP",
+    "defaultVatMode": "Exclusive",
+    "isActive": true,
+    "oneDriveDestination": "/drives/REPLACE_WITH_DRIVE_ID/root:/Bills/Microsoft 365",
+    "startDate": "2025-01-10",
+    "billingAccountId": "REPLACE_WITH_BILLING_ACCOUNT_ID",
+    "dateToleranceDays": 5
+  },
+  {
+    "id": "m365-copilot",
+    "integrationType": "Microsoft365",
+    "invoiceDescription": "Microsoft 365 Copilot",
+    "frequency": "Monthly",
+    "defaultExpectedAmount": 25.00,
+    "defaultExpectedCurrency": "GBP",
+    "defaultVatMode": "Exclusive",
+    "isActive": true,
+    "oneDriveDestination": "/drives/REPLACE_WITH_DRIVE_ID/root:/Bills/Microsoft 365",
+    "startDate": "2025-01-10",
+    "billingAccountId": "REPLACE_WITH_BILLING_ACCOUNT_ID",
+    "dateToleranceDays": 5
+  }
+]
