@@ -24,11 +24,7 @@ Console.WriteLine($"  Seed file:       {Path.GetFullPath(seedFilePath)}");
 
 var json = await File.ReadAllTextAsync(seedFilePath);
 var records = JsonSerializer.Deserialize<List<SeedInvoiceConfigurationRecord>>(
-    json, new JsonSerializerOptions
-    {
-        PropertyNameCaseInsensitive = true,
-        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
-    })
+    json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
     ?? throw new InvalidOperationException("Seed file is empty or invalid.");
 
 Console.WriteLine($"Loaded {records.Count} configuration(s) from seed file.");
@@ -54,6 +50,16 @@ var cosmosClient = new CosmosClient(
 var repository = new CosmosInvoiceConfigurationRepository(cosmosClient, databaseName);
 var seeder = new ConfigurationSeeder(repository);
 
-await seeder.SeedAsync(configurations);
+try
+{
+    await seeder.SeedAsync(configurations);
+}
+catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+{
+    await Console.Error.WriteLineAsync(
+        $"Cosmos DB returned 403 Forbidden — the RBAC role assignment may not yet have " +
+        $"propagated. ({ex.Message})");
+    Environment.Exit(2);
+}
 
 Console.WriteLine("Seeding complete.");

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace InvoiceManager.Seeder;
 
 /// <summary>
@@ -5,15 +7,15 @@ namespace InvoiceManager.Seeder;
 /// Uses flat amount/currency fields so the seed file needs no custom converters.
 /// </summary>
 internal sealed record SeedInvoiceConfigurationRecord(
-    string Id,
-    string IntegrationType,
-    string InvoiceDescription,
-    string Frequency,
-    decimal DefaultExpectedAmount,
-    string DefaultExpectedCurrency,
-    string DefaultVatMode,
-    bool IsActive,
-    string OneDriveDestination,
-    string StartDate,
-    string BillingAccountId,
-    int DateToleranceDays);
+    [property: JsonRequired] string Id,
+    [property: JsonRequired] string IntegrationType,
+    [property: JsonRequired] string InvoiceDescription,
+    [property: JsonRequired] string Frequency,
+    [property: JsonRequired] decimal DefaultExpectedAmount,
+    [property: JsonRequired] string DefaultExpectedCurrency,
+    [property: JsonRequired] string DefaultVatMode,
+    [property: JsonRequired] bool IsActive,
+    [property: JsonRequired] string OneDriveDestination,
+    [property: JsonRequired] string StartDate,
+    [property: JsonRequired] string BillingAccountId,
+    [property: JsonRequired] int DateToleranceDays);
