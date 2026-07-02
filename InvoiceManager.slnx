@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/InvoiceManager.AppHost/InvoiceManager.AppHost.csproj" />
     <Project Path="src/InvoiceManager.AdminWeb/InvoiceManager.AdminWeb.csproj" />
     <Project Path="src/InvoiceManager.Core/InvoiceManager.Core.csproj" />
     <Project Path="src/InvoiceManager.Infrastructure/InvoiceManager.Infrastructure.csproj" />
@@ -7,6 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/InvoiceManager.AdminWeb.Tests/InvoiceManager.AdminWeb.Tests.csproj" />
     <Project Path="tests/InvoiceManager.Core.Tests/InvoiceManager.Core.Tests.csproj" />
+    <Project Path="tests/InvoiceManager.Infrastructure.IntegrationTests/InvoiceManager.Infrastructure.IntegrationTests.csproj" />
     <Project Path="tests/InvoiceManager.Infrastructure.Tests/InvoiceManager.Infrastructure.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
