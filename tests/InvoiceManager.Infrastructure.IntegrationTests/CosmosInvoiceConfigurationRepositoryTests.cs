@@ -5,59 +5,32 @@ using NodaMoney;
 
 namespace InvoiceManager.Infrastructure.IntegrationTests;
 
-/// <summary>
-/// Integration tests for <see cref="CosmosInvoiceConfigurationRepository"/>.
-/// Requires the Azure Cosmos DB Emulator running at https://localhost:8081.
-/// Run with: dotnet test --filter "Category=Integration"
-/// Start the emulator: start the "Azure Cosmos DB Emulator" from the Start menu,
-/// or run: &amp; "C:\Program Files\Azure Cosmos DB Emulator\CosmosDB.Emulator.exe"
-/// </summary>
+[Collection("CosmosIntegration")]
 [Trait("Category", "Integration")]
 public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
 {
-    // The Cosmos DB Emulator's well-known endpoint and key.
-    private const string EmulatorEndpoint = "https://localhost:8081";
-    private const string EmulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
     private const string TestDatabase = "invoicemanager-integration-tests";
 
-    private CosmosClient? cosmosClient;
+    private readonly CosmosEmulatorFixture emulator;
     private CosmosInvoiceConfigurationRepository? repository;
+
+    public CosmosInvoiceConfigurationRepositoryTests(CosmosEmulatorFixture emulator)
+    {
+        this.emulator = emulator;
+    }
 
     public async Task InitializeAsync()
     {
-        var endpoint = Environment.GetEnvironmentVariable("COSMOS_INTEGRATION_ENDPOINT") ?? EmulatorEndpoint;
-        var key = Environment.GetEnvironmentVariable("COSMOS_INTEGRATION_KEY") ?? EmulatorKey;
-
-        var options = CosmosInvoiceConfigurationRepository.BuildClientOptions();
-        // Allow self-signed cert from the local emulator.
-        options.HttpClientFactory = () => new HttpClient(new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback =
-                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-        });
-        options.ConnectionMode = ConnectionMode.Gateway;
-        cosmosClient = new CosmosClient(endpoint, key, options);
-
-        var db = await cosmosClient.CreateDatabaseIfNotExistsAsync(TestDatabase);
+        var db = await emulator.Client.CreateDatabaseIfNotExistsAsync(TestDatabase);
         await db.Database.CreateContainerIfNotExistsAsync(
             new ContainerProperties("invoice-configurations", "/integrationType"));
 
-        repository = new CosmosInvoiceConfigurationRepository(cosmosClient, TestDatabase);
+        repository = new CosmosInvoiceConfigurationRepository(emulator.Client, TestDatabase);
     }
 
     public async Task DisposeAsync()
     {
-        if (cosmosClient is not null)
-        {
-            try
-            {
-                await cosmosClient.GetDatabase(TestDatabase).DeleteAsync();
-            }
-            finally
-            {
-                cosmosClient.Dispose();
-            }
-        }
+        await emulator.Client.GetDatabase(TestDatabase).DeleteAsync();
     }
 
     [Fact]
