@@ -12,12 +12,8 @@ public interface IInvoiceRecordRepository
     Task<Option<InvoiceRecord>> GetMostRecentAsync(InvoiceConfigurationId configurationId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns <c>true</c> if a record already exists for the given configuration and expected date.
+    /// Persists a new invoice record. If a record with the same ID already exists (i.e. the same
+    /// configuration and expected date), the call is a no-op — the existing record is not overwritten.
     /// </summary>
-    Task<bool> ExistsAsync(InvoiceConfigurationId configurationId, DateOnly expectedDate, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Persists a new invoice record.
-    /// </summary>
-    Task CreateAsync(InvoiceRecord record, CancellationToken cancellationToken = default);
+    Task CreateIfNotExistsAsync(InvoiceRecord record, CancellationToken cancellationToken = default);
 }

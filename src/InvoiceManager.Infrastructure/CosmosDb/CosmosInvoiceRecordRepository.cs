@@ -45,37 +45,18 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
         return Option.None;
     }
 
-    public async Task<bool> ExistsAsync(
-        InvoiceConfigurationId configurationId,
-        DateOnly expectedDate,
-        CancellationToken cancellationToken = default)
-    {
-        var query = new QueryDefinition(
-            "SELECT VALUE COUNT(1) FROM c WHERE c.configurationId = @configurationId AND c.expectedDate = @expectedDate")
-            .WithParameter("@configurationId", configurationId.Value)
-            .WithParameter("@expectedDate", expectedDate.ToString("yyyy-MM-dd"));
-
-        using var iterator = container.GetItemQueryIterator<int>(
-            query,
-            requestOptions: new QueryRequestOptions
-            {
-                PartitionKey = new PartitionKey(configurationId.Value),
-            });
-
-        while (iterator.HasMoreResults)
-        {
-            var page = await iterator.ReadNextAsync(cancellationToken);
-            foreach (var count in page)
-                return count > 0;
-        }
-
-        return false;
-    }
-
-    public async Task CreateAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
+    public async Task CreateIfNotExistsAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
     {
         var document = InvoiceRecordDocument.FromRecord(record);
         var partitionKey = new PartitionKey(record.ConfigurationId.Value);
-        await container.CreateItemAsync(document, partitionKey, cancellationToken: cancellationToken);
+
+        try
+        {
+            await container.CreateItemAsync(document, partitionKey, cancellationToken: cancellationToken);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+        {
+            // Record already exists for this configuration and expected date — idempotent no-op.
+        }
     }
 }

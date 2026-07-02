@@ -97,15 +97,10 @@ public sealed class ExpectedRecordGeneratorTests
             return Task.FromResult(result);
         }
 
-        public Task<bool> ExistsAsync(
-            InvoiceConfigurationId configurationId,
-            DateOnly expectedDate,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(store.Any(r => r.ConfigurationId == configurationId && r.ExpectedDate == expectedDate));
-
-        public Task CreateAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
+        public Task CreateIfNotExistsAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
         {
-            store.Add(record);
+            if (!store.Any(r => r.Id == record.Id))
+                store.Add(record);
             return Task.CompletedTask;
         }
     }

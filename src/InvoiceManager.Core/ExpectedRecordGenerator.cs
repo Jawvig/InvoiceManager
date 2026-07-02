@@ -17,22 +17,16 @@ public sealed class ExpectedRecordGenerator(IInvoiceRecordRepository repository)
         if (nextDateResult is not NextExpectedDate nextExpectedDate)
             return;
 
-        var nextDate = nextExpectedDate.Date;
-
-        if (await repository.ExistsAsync(configuration.Id, nextDate, cancellationToken))
-            return;
-
         var record = new InvoiceRecord(
-            InvoiceRecordId.NewId(),
             configuration.Id,
             configuration.InvoiceDescription,
-            nextDate,
+            nextExpectedDate.Date,
             configuration.DateToleranceDays,
             configuration.DefaultExpectedAmount,
             configuration.DefaultVatMode,
             ProcessingStatus.Expected,
             Option.None);
 
-        await repository.CreateAsync(record, cancellationToken);
+        await repository.CreateIfNotExistsAsync(record, cancellationToken);
     }
 }

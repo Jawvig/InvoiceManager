@@ -42,7 +42,6 @@ internal sealed class InvoiceRecordDocument
 
     public InvoiceRecord ToRecord() =>
         new(
-            new InvoiceRecordId(Id),
             new InvoiceConfigurationId(ConfigurationId),
             InvoiceDescription,
             DateOnly.ParseExact(ExpectedDate, "yyyy-MM-dd"),

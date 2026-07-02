@@ -12,7 +12,6 @@ internal static class Records
     {
         var resolvedConfig = config ?? Configurations.Build();
         return new InvoiceRecord(
-            InvoiceRecordId.NewId(),
             resolvedConfig.Id,
             resolvedConfig.InvoiceDescription,
             expectedDate ?? resolvedConfig.StartDate,

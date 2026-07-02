@@ -7,7 +7,6 @@ namespace InvoiceManager.Core;
 /// tracking its progress through retrieval, reconciliation, save, and beyond.
 /// </summary>
 public sealed record InvoiceRecord(
-    InvoiceRecordId Id,
     InvoiceConfigurationId ConfigurationId,
     string InvoiceDescription,
     DateOnly ExpectedDate,
@@ -15,4 +14,7 @@ public sealed record InvoiceRecord(
     Money ExpectedAmount,
     VatMode ExpectedVatMode,
     ProcessingStatus Status,
-    Option<DateOnly> ActualInvoiceDate);
+    Option<DateOnly> ActualInvoiceDate)
+{
+    public InvoiceRecordId Id { get; } = InvoiceRecordId.NewId(ExpectedDate, ConfigurationId);
+}
