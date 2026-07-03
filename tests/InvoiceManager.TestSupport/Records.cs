@@ -1,6 +1,8 @@
-namespace InvoiceManager.Core.Tests;
+using InvoiceManager.Core;
 
-internal static class Records
+namespace InvoiceManager.TestSupport;
+
+public static class Records
 {
     public static InvoiceRecord Build(
         InvoiceConfiguration? config = null,

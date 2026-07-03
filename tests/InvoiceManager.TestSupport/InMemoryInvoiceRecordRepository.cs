@@ -1,0 +1,56 @@
+using InvoiceManager.Core;
+using InvoiceManager.Core.Repositories;
+
+namespace InvoiceManager.TestSupport;
+
+/// <summary>
+/// An in-memory invoice record store with the same semantics as the Cosmos
+/// implementation: most-recent by expected date, create-if-not-exists by ID.
+/// </summary>
+public class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
+{
+    private readonly List<InvoiceRecord> store;
+
+    public InMemoryInvoiceRecordRepository(params InvoiceRecord[] initial)
+    {
+        store = [.. initial];
+    }
+
+    public IReadOnlyList<InvoiceRecord> All => store;
+
+    public virtual Task<Option<InvoiceRecord>> GetMostRecentAsync(
+        InvoiceConfigurationId configurationId,
+        CancellationToken cancellationToken = default)
+    {
+        var record = store
+            .Where(r => r.ConfigurationId == configurationId)
+            .OrderByDescending(r => r.ExpectedDate)
+            .FirstOrDefault();
+
+        Option<InvoiceRecord> result = record is not null ? record : Option.None;
+        return Task.FromResult(result);
+    }
+
+    public Task CreateIfNotExistsAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
+    {
+        if (!store.Any(r => r.Id == record.Id))
+            store.Add(record);
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// An <see cref="InMemoryInvoiceRecordRepository"/> that throws the given
+/// exception when the specified configuration is read, for exercising
+/// per-configuration failure handling.
+/// </summary>
+public sealed class ThrowingInvoiceRecordRepository(InvoiceConfigurationId failFor, Exception exception)
+    : InMemoryInvoiceRecordRepository
+{
+    public override Task<Option<InvoiceRecord>> GetMostRecentAsync(
+        InvoiceConfigurationId configurationId,
+        CancellationToken cancellationToken = default) =>
+        configurationId == failFor
+            ? throw exception
+            : base.GetMostRecentAsync(configurationId, cancellationToken);
+}

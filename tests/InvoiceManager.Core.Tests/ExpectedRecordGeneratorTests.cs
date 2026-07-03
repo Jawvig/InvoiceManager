@@ -1,4 +1,5 @@
 using InvoiceManager.Core.Repositories;
+using InvoiceManager.TestSupport;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace InvoiceManager.Core.Tests;
@@ -95,7 +96,8 @@ public sealed class ExpectedRecordGeneratorTests
     {
         var failing = Configurations.Build(id: new InvoiceConfigurationId("config-failing"), startDate: new DateOnly(2025, 7, 1));
         var healthy = Configurations.Build(id: new InvoiceConfigurationId("config-healthy"), startDate: new DateOnly(2025, 8, 1));
-        var records = new ThrowingInvoiceRecordRepository(failing.Id);
+        var records = new ThrowingInvoiceRecordRepository(
+            failing.Id, new InvalidOperationException("Simulated repository failure."));
         var generator = BuildGenerator(records, failing, healthy);
 
         var results = await generator.GenerateForAllActiveAsync();
@@ -114,7 +116,7 @@ public sealed class ExpectedRecordGeneratorTests
     public async Task GenerateForAllActiveAsync_PropagatesCancellation()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 1));
-        var records = new CancellingInvoiceRecordRepository();
+        var records = new ThrowingInvoiceRecordRepository(config.Id, new OperationCanceledException());
         var generator = BuildGenerator(records, config);
 
         await Assert.ThrowsAsync<OperationCanceledException>(
@@ -127,66 +129,4 @@ public sealed class ExpectedRecordGeneratorTests
         new(records,
             new FakeConfigurationRepository(configurations),
             NullLogger<ExpectedRecordGenerator>.Instance);
-
-    private sealed class FakeConfigurationRepository(params InvoiceConfiguration[] configurations)
-        : IInvoiceConfigurationRepository
-    {
-        public Task<IReadOnlyList<InvoiceConfiguration>> ListActiveAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<InvoiceConfiguration>>(
-                configurations.Where(c => c.IsActive).ToList());
-
-        public Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
-    }
-
-    private class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
-    {
-        private readonly List<InvoiceRecord> store;
-
-        public InMemoryInvoiceRecordRepository(params InvoiceRecord[] initial)
-        {
-            store = [.. initial];
-        }
-
-        public IReadOnlyList<InvoiceRecord> All => store;
-
-        public virtual Task<Option<InvoiceRecord>> GetMostRecentAsync(
-            InvoiceConfigurationId configurationId,
-            CancellationToken cancellationToken = default)
-        {
-            var record = store
-                .Where(r => r.ConfigurationId == configurationId)
-                .OrderByDescending(r => r.ExpectedDate)
-                .FirstOrDefault();
-
-            Option<InvoiceRecord> result = record is not null ? record : Option.None;
-            return Task.FromResult(result);
-        }
-
-        public Task CreateIfNotExistsAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
-        {
-            if (!store.Any(r => r.Id == record.Id))
-                store.Add(record);
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class ThrowingInvoiceRecordRepository(InvoiceConfigurationId failFor)
-        : InMemoryInvoiceRecordRepository
-    {
-        public override Task<Option<InvoiceRecord>> GetMostRecentAsync(
-            InvoiceConfigurationId configurationId,
-            CancellationToken cancellationToken = default) =>
-            configurationId == failFor
-                ? throw new InvalidOperationException("Simulated repository failure.")
-                : base.GetMostRecentAsync(configurationId, cancellationToken);
-    }
-
-    private sealed class CancellingInvoiceRecordRepository : InMemoryInvoiceRecordRepository
-    {
-        public override Task<Option<InvoiceRecord>> GetMostRecentAsync(
-            InvoiceConfigurationId configurationId,
-            CancellationToken cancellationToken = default) =>
-            throw new OperationCanceledException();
-    }
 }

@@ -1,4 +1,5 @@
 using InvoiceManager.Core.Repositories;
+using InvoiceManager.TestSupport;
 
 namespace InvoiceManager.Core.Tests;
 

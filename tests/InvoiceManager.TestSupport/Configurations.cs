@@ -1,8 +1,9 @@
+using InvoiceManager.Core;
 using NodaMoney;
 
-namespace InvoiceManager.Core.Tests;
+namespace InvoiceManager.TestSupport;
 
-internal static class Configurations
+public static class Configurations
 {
     public static InvoiceConfiguration Build(
         InvoiceConfigurationId? id = null,

@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\InvoiceManager.Core\InvoiceManager.Core.csproj" />
     <ProjectReference Include="..\..\src\InvoiceManager.Functions\InvoiceManager.Functions.csproj" />
+    <ProjectReference Include="..\InvoiceManager.TestSupport\InvoiceManager.TestSupport.csproj" />
   </ItemGroup>
 
   <ItemGroup>
