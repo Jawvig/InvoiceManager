@@ -11,34 +11,41 @@ namespace InvoiceManager.Infrastructure.MicrosoftAuthorization;
 /// </summary>
 public sealed class MicrosoftTokenProvider : IMicrosoftTokenProvider
 {
-    private readonly IConfidentialClientApplication application;
+    private readonly Lazy<IConfidentialClientApplication> application;
 
     public MicrosoftTokenProvider(
         IOptions<MicrosoftAuthorizationOptions> options,
         IMicrosoftAuthorizationStore authorizationStore)
     {
-        var authorizationOptions = options.Value;
+        // Build the MSAL application lazily so that constructing the provider never
+        // does work or throws on missing configuration; misconfiguration surfaces
+        // only when a token is actually requested.
+        application = new Lazy<IConfidentialClientApplication>(() =>
+        {
+            var authorizationOptions = options.Value;
 
-        application = ConfidentialClientApplicationBuilder
-            .Create(authorizationOptions.ClientId)
-            .WithClientSecret(authorizationOptions.ClientSecret)
-            .WithAuthority(authorizationOptions.Authority)
-            .Build();
+            var app = ConfidentialClientApplicationBuilder
+                .Create(authorizationOptions.ClientId)
+                .WithClientSecret(authorizationOptions.ClientSecret)
+                .WithAuthority(authorizationOptions.Authority)
+                .Build();
 
-        MsalTokenCacheBinding.Bind(application.UserTokenCache, authorizationStore);
+            MsalTokenCacheBinding.Bind(app.UserTokenCache, authorizationStore);
+            return app;
+        });
     }
 
     public async Task<string> AcquireTokenAsync(
         IReadOnlyCollection<string> scopes,
         CancellationToken cancellationToken = default)
     {
-        var accounts = await application.GetAccountsAsync();
+        var accounts = await application.Value.GetAccountsAsync();
         var account = accounts.FirstOrDefault()
             ?? throw new InvalidOperationException(
                 "No delegated account is available in the MSAL token cache. An administrator " +
                 "must sign in through the admin website before invoices can be retrieved.");
 
-        var result = await application
+        var result = await application.Value
             .AcquireTokenSilent(scopes, account)
             .ExecuteAsync(cancellationToken);
 
