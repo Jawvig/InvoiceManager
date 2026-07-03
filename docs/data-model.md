@@ -44,6 +44,10 @@ Candidate fields:
 - `defaultVatMode`
 - `isActive`
 - `oneDriveDestination`
+- `billingAccountId`
+- `dateToleranceDays`
+- `amountTolerance` — permitted absolute difference from `defaultExpectedAmount`
+  when matching a source invoice (0 means an exact amount match)
 - `freeAgentMatching`
 - `createdAt`
 - `updatedAt`
@@ -85,11 +89,14 @@ Candidate fields:
 - `expectedDateToleranceDays`
 - `expectedAmount`
 - `expectedCurrency`
+- `expectedAmountTolerance` — snapshot of the configuration's `amountTolerance`
+  at record creation, used as matching criteria
 - `expectedVatMode`
 - `status`
-- `actualInvoiceDetails` — nested sub-object: `actualInvoiceDate` (candidates:
-  `actualAmount`, `actualCurrency`, `actualVatMode`, `dateRetrieved`,
-  `sourceInvoiceId`)
+- `actualInvoiceDetails` — nested sub-object, present when the state carries
+  actual values: `actualInvoiceDate`, `actualAmount`, `actualCurrency`,
+  `sourceInvoiceId` (candidates: `actualVatMode`, `dateRetrieved`). The VAT mode
+  is intentionally not stored on actuals — it is taken from configuration.
 - `oneDriveDetails` — nested sub-object: `oneDriveLocation` (candidate:
   `oneDriveFileId`)
 - `sourceMetadata`
