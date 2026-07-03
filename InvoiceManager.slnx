@@ -5,6 +5,7 @@
     <Project Path="src/InvoiceManager.Core/InvoiceManager.Core.csproj" />
     <Project Path="src/InvoiceManager.Functions/InvoiceManager.Functions.csproj" />
     <Project Path="src/InvoiceManager.Infrastructure/InvoiceManager.Infrastructure.csproj" />
+    <Project Path="src/InvoiceManager.Integrations.Microsoft365/InvoiceManager.Integrations.Microsoft365.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/InvoiceManager.AdminWeb.Tests/InvoiceManager.AdminWeb.Tests.csproj" />
@@ -12,6 +13,7 @@
     <Project Path="tests/InvoiceManager.Functions.Tests/InvoiceManager.Functions.Tests.csproj" />
     <Project Path="tests/InvoiceManager.Infrastructure.IntegrationTests/InvoiceManager.Infrastructure.IntegrationTests.csproj" />
     <Project Path="tests/InvoiceManager.Infrastructure.Tests/InvoiceManager.Infrastructure.Tests.csproj" />
+    <Project Path="tests/InvoiceManager.Integrations.Microsoft365.Tests/InvoiceManager.Integrations.Microsoft365.Tests.csproj" />
     <Project Path="tests/InvoiceManager.TestSupport/InvoiceManager.TestSupport.csproj" />
   </Folder>
   <Folder Name="/tools/">
