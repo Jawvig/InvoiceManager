@@ -33,7 +33,7 @@ public sealed class InvoiceFilename
         // it with the configured culture would render the year in that culture's
         // default calendar (for example a Thai Buddhist or Hijri year), so the
         // invariant culture is used here regardless of the configured culture.
-        var date = invoiceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var date = invoiceDate.ToString("O", CultureInfo.InvariantCulture);
         var money = FormatMoney(amount, settings.Culture);
         var vat = vatMode == VatMode.Inclusive ? "inc" : "exc";
 

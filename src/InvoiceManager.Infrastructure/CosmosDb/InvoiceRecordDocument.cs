@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using InvoiceManager.Core;
 using NodaMoney;
@@ -15,10 +16,10 @@ internal sealed class ActualInvoiceDetailsDocument
     public required string ActualInvoiceDate { get; init; }
 
     public ActualInvoiceDetails ToDetails() =>
-        new(DateOnly.ParseExact(ActualInvoiceDate, "yyyy-MM-dd"));
+        new(DateOnly.ParseExact(ActualInvoiceDate, "O", CultureInfo.InvariantCulture));
 
     public static ActualInvoiceDetailsDocument FromDetails(ActualInvoiceDetails details) =>
-        new() { ActualInvoiceDate = details.ActualInvoiceDate.ToString("yyyy-MM-dd") };
+        new() { ActualInvoiceDate = details.ActualInvoiceDate.ToString("O", CultureInfo.InvariantCulture) };
 }
 
 /// <summary>
@@ -82,7 +83,7 @@ internal sealed class InvoiceRecordDocument
         new(
             new InvoiceConfigurationId(ConfigurationId),
             InvoiceDescription,
-            DateOnly.ParseExact(ExpectedDate, "yyyy-MM-dd"),
+            DateOnly.ParseExact(ExpectedDate, "O", CultureInfo.InvariantCulture),
             DateToleranceDays,
             new Money(ExpectedAmount, ExpectedCurrency),
             Enum.Parse<VatMode>(ExpectedVatMode, ignoreCase: true),
@@ -96,7 +97,7 @@ internal sealed class InvoiceRecordDocument
             Id = record.Id.Value,
             ConfigurationId = record.ConfigurationId.Value,
             InvoiceDescription = record.InvoiceDescription,
-            ExpectedDate = record.ExpectedDate.ToString("yyyy-MM-dd"),
+            ExpectedDate = record.ExpectedDate.ToString("O", CultureInfo.InvariantCulture),
             DateToleranceDays = record.DateToleranceDays,
             ExpectedAmount = record.ExpectedAmount.Amount,
             ExpectedCurrency = record.ExpectedAmount.Currency.Code,

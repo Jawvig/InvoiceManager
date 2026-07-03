@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Azure.Identity;
 using InvoiceManager.Core;
@@ -38,7 +39,7 @@ var configurations = records.Select(r => new InvoiceConfiguration(
     Enum.Parse<VatMode>(r.DefaultVatMode, ignoreCase: true),
     r.IsActive,
     r.OneDriveDestination,
-    DateOnly.ParseExact(r.StartDate, "yyyy-MM-dd"),
+    DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
     r.BillingAccountId,
     r.DateToleranceDays)).ToList();
 

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -20,7 +21,7 @@ public sealed record InvoiceRecordId(string Value)
             nameof(Value));
 
     public static InvoiceRecordId NewId(DateOnly expectedDate, InvoiceConfigurationId configurationId) =>
-        new($"{configurationId.Value}_{expectedDate:yyyy-MM-dd}");
+        new($"{configurationId.Value}_{expectedDate.ToString("O", CultureInfo.InvariantCulture)}");
 
     public override string ToString() => Value;
 
@@ -29,7 +30,7 @@ public sealed record InvoiceRecordId(string Value)
     private static bool IsValidFormat(string value) =>
         value.Length >= 12 &&
         value[^11] == '_' &&
-        DateOnly.TryParseExact(value[^10..], "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out _);
+        DateOnly.TryParseExact(value[^10..], "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 
     private sealed class InvoiceRecordIdTypeConverter : TypeConverter
     {
