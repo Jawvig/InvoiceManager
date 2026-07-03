@@ -41,7 +41,8 @@ var configurations = records.Select(r => new InvoiceConfiguration(
     r.OneDriveDestination,
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
     r.BillingAccountId,
-    r.DateToleranceDays)).ToList();
+    r.DateToleranceDays,
+    r.AmountTolerance)).ToList();
 
 var cosmosClient = new CosmosClient(
     accountEndpoint: endpoint,

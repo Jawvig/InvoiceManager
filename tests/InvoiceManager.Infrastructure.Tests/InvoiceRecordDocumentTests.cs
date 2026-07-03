@@ -9,6 +9,11 @@ public sealed class InvoiceRecordDocumentTests
 {
     private const string OneDriveLocation = "/drives/test/root:/Bills/Test/invoice.pdf";
 
+    private static ActualInvoiceDetails SampleActualDetails => new(
+        new DateOnly(2025, 7, 5),
+        new Money(9.99m, "GBP"),
+        new SourceInvoiceId("G152207778"));
+
     [Fact]
     public void RoundTrip_PreservesRecord_WhenStateIsExpected()
     {
@@ -22,8 +27,7 @@ public sealed class InvoiceRecordDocumentTests
     [Fact]
     public void RoundTrip_PreservesRecord_WhenStateIsRetrieved()
     {
-        var record = BuildRecord(new Retrieved(
-            new ActualInvoiceDetails(new DateOnly(2025, 7, 5))));
+        var record = BuildRecord(new Retrieved(SampleActualDetails));
 
         var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
 
@@ -34,7 +38,7 @@ public sealed class InvoiceRecordDocumentTests
     public void RoundTrip_PreservesRecord_WhenStateIsReconciledFromOneDrive()
     {
         var record = BuildRecord(new ReconciledFromOneDrive(
-            new ActualInvoiceDetails(new DateOnly(2025, 7, 5)),
+            SampleActualDetails,
             new OneDriveDetails(OneDriveLocation)));
 
         var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
@@ -46,7 +50,7 @@ public sealed class InvoiceRecordDocumentTests
     public void RoundTrip_PreservesRecord_WhenStateIsSavedToOneDrive()
     {
         var record = BuildRecord(new SavedToOneDrive(
-            new ActualInvoiceDetails(new DateOnly(2025, 7, 5)),
+            SampleActualDetails,
             new OneDriveDetails(OneDriveLocation)));
 
         var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
@@ -71,7 +75,13 @@ public sealed class InvoiceRecordDocumentTests
     {
         var document = BuildDocument(
             status: "SavedToOneDrive",
-            actualDetails: new ActualInvoiceDetailsDocument { ActualInvoiceDate = "2025-07-05" });
+            actualDetails: new ActualInvoiceDetailsDocument
+            {
+                ActualInvoiceDate = "2025-07-05",
+                ActualAmount = 9.99m,
+                ActualCurrency = "GBP",
+                SourceInvoiceId = "G152207778",
+            });
 
         var ex = Assert.Throws<InvalidOperationException>(() => document.ToRecord());
         Assert.Equal(
@@ -120,6 +130,7 @@ public sealed class InvoiceRecordDocumentTests
             new DateOnly(2025, 7, 1),
             DateToleranceDays: 5,
             new Money(10.00m, "GBP"),
+            AmountTolerance: 0.50m,
             VatMode.Exclusive,
             state);
 

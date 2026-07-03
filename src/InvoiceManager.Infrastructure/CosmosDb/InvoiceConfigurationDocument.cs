@@ -47,6 +47,11 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("dateToleranceDays")]
     public required int DateToleranceDays { get; init; }
 
+    // Optional for backward compatibility: configurations seeded before amount
+    // tolerance existed deserialise to 0, meaning an exact amount match.
+    [JsonPropertyName("amountTolerance")]
+    public decimal AmountTolerance { get; init; }
+
     public InvoiceConfiguration ToConfiguration() =>
         new(
             new InvoiceConfigurationId(Id),
@@ -59,7 +64,8 @@ internal sealed class InvoiceConfigurationDocument
             OneDriveDestination,
             DateOnly.ParseExact(StartDate, "O", CultureInfo.InvariantCulture),
             BillingAccountId,
-            DateToleranceDays);
+            DateToleranceDays,
+            AmountTolerance);
 
     public static InvoiceConfigurationDocument FromConfiguration(InvoiceConfiguration config) =>
         new()
@@ -76,5 +82,6 @@ internal sealed class InvoiceConfigurationDocument
             StartDate = config.StartDate.ToString("O", CultureInfo.InvariantCulture),
             BillingAccountId = config.BillingAccountId,
             DateToleranceDays = config.DateToleranceDays,
+            AmountTolerance = config.AmountTolerance,
         };
 }

@@ -15,11 +15,29 @@ internal sealed class ActualInvoiceDetailsDocument
     [JsonPropertyName("actualInvoiceDate")]
     public required string ActualInvoiceDate { get; init; }
 
+    [JsonPropertyName("actualAmount")]
+    public required decimal ActualAmount { get; init; }
+
+    [JsonPropertyName("actualCurrency")]
+    public required string ActualCurrency { get; init; }
+
+    [JsonPropertyName("sourceInvoiceId")]
+    public required string SourceInvoiceId { get; init; }
+
     public ActualInvoiceDetails ToDetails() =>
-        new(DateOnly.ParseExact(ActualInvoiceDate, "O", CultureInfo.InvariantCulture));
+        new(
+            DateOnly.ParseExact(ActualInvoiceDate, "O", CultureInfo.InvariantCulture),
+            new Money(ActualAmount, ActualCurrency),
+            new Core.SourceInvoiceId(SourceInvoiceId));
 
     public static ActualInvoiceDetailsDocument FromDetails(ActualInvoiceDetails details) =>
-        new() { ActualInvoiceDate = details.ActualInvoiceDate.ToString("O", CultureInfo.InvariantCulture) };
+        new()
+        {
+            ActualInvoiceDate = details.ActualInvoiceDate.ToString("O", CultureInfo.InvariantCulture),
+            ActualAmount = details.ActualAmount.Amount,
+            ActualCurrency = details.ActualAmount.Currency.Code,
+            SourceInvoiceId = details.SourceInvoiceId.Value,
+        };
 }
 
 /// <summary>
@@ -67,6 +85,11 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("expectedCurrency")]
     public required string ExpectedCurrency { get; init; }
 
+    // Optional for backward compatibility: records written before amount tolerance
+    // existed deserialise to 0, meaning an exact amount match.
+    [JsonPropertyName("expectedAmountTolerance")]
+    public decimal ExpectedAmountTolerance { get; init; }
+
     [JsonPropertyName("expectedVatMode")]
     public required string ExpectedVatMode { get; init; }
 
@@ -86,6 +109,7 @@ internal sealed class InvoiceRecordDocument
             DateOnly.ParseExact(ExpectedDate, "O", CultureInfo.InvariantCulture),
             DateToleranceDays,
             new Money(ExpectedAmount, ExpectedCurrency),
+            ExpectedAmountTolerance,
             Enum.Parse<VatMode>(ExpectedVatMode, ignoreCase: true),
             ToState());
 
@@ -101,6 +125,7 @@ internal sealed class InvoiceRecordDocument
             DateToleranceDays = record.DateToleranceDays,
             ExpectedAmount = record.ExpectedAmount.Amount,
             ExpectedCurrency = record.ExpectedAmount.Currency.Code,
+            ExpectedAmountTolerance = record.AmountTolerance,
             ExpectedVatMode = record.ExpectedVatMode.ToString(),
             Status = status,
             ActualInvoiceDetails = actualDetails,

@@ -34,7 +34,7 @@ public sealed class ExpectedRecordGeneratorTests
         var existing = Records.Build(config,
             expectedDate: new DateOnly(2025, 7, 1),
             state: new SavedToOneDrive(
-                new ActualInvoiceDetails(new DateOnly(2025, 7, 5)),
+                Actuals.Build(new DateOnly(2025, 7, 5)),
                 new OneDriveDetails("/drives/test/root:/Bills/Test/invoice.pdf")));
         var records = new InMemoryInvoiceRecordRepository(existing);
         var generator = BuildGenerator(records);
@@ -52,7 +52,7 @@ public sealed class ExpectedRecordGeneratorTests
     {
         var config = Configurations.Build();
         var existing = Records.Build(config, state: new Retrieved(
-            new ActualInvoiceDetails(new DateOnly(2025, 7, 5))));
+            Actuals.Build(new DateOnly(2025, 7, 5))));
         var records = new InMemoryInvoiceRecordRepository(existing);
         var generator = BuildGenerator(records);
 

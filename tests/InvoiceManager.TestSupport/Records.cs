@@ -16,6 +16,7 @@ public static class Records
             expectedDate ?? resolvedConfig.StartDate,
             resolvedConfig.DateToleranceDays,
             resolvedConfig.DefaultExpectedAmount,
+            resolvedConfig.AmountTolerance,
             resolvedConfig.DefaultVatMode,
             state ?? new Expected());
     }

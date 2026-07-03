@@ -17,4 +17,5 @@ public sealed record InvoiceConfiguration(
     string OneDriveDestination,
     DateOnly StartDate,
     string BillingAccountId,
-    int DateToleranceDays);
+    int DateToleranceDays,
+    decimal AmountTolerance);

@@ -22,7 +22,7 @@ public sealed class NextExpectedInvoiceDateTests
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = Records.Build(config, state: new SavedToOneDrive(
-            new ActualInvoiceDetails(new DateOnly(2026, 6, 10)),
+            Actuals.Build(new DateOnly(2026, 6, 10)),
             new OneDriveDetails(OneDriveLocation)));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
@@ -46,7 +46,7 @@ public sealed class NextExpectedInvoiceDateTests
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = Records.Build(config, state: new Retrieved(
-            new ActualInvoiceDetails(new DateOnly(2026, 6, 10))));
+            Actuals.Build(new DateOnly(2026, 6, 10))));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 
@@ -58,7 +58,7 @@ public sealed class NextExpectedInvoiceDateTests
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = Records.Build(config, state: new ReconciledFromOneDrive(
-            new ActualInvoiceDetails(new DateOnly(2026, 6, 10)),
+            Actuals.Build(new DateOnly(2026, 6, 10)),
             new OneDriveDetails(OneDriveLocation)));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
