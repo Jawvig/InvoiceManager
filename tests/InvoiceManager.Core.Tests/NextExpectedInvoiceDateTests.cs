@@ -1,9 +1,12 @@
 using InvoiceManager.Core;
+using InvoiceManager.TestSupport;
 
 namespace InvoiceManager.Core.Tests;
 
 public sealed class NextExpectedInvoiceDateTests
 {
+    private const string OneDriveLocation = "/drives/test/root:/Bills/Test/invoice.pdf";
+
     [Fact]
     public void CalculateNext_ReturnsStartDate_WhenNoRecordsExist()
     {
@@ -18,9 +21,9 @@ public sealed class NextExpectedInvoiceDateTests
     public void CalculateNext_ReturnsActualDatePlusFrequency_WhenMostRecentRecordIsSaved()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
-        var mostRecent = new InvoiceRecord(
-            ProcessingStatus.SavedToOneDrive,
-            new DateOnly(2026, 6, 10));
+        var mostRecent = Records.Build(config, state: new SavedToOneDrive(
+            new ActualInvoiceDetails(new DateOnly(2026, 6, 10)),
+            new OneDriveDetails(OneDriveLocation)));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 
@@ -31,7 +34,19 @@ public sealed class NextExpectedInvoiceDateTests
     public void CalculateNext_ReturnsInProgress_WhenMostRecentRecordIsBeforeSaved()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
-        var mostRecent = new InvoiceRecord(ProcessingStatus.Expected);
+        var mostRecent = Records.Build(config, state: new Expected());
+
+        var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
+
+        Assert.True(IsInProgress(result));
+    }
+
+    [Fact]
+    public void CalculateNext_ReturnsInProgress_WhenMostRecentRecordIsRetrieved()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var mostRecent = Records.Build(config, state: new Retrieved(
+            new ActualInvoiceDetails(new DateOnly(2026, 6, 10))));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 
@@ -42,9 +57,9 @@ public sealed class NextExpectedInvoiceDateTests
     public void CalculateNext_ReturnsActualDatePlusFrequency_WhenMostRecentRecordIsReconciled()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
-        var mostRecent = new InvoiceRecord(
-            ProcessingStatus.ReconciledFromOneDrive,
-            new DateOnly(2026, 6, 10));
+        var mostRecent = Records.Build(config, state: new ReconciledFromOneDrive(
+            new ActualInvoiceDetails(new DateOnly(2026, 6, 10)),
+            new OneDriveDetails(OneDriveLocation)));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 

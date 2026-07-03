@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using InvoiceManager.Core;
 using NodaMoney;
@@ -56,7 +57,7 @@ internal sealed class InvoiceConfigurationDocument
             Enum.Parse<VatMode>(DefaultVatMode, ignoreCase: true),
             IsActive,
             OneDriveDestination,
-            DateOnly.ParseExact(StartDate, "yyyy-MM-dd"),
+            DateOnly.ParseExact(StartDate, "O", CultureInfo.InvariantCulture),
             BillingAccountId,
             DateToleranceDays);
 
@@ -72,7 +73,7 @@ internal sealed class InvoiceConfigurationDocument
             DefaultVatMode = config.DefaultVatMode.ToString(),
             IsActive = config.IsActive,
             OneDriveDestination = config.OneDriveDestination,
-            StartDate = config.StartDate.ToString("yyyy-MM-dd"),
+            StartDate = config.StartDate.ToString("O", CultureInfo.InvariantCulture),
             BillingAccountId = config.BillingAccountId,
             DateToleranceDays = config.DateToleranceDays,
         };
