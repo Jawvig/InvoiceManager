@@ -29,31 +29,21 @@ public static class NextExpectedInvoiceDate
         };
     }
 
+    // A record has reached the success state once its file is in OneDrive, either
+    // by being saved there or reconciled against a file already present. Those
+    // states carry the actual invoice date the next expected date is derived from.
     private static NextExpectedDateResult NextFromRecord(
         InvoiceRecord record,
-        InvoiceFrequency frequency)
-    {
-        if (!HasReachedSuccessState(record.Status))
+        InvoiceFrequency frequency) =>
+        record.State switch
         {
-            return new InvoiceInProgress();
-        }
-
-        return record.ActualInvoiceDate switch
-        {
-            DateOnly actual => new NextExpectedDate(AddFrequency(actual, frequency)),
-            None => throw new InvalidOperationException(
-                $"Invoice record in status {record.Status} has no actual invoice date."),
+            SavedToOneDrive saved =>
+                new NextExpectedDate(AddFrequency(saved.ActualDetails.ActualInvoiceDate, frequency)),
+            ReconciledFromOneDrive reconciled =>
+                new NextExpectedDate(AddFrequency(reconciled.ActualDetails.ActualInvoiceDate, frequency)),
+            Expected or NotYetFound or NotFound or RetrievalError or Retrieved =>
+                new InvoiceInProgress(),
         };
-    }
-
-    // A record has reached the success state once its file is in OneDrive, either
-    // by being saved there or reconciled against a file already present.
-    private static bool HasReachedSuccessState(ProcessingStatus status) => status switch
-    {
-        ProcessingStatus.SavedToOneDrive => true,
-        ProcessingStatus.ReconciledFromOneDrive => true,
-        _ => false,
-    };
 
     private static DateOnly AddFrequency(DateOnly date, InvoiceFrequency frequency) =>
         frequency switch

@@ -17,7 +17,7 @@ public sealed class ExpectedRecordGeneratorTests
         var record = Assert.Single(records.All);
         Assert.Equal(config.Id, record.ConfigurationId);
         Assert.Equal(new DateOnly(2025, 7, 1), record.ExpectedDate);
-        Assert.Equal(ProcessingStatus.Expected, record.Status);
+        Assert.True(record.State is Expected);
         Assert.Equal(config.InvoiceDescription, record.InvoiceDescription);
         Assert.Equal(config.DefaultExpectedAmount, record.ExpectedAmount);
         Assert.Equal(config.DefaultVatMode, record.ExpectedVatMode);
@@ -31,15 +31,16 @@ public sealed class ExpectedRecordGeneratorTests
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 1));
         var existing = Records.Build(config,
             expectedDate: new DateOnly(2025, 7, 1),
-            status: ProcessingStatus.SavedToOneDrive,
-            actualDate: new DateOnly(2025, 7, 5));
+            state: new SavedToOneDrive(
+                new ActualInvoiceDetails(new DateOnly(2025, 7, 5)),
+                new OneDriveDetails("/drives/test/root:/Bills/Test/invoice.pdf")));
         var records = new InMemoryInvoiceRecordRepository(existing);
         var generator = new ExpectedRecordGenerator(records);
 
         await generator.GenerateAsync(config);
 
         Assert.Equal(2, records.All.Count);
-        var next = records.All.Single(r => r.Status == ProcessingStatus.Expected);
+        var next = records.All.Single(r => r.State is Expected);
         Assert.Equal(new DateOnly(2025, 8, 5), next.ExpectedDate);
     }
 
@@ -48,7 +49,8 @@ public sealed class ExpectedRecordGeneratorTests
     public async Task GenerateAsync_DoesNothing_WhenMostRecentIsInProgress()
     {
         var config = Configurations.Build();
-        var existing = Records.Build(config, status: ProcessingStatus.Retrieved);
+        var existing = Records.Build(config, state: new Retrieved(
+            new ActualInvoiceDetails(new DateOnly(2025, 7, 5))));
         var records = new InMemoryInvoiceRecordRepository(existing);
         var generator = new ExpectedRecordGenerator(records);
 
@@ -64,7 +66,7 @@ public sealed class ExpectedRecordGeneratorTests
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 1));
         var existing = Records.Build(config,
             expectedDate: new DateOnly(2025, 7, 1),
-            status: ProcessingStatus.Expected);
+            state: new Expected());
         var records = new InMemoryInvoiceRecordRepository(existing);
         var generator = new ExpectedRecordGenerator(records);
 

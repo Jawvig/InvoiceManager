@@ -204,25 +204,38 @@ A single execution of the background service.
 A processing run should record start time, finish time, status, and summary
 counts so failures can be inspected through storage and monitoring.
 
-## Processing Status
+## Invoice Workflow State
 
-The current state of an expected invoice record as it moves through retrieval,
-reconciliation, save, and attachment steps.
+The current state of an invoice record as it moves through retrieval,
+reconciliation, and save steps. States are modelled as a union type
+(`InvoiceWorkflowState`) rather than a bare enum so that each state carries
+exactly the data valid in that state — a record cannot exist in a state
+without the values that state requires.
 
-Initial statuses may include:
+Current states:
 
-- `Expected`
-- `NotFound`
-- `Retrieved`
-- `ReconciledFromOneDrive`
-- `SavedToOneDrive`
-- `UploadedToFreeAgent`
-- `NextExpectedCreated`
-- `Failed`
-- `Skipped`
+- `Expected` — no payload.
+- `NotYetFound` — no payload; a retrieval attempt ran but the invoice was not
+  available yet.
+- `NotFound` — no payload; the invoice could not be found within the tolerance
+  window.
+- `RetrievalError` — no payload; a retrieval attempt failed and should be
+  retried.
+- `Retrieved` — requires `ActualInvoiceDetails`.
+- `ReconciledFromOneDrive` — requires `ActualInvoiceDetails` and
+  `OneDriveDetails`.
+- `SavedToOneDrive` — requires `ActualInvoiceDetails` and `OneDriveDetails`.
 
-Exact status names should be finalized during implementation and kept stable
-once persisted.
+`ActualInvoiceDetails` encapsulates values read from the actual invoice once
+found (currently the actual invoice date; extensible with amount, currency,
+VAT mode, and source ID as retrieval features land). `OneDriveDetails`
+encapsulates where the invoice file lives in OneDrive (currently the location;
+extensible with a file ID).
+
+Future workflow steps (FreeAgent upload, next-expected creation, skip states)
+should be added as new union cases carrying whatever data those states
+require. The persisted `status` string derives from the case name and must be
+kept stable once persisted.
 
 ## Identifier Types
 

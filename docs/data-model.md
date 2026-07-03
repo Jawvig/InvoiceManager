@@ -86,21 +86,18 @@ Candidate fields:
 - `expectedAmount`
 - `expectedCurrency`
 - `expectedVatMode`
-- `actualInvoiceDate`
-- `actualAmount`
-- `actualCurrency`
-- `actualVatMode`
-- `dateRetrieved`
 - `status`
-- `sourceInvoiceId`
+- `actualInvoiceDetails` — nested sub-object: `actualInvoiceDate` (candidates:
+  `actualAmount`, `actualCurrency`, `actualVatMode`, `dateRetrieved`,
+  `sourceInvoiceId`)
+- `oneDriveDetails` — nested sub-object: `oneDriveLocation` (candidate:
+  `oneDriveFileId`)
 - `sourceMetadata`
 - `matchStatus`
 - `matchReason`
 - `reconciledFromOneDrive`
 - `reconciledAt`
 - `reconciliationSource`
-- `oneDriveLocation`
-- `oneDriveFileId`
 - `freeAgentBillUrl`
 - `nextInvoiceRecordId`
 - `nextInvoiceCreatedAt`
@@ -114,6 +111,11 @@ Notes:
 - Expected fields are the criteria used to find the invoice. Actual fields are
   populated after retrieval or OneDrive reconciliation and should not overwrite
   the expected values.
+- `status` is the workflow-state discriminator (see the Invoice Workflow State
+  section of the domain model). The `actualInvoiceDetails` and `oneDriveDetails`
+  sub-objects are present exactly when the state requires them; reads reject
+  documents whose sub-objects are missing when the status requires them, or
+  incomplete.
 - `expectedVatMode` and `actualVatMode` should distinguish VAT inclusive (`inc`)
   and VAT exclusive (`exc`) totals.
 - Amount comparisons must include currency. OpenAI invoices may be in USD while

@@ -13,8 +13,7 @@ public sealed record InvoiceRecord(
     int DateToleranceDays,
     Money ExpectedAmount,
     VatMode ExpectedVatMode,
-    ProcessingStatus Status,
-    Option<DateOnly> ActualInvoiceDate)
+    InvoiceWorkflowState State)
 {
     public InvoiceRecordId Id { get; } = InvoiceRecordId.NewId(ExpectedDate, ConfigurationId);
 }

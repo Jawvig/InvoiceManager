@@ -24,8 +24,7 @@ public sealed class ExpectedRecordGenerator(IInvoiceRecordRepository repository)
             configuration.DateToleranceDays,
             configuration.DefaultExpectedAmount,
             configuration.DefaultVatMode,
-            ProcessingStatus.Expected,
-            Option.None);
+            new Expected());
 
         await repository.CreateIfNotExistsAsync(record, cancellationToken);
     }
