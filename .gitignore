@@ -6,6 +6,9 @@
 # Claude Code local configuration
 .claude/
 
+# Agent scratch worktrees and review artifacts
+.scratch/
+
 # dotenv files
 .env
 
