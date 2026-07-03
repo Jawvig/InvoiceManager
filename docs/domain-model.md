@@ -247,11 +247,13 @@ Typed identifiers:
 
 - Prevent parameter-order bugs at compile time (e.g. swapping two `string` IDs).
 - Centralise parsing and validation at the type boundary.
-- Should implement `TypeConverter` for binding frameworks and `JsonConverter` (STJ)
-  for JSON serialisation, so they round-trip as plain strings in Cosmos DB and
-  seed files without any call-site conversion.
+- Round-trip as plain strings in Cosmos DB, seed files, and binding frameworks
+  without any call-site conversion, via the shared `StringIdTypeConverter<TId>`
+  and `StringIdJsonConverter<TId>`.
 
-New identifier types should follow the pattern established by `InvoiceConfigurationId`.
+New identifier types should implement `IStringId<TSelf>` and apply the shared
+converters via attributes, following the pattern established by
+`InvoiceConfigurationId`; validation lives in the type's constructor.
 
 ## Next Expected Invoice
 
