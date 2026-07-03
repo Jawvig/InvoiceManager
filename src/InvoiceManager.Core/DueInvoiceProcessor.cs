@@ -25,8 +25,9 @@ public sealed class DueInvoiceProcessor(
         sourceIntegrations.ToDictionary(integration => integration.IntegrationType);
 
     /// <summary>
-    /// Processes every due record (expected date on or before today, still awaiting
-    /// retrieval). Returns a per-record outcome for each record processed.
+    /// Processes every due record (expected date on or before today, still
+    /// awaiting retrieval or a retryable save). Returns a per-record outcome for
+    /// each record processed.
     /// </summary>
     public async Task<IReadOnlyList<DueInvoiceProcessingResult>> ProcessDueAsync(
         CancellationToken cancellationToken = default)

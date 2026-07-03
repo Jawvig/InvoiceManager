@@ -103,6 +103,37 @@ public sealed class DueInvoiceProcessorTests
     }
 
     [Fact]
+    public async Task ProcessDueAsync_ResumesRetrievedRecord_OnLaterRun()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var actualDetails = Actuals.Build(
+            new DateOnly(2025, 7, 12),
+            new Money(10.00m, "GBP"),
+            new SourceInvoiceId("G152207778"));
+        var retrievedRecord = Records.Build(
+            config,
+            expectedDate: new DateOnly(2025, 7, 10),
+            state: new Retrieved(actualDetails));
+        var records = new InMemoryInvoiceRecordRepository(retrievedRecord);
+
+        var source = new FakeInvoiceSourceIntegration(new InvoiceMatch([1, 2, 3], actualDetails));
+        var oneDrive = new FakeOneDriveIntegration();
+        var processor = BuildProcessor(records, source, oneDrive, config);
+
+        var results = await processor.ProcessDueAsync();
+
+        var success = Assert.Single(results);
+        Assert.True(success is ProcessingSucceeded succeeded && succeeded.RecordId == retrievedRecord.Id);
+
+        var saved = records.All.Single(r => r.Id == retrievedRecord.Id);
+        Assert.True(saved.State is SavedToOneDrive, $"Expected SavedToOneDrive but was {saved.State}.");
+        Assert.Single(oneDrive.Uploads);
+
+        var next = records.All.Single(r => r.State is Expected);
+        Assert.Equal(new DateOnly(2025, 8, 12), next.ExpectedDate);
+    }
+
+    [Fact]
     public async Task ProcessDueAsync_BuildsCriteriaFromRecordAndConfiguration()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10), amountTolerance: 0.50m);

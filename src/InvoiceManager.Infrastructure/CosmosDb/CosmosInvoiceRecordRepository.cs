@@ -67,8 +67,11 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
     {
         // Cross-partition: due records may belong to any configuration.
         var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.status = @status AND c.expectedDate <= @asOf")
-            .WithParameter("@status", nameof(Expected))
+            "SELECT * FROM c " +
+            "WHERE (c.status = @expectedStatus OR c.status = @retrievedStatus) " +
+            "AND c.expectedDate <= @asOf")
+            .WithParameter("@expectedStatus", nameof(Expected))
+            .WithParameter("@retrievedStatus", nameof(Retrieved))
             .WithParameter("@asOf", asOf.ToString("O", CultureInfo.InvariantCulture));
 
         using var iterator = container.GetItemQueryIterator<InvoiceRecordDocument>(query);

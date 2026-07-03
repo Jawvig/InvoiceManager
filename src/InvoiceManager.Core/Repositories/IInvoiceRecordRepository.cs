@@ -18,8 +18,10 @@ public interface IInvoiceRecordRepository
     Task CreateIfNotExistsAsync(InvoiceRecord record, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns every record still awaiting retrieval (status <see cref="Expected"/>) whose expected
-    /// date is on or before <paramref name="asOf"/>, across all configurations.
+    /// Returns every record still awaiting processing whose expected date is on
+    /// or before <paramref name="asOf"/>, across all configurations. This
+    /// includes records still awaiting retrieval and records retrieved before a
+    /// previous save attempt failed.
     /// </summary>
     Task<IReadOnlyList<InvoiceRecord>> ListDueAsync(DateOnly asOf, CancellationToken cancellationToken = default);
 

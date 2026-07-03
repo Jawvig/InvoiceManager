@@ -43,7 +43,7 @@ public class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
         CancellationToken cancellationToken = default)
     {
         IReadOnlyList<InvoiceRecord> due = store
-            .Where(r => r.State is Expected && r.ExpectedDate <= asOf)
+            .Where(r => r.State is Expected or Retrieved && r.ExpectedDate <= asOf)
             .ToList();
         return Task.FromResult(due);
     }
