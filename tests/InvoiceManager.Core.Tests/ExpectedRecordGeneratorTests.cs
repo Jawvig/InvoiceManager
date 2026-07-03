@@ -1,4 +1,5 @@
 using InvoiceManager.Core.Repositories;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace InvoiceManager.Core.Tests;
 
@@ -10,7 +11,7 @@ public sealed class ExpectedRecordGeneratorTests
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 1));
         var records = new InMemoryInvoiceRecordRepository();
-        var generator = new ExpectedRecordGenerator(records);
+        var generator = BuildGenerator(records);
 
         await generator.GenerateAsync(config);
 
@@ -35,7 +36,7 @@ public sealed class ExpectedRecordGeneratorTests
                 new ActualInvoiceDetails(new DateOnly(2025, 7, 5)),
                 new OneDriveDetails("/drives/test/root:/Bills/Test/invoice.pdf")));
         var records = new InMemoryInvoiceRecordRepository(existing);
-        var generator = new ExpectedRecordGenerator(records);
+        var generator = BuildGenerator(records);
 
         await generator.GenerateAsync(config);
 
@@ -52,7 +53,7 @@ public sealed class ExpectedRecordGeneratorTests
         var existing = Records.Build(config, state: new Retrieved(
             new ActualInvoiceDetails(new DateOnly(2025, 7, 5))));
         var records = new InMemoryInvoiceRecordRepository(existing);
-        var generator = new ExpectedRecordGenerator(records);
+        var generator = BuildGenerator(records);
 
         await generator.GenerateAsync(config);
 
@@ -68,14 +69,77 @@ public sealed class ExpectedRecordGeneratorTests
             expectedDate: new DateOnly(2025, 7, 1),
             state: new Expected());
         var records = new InMemoryInvoiceRecordRepository(existing);
-        var generator = new ExpectedRecordGenerator(records);
+        var generator = BuildGenerator(records);
 
         await generator.GenerateAsync(config);
 
         Assert.Single(records.All);
     }
 
-    private sealed class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
+    [Fact]
+    public async Task GenerateForAllActiveAsync_CreatesRecordForEveryActiveConfiguration()
+    {
+        var config1 = Configurations.Build(id: new InvoiceConfigurationId("config-1"), startDate: new DateOnly(2025, 7, 1));
+        var config2 = Configurations.Build(id: new InvoiceConfigurationId("config-2"), startDate: new DateOnly(2025, 8, 1));
+        var records = new InMemoryInvoiceRecordRepository();
+        var generator = BuildGenerator(records, config1, config2);
+
+        var results = await generator.GenerateForAllActiveAsync();
+
+        Assert.Equal(2, records.All.Count);
+        Assert.All(results, r => Assert.True(r is GenerationSucceeded));
+    }
+
+    [Fact]
+    public async Task GenerateForAllActiveAsync_ContinuesWithRemainingConfigurations_WhenOneFails()
+    {
+        var failing = Configurations.Build(id: new InvoiceConfigurationId("config-failing"), startDate: new DateOnly(2025, 7, 1));
+        var healthy = Configurations.Build(id: new InvoiceConfigurationId("config-healthy"), startDate: new DateOnly(2025, 8, 1));
+        var records = new ThrowingInvoiceRecordRepository(failing.Id);
+        var generator = BuildGenerator(records, failing, healthy);
+
+        var results = await generator.GenerateForAllActiveAsync();
+
+        var record = Assert.Single(records.All);
+        Assert.Equal(healthy.Id, record.ConfigurationId);
+        Assert.Equal(2, results.Count);
+        var failure = Assert.Single(results, r => r is GenerationFailed);
+        Assert.True(failure is GenerationFailed failed
+            && failed.ConfigurationId == failing.Id
+            && failed.Exception is InvalidOperationException);
+        Assert.Single(results, r => r is GenerationSucceeded);
+    }
+
+    [Fact]
+    public async Task GenerateForAllActiveAsync_PropagatesCancellation()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 1));
+        var records = new CancellingInvoiceRecordRepository();
+        var generator = BuildGenerator(records, config);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => generator.GenerateForAllActiveAsync());
+    }
+
+    private static ExpectedRecordGenerator BuildGenerator(
+        IInvoiceRecordRepository records,
+        params InvoiceConfiguration[] configurations) =>
+        new(records,
+            new FakeConfigurationRepository(configurations),
+            NullLogger<ExpectedRecordGenerator>.Instance);
+
+    private sealed class FakeConfigurationRepository(params InvoiceConfiguration[] configurations)
+        : IInvoiceConfigurationRepository
+    {
+        public Task<IReadOnlyList<InvoiceConfiguration>> ListActiveAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<InvoiceConfiguration>>(
+                configurations.Where(c => c.IsActive).ToList());
+
+        public Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
     {
         private readonly List<InvoiceRecord> store;
 
@@ -86,7 +150,7 @@ public sealed class ExpectedRecordGeneratorTests
 
         public IReadOnlyList<InvoiceRecord> All => store;
 
-        public Task<Option<InvoiceRecord>> GetMostRecentAsync(
+        public virtual Task<Option<InvoiceRecord>> GetMostRecentAsync(
             InvoiceConfigurationId configurationId,
             CancellationToken cancellationToken = default)
         {
@@ -105,5 +169,24 @@ public sealed class ExpectedRecordGeneratorTests
                 store.Add(record);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class ThrowingInvoiceRecordRepository(InvoiceConfigurationId failFor)
+        : InMemoryInvoiceRecordRepository
+    {
+        public override Task<Option<InvoiceRecord>> GetMostRecentAsync(
+            InvoiceConfigurationId configurationId,
+            CancellationToken cancellationToken = default) =>
+            configurationId == failFor
+                ? throw new InvalidOperationException("Simulated repository failure.")
+                : base.GetMostRecentAsync(configurationId, cancellationToken);
+    }
+
+    private sealed class CancellingInvoiceRecordRepository : InMemoryInvoiceRecordRepository
+    {
+        public override Task<Option<InvoiceRecord>> GetMostRecentAsync(
+            InvoiceConfigurationId configurationId,
+            CancellationToken cancellationToken = default) =>
+            throw new OperationCanceledException();
     }
 }

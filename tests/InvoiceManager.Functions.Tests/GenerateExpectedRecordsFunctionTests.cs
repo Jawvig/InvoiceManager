@@ -14,12 +14,8 @@ public sealed class GenerateExpectedRecordsFunctionTests
     {
         var config1 = BuildConfig("config-1", new DateOnly(2025, 7, 1));
         var config2 = BuildConfig("config-2", new DateOnly(2025, 8, 1));
-        var configRepo = new FakeConfigurationRepository(config1, config2);
         var recordRepo = new InMemoryInvoiceRecordRepository();
-        var generator = new ExpectedRecordGenerator(recordRepo);
-        var function = new GenerateExpectedRecordsTimer(
-            configRepo, generator,
-            NullLogger<GenerateExpectedRecordsTimer>.Instance);
+        var function = BuildTimerFunction(recordRepo, config1, config2);
 
         await function.RunAsync(new TimerInfo(), CancellationToken.None);
 
@@ -31,16 +27,39 @@ public sealed class GenerateExpectedRecordsFunctionTests
     [Fact]
     public async Task TimerFunction_DoesNotCreateRecords_WhenNoActiveConfigurationsExist()
     {
-        var configRepo = new FakeConfigurationRepository();
         var recordRepo = new InMemoryInvoiceRecordRepository();
-        var generator = new ExpectedRecordGenerator(recordRepo);
-        var function = new GenerateExpectedRecordsTimer(
-            configRepo, generator,
-            NullLogger<GenerateExpectedRecordsTimer>.Instance);
+        var function = BuildTimerFunction(recordRepo);
 
         await function.RunAsync(new TimerInfo(), CancellationToken.None);
 
         Assert.Empty(recordRepo.All);
+    }
+
+    [Fact]
+    public async Task TimerFunction_ProcessesRemainingConfigurations_WhenOneFails()
+    {
+        var failing = BuildConfig("config-failing", new DateOnly(2025, 7, 1));
+        var healthy = BuildConfig("config-healthy", new DateOnly(2025, 8, 1));
+        var recordRepo = new InMemoryInvoiceRecordRepository(failFor: failing.Id);
+        var function = BuildTimerFunction(recordRepo, failing, healthy);
+
+        await function.RunAsync(new TimerInfo(), CancellationToken.None);
+
+        var record = Assert.Single(recordRepo.All);
+        Assert.Equal(healthy.Id, record.ConfigurationId);
+    }
+
+    private static GenerateExpectedRecordsTimer BuildTimerFunction(
+        IInvoiceRecordRepository recordRepo,
+        params InvoiceConfiguration[] configurations)
+    {
+        var generator = new ExpectedRecordGenerator(
+            recordRepo,
+            new FakeConfigurationRepository(configurations),
+            NullLogger<ExpectedRecordGenerator>.Instance);
+        return new GenerateExpectedRecordsTimer(
+            generator,
+            NullLogger<GenerateExpectedRecordsTimer>.Instance);
     }
 
     private static InvoiceConfiguration BuildConfig(string id, DateOnly startDate) =>
@@ -67,7 +86,7 @@ public sealed class GenerateExpectedRecordsFunctionTests
             Task.CompletedTask;
     }
 
-    private sealed class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
+    private sealed class InMemoryInvoiceRecordRepository(InvoiceConfigurationId? failFor = null) : IInvoiceRecordRepository
     {
         private readonly List<InvoiceRecord> store = [];
 
@@ -77,6 +96,9 @@ public sealed class GenerateExpectedRecordsFunctionTests
             InvoiceConfigurationId configurationId,
             CancellationToken cancellationToken = default)
         {
+            if (configurationId == failFor)
+                throw new InvalidOperationException("Simulated repository failure.");
+
             var record = store
                 .Where(r => r.ConfigurationId == configurationId)
                 .OrderByDescending(r => r.ExpectedDate)
