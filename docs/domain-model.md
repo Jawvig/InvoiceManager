@@ -219,7 +219,14 @@ Current states:
   match while still within the tolerance window (today is before
   `expectedDate + dateToleranceDays`). Retried on later runs.
 - `NotFound` — no payload; the invoice could not be found on or after the
-  tolerance deadline. Terminal state requiring user intervention.
+  tolerance deadline. Terminal state. Reaching `NotFound` also stops the
+  recurrence for that configuration: no further expected records are created
+  while its most recent record is `NotFound` (see
+  [Next-expected creation and cancellation](#next-expected-creation-and-cancellation)).
+  This is deliberate — a missing invoice most often means the underlying
+  subscription or service was cancelled, so no more invoices of that type are
+  expected. If instead an invoice was genuinely skipped for one period, a user
+  must intervene manually to resume the schedule (automatic recovery is deferred).
 - `RetrievalError` — requires an error message; a retrieval attempt failed with a
   technical error, so the system could not determine whether the invoice exists.
   Always retried, with no retry limit.
@@ -238,6 +245,25 @@ Future workflow steps (FreeAgent upload, next-expected creation, skip states)
 should be added as new union cases carrying whatever data those states
 require. The persisted `status` string derives from the case name and must be
 kept stable once persisted.
+
+### Next-Expected Creation and Cancellation
+
+The next expected record for a configuration is derived from that
+configuration's most recent record. The next date is only produced once the most
+recent record has reached a success state (`SavedToOneDrive` or
+`ReconciledFromOneDrive`); it is calculated from the actual invoice date plus the
+configured frequency. While the most recent record is in any non-success state
+(`Expected`, `RetrievalError`, `Retrieved`, or the terminal `NotFound`), no next
+record is created.
+
+For `NotFound` this stop is intentional, not a defect. When an expected invoice
+is never found within its tolerance window, the most likely cause is that the
+underlying subscription or service was cancelled, so no further invoices of that
+type will ever arrive and the recurrence should stop rather than accumulate
+perpetually-missing records. In the less likely case that a single period was
+genuinely skipped, resuming the schedule currently requires manual intervention
+(for example creating the next expected record or clearing the `NotFound`
+record); automatic recovery of a one-off gap is deferred to later work.
 
 ## Identifier Types
 

@@ -34,8 +34,11 @@ stateDiagram-v2
     NotFound --> [*] : terminal — requires user intervention
 
     note right of NotFound
-        Terminal. Excluded from the due query,
-        so it is never retried automatically.
+        Terminal. Excluded from the due query, so it is never
+        retried automatically. Also stops the recurrence: no next
+        expected record is created (a missing invoice is assumed to
+        mean the subscription was cancelled). Resuming a genuinely
+        skipped period needs manual intervention for now.
     end note
 
     note right of Retrieved

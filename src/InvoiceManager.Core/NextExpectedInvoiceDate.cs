@@ -41,6 +41,11 @@ public static class NextExpectedInvoiceDate
                 new NextExpectedDate(AddFrequency(saved.ActualDetails.ActualInvoiceDate, frequency)),
             ReconciledFromOneDrive reconciled =>
                 new NextExpectedDate(AddFrequency(reconciled.ActualDetails.ActualInvoiceDate, frequency)),
+            // Non-success states produce no next record. For terminal NotFound this
+            // deliberately stops the recurrence: a missing invoice is assumed to mean
+            // the subscription was cancelled, so resuming a genuinely-skipped period
+            // requires manual intervention. See docs/domain-model.md
+            // (Next-Expected Creation and Cancellation).
             Expected or NotFound or RetrievalError or Retrieved =>
                 new InvoiceInProgress(),
         };
