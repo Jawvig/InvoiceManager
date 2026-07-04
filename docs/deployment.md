@@ -287,12 +287,15 @@ dotnet user-secrets set "AzureOptions:TenantId" "your-tenant-id"
 Local secrets are stored in `%APPDATA%\Microsoft\UserSecrets\` and never committed.
 
 The Aspire AppHost starts the Cosmos DB emulator, the Functions app, and the
-admin website together. Azure Functions Core Tools v4 must be available as
-`func` on `PATH` for local orchestration and for the full AppHost integration
-test. Dockerized emulator tests are marked with `Category=Integration` and are
-run locally rather than on hosted CI runners. Aspire injects the Cosmos
-connection string into both application projects and injects the Functions base
-URL into the admin website.
+admin website together. The Functions app is launched through Aspire's
+first-class Azure Functions integration (`Aspire.Hosting.Azure.Functions`), so
+no Azure Functions Core Tools (`func`) installation is required. Aspire
+provisions the Functions host storage automatically through the Azurite
+emulator. A container runtime (Docker/Podman) must therefore be available for
+local orchestration and for the full AppHost integration test. Dockerized
+emulator tests are marked with `Category=Integration` and are run locally rather
+than on hosted CI runners. Aspire injects the Cosmos connection string into both
+application projects and injects the Functions base URL into the admin website.
 
 #### GitHub Actions Secrets
 

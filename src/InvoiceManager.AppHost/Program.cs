@@ -6,18 +6,13 @@ var cosmos = builder.AddAzureCosmosDB("cosmos").RunAsEmulator();
 
 if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
 {
-    var functionsPort = 7071;
-    var functionsCommand = ResolveCommand("func") ?? "func";
     var functions = builder
-        .AddExecutable(
-            "functions",
-            functionsCommand,
-            "../InvoiceManager.Functions",
-            "start",
-            "--port",
-            functionsPort.ToString())
-        .WithHttpEndpoint(port: functionsPort, targetPort: functionsPort, isProxied: false)
+        .AddAzureFunctionsProject<Projects.InvoiceManager_Functions>("functions")
         .WithReference(cosmos)
+        // CosmosClientFactory reads ConnectionStrings:cosmos. The Azure Functions
+        // integration surfaces the reference as cosmos__accountEndpoint instead, so
+        // inject the connection string explicitly to keep the factory working.
+        .WithEnvironment("ConnectionStrings__cosmos", cosmos.Resource.ConnectionStringExpression)
         .WaitFor(cosmos)
         .WithHttpHealthCheck("/api/health");
 
@@ -43,39 +38,3 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
 }
 
 builder.Build().Run();
-
-static string? ResolveCommand(string command)
-{
-    var path = Environment.GetEnvironmentVariable("PATH");
-    if (string.IsNullOrWhiteSpace(path))
-    {
-        return null;
-    }
-
-    var extensions = OperatingSystem.IsWindows()
-        ? [".cmd", ".exe", ".bat", string.Empty]
-        : new[] { string.Empty };
-
-    var directories = path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-    if (OperatingSystem.IsWindows())
-    {
-        var npmDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "npm");
-        directories = [.. directories, npmDirectory];
-    }
-
-    foreach (var directory in directories)
-    {
-        foreach (var extension in extensions)
-        {
-            var candidate = Path.Combine(directory, command + extension);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-    }
-
-    return null;
-}

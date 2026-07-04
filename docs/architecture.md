@@ -31,7 +31,8 @@ Local development should use Aspire as the orchestration entry point.
 
 The Aspire AppHost coordinates:
 
-- The Azure Functions project, launched through Azure Functions Core Tools.
+- The Azure Functions project, launched through Aspire's first-class Azure
+  Functions integration (`Aspire.Hosting.Azure.Functions`).
 - The local admin website used to capture delegated Microsoft authorization.
 - Cosmos DB through the local emulator.
 - Configuration needed for local development, including Cosmos connection
