@@ -89,5 +89,6 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
             OneDriveDestination: "/drives/test/root:/Bills/Test",
             StartDate: new DateOnly(2025, 1, 1),
             BillingAccountId: "test:billing:account",
-            DateToleranceDays: 5);
+            DateToleranceDays: 5,
+            AmountTolerance: 0m);
 }

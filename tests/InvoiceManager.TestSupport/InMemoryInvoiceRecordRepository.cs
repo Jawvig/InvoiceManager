@@ -37,6 +37,26 @@ public class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
             store.Add(record);
         return Task.CompletedTask;
     }
+
+    public virtual Task<IReadOnlyList<InvoiceRecord>> ListDueAsync(
+        DateOnly asOf,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<InvoiceRecord> due = store
+            .Where(r => r.State is Expected or Retrieved && r.ExpectedDate <= asOf)
+            .ToList();
+        return Task.FromResult(due);
+    }
+
+    public virtual Task ReplaceAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
+    {
+        var index = store.FindIndex(r => r.Id == record.Id);
+        if (index >= 0)
+            store[index] = record;
+        else
+            store.Add(record);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>

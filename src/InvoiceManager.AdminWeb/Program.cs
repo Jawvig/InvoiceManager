@@ -76,6 +76,7 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
     [
         "User.Read",
         "https://management.azure.com/user_impersonation",
+        "https://graph.microsoft.com/Files.ReadWrite.All",
         "offline_access"
     ];
 
@@ -108,6 +109,7 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
         options.Scope.Add("offline_access");
         options.Scope.Add("User.Read");
         options.Scope.Add("https://management.azure.com/user_impersonation");
+        options.Scope.Add("https://graph.microsoft.com/Files.ReadWrite.All");
         options.TokenValidationParameters.NameClaimType = "name";
 
         options.Events.OnAuthorizationCodeReceived = async context =>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Transitively references the Cosmos SDK via Infrastructure; suppress its
+         build-time Newtonsoft.Json check (System.Text.Json is used at runtime). -->
+    <AzureCosmosDisableNewtonsoftJsonCheck>true</AzureCosmosDisableNewtonsoftJsonCheck>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>InvoiceManager.Integrations.Microsoft365.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InvoiceManager.Core\InvoiceManager.Core.csproj" />
+    <ProjectReference Include="..\InvoiceManager.Infrastructure\InvoiceManager.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

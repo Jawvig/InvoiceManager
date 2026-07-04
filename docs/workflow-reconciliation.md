@@ -44,6 +44,18 @@ follows:
 FreeAgent behavior is intentionally left at a high level here and should be
 expanded when the FreeAgent integration is designed in detail.
 
+### Implementation status
+
+The Microsoft 365 happy path is implemented: `DueInvoiceProcessor` loads due
+records (steps 1–2), retrieves a match from the Microsoft 365 source integration
+(steps 5, 7), saves the PDF to OneDrive (step 8), and creates the next expected
+record (step 10), persisting after each step (`Expected → Retrieved →
+SavedToOneDrive`). If a run fails after `Retrieved` and before
+`SavedToOneDrive`, the next run treats that record as due again and resumes the
+source retrieval/save path. OneDrive reconciliation (steps 3–4), the not-found /
+retry states (`NotYetFound`, `NotFound`, `RetrievalError`), and FreeAgent
+attachment (step 9) are deferred to later work.
+
 ## Search Criteria
 
 Expected invoice records should provide the criteria used to locate an invoice:

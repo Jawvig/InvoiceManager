@@ -1,21 +1,28 @@
+using System.Globalization;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations;
 using InvoiceManager.Core.Repositories;
 using InvoiceManager.Functions.Functions;
 using InvoiceManager.TestSupport;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodaMoney;
 
 namespace InvoiceManager.Functions.Tests;
 
 public sealed class GenerateExpectedRecordsFunctionTests
 {
+    // A time before every configuration's start date, so generation runs but no
+    // record is yet due for processing.
+    private static readonly DateOnly BeforeAnyRecord = new(2025, 1, 1);
+
     [Fact]
     public async Task TimerFunction_CreatesExpectedRecords_ForEachActiveConfiguration()
     {
         var config1 = Configurations.Build(id: new InvoiceConfigurationId("config-1"), startDate: new DateOnly(2025, 7, 1));
         var config2 = Configurations.Build(id: new InvoiceConfigurationId("config-2"), startDate: new DateOnly(2025, 8, 1));
         var recordRepo = new InMemoryInvoiceRecordRepository();
-        var function = BuildTimerFunction(recordRepo, config1, config2);
+        var function = BuildTimerFunction(recordRepo, BeforeAnyRecord, new NoInvoiceMatch(), config1, config2);
 
         await function.RunAsync(new TimerInfo(), CancellationToken.None);
 
@@ -28,7 +35,7 @@ public sealed class GenerateExpectedRecordsFunctionTests
     public async Task TimerFunction_DoesNotCreateRecords_WhenNoActiveConfigurationsExist()
     {
         var recordRepo = new InMemoryInvoiceRecordRepository();
-        var function = BuildTimerFunction(recordRepo);
+        var function = BuildTimerFunction(recordRepo, BeforeAnyRecord, new NoInvoiceMatch());
 
         await function.RunAsync(new TimerInfo(), CancellationToken.None);
 
@@ -42,7 +49,7 @@ public sealed class GenerateExpectedRecordsFunctionTests
         var healthy = Configurations.Build(id: new InvoiceConfigurationId("config-healthy"), startDate: new DateOnly(2025, 8, 1));
         var recordRepo = new ThrowingInvoiceRecordRepository(
             failing.Id, new InvalidOperationException("Simulated repository failure."));
-        var function = BuildTimerFunction(recordRepo, failing, healthy);
+        var function = BuildTimerFunction(recordRepo, BeforeAnyRecord, new NoInvoiceMatch(), failing, healthy);
 
         await function.RunAsync(new TimerInfo(), CancellationToken.None);
 
@@ -50,16 +57,43 @@ public sealed class GenerateExpectedRecordsFunctionTests
         Assert.Equal(healthy.Id, record.ConfigurationId);
     }
 
+    [Fact]
+    public async Task TimerFunction_ProcessesDueRecord_ThroughToSavedToOneDrive()
+    {
+        var config = Configurations.Build(id: new InvoiceConfigurationId("config-due"), startDate: new DateOnly(2025, 7, 1));
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 1));
+        var recordRepo = new InMemoryInvoiceRecordRepository(dueRecord);
+        var match = new InvoiceMatch(
+            [1, 2, 3],
+            Actuals.Build(new DateOnly(2025, 7, 2), new Money(10.00m, "GBP"), new SourceInvoiceId("G1")));
+        var function = BuildTimerFunction(recordRepo, new DateOnly(2025, 7, 15), match, config);
+
+        await function.RunAsync(new TimerInfo(), CancellationToken.None);
+
+        var processed = recordRepo.All.Single(r => r.Id == dueRecord.Id);
+        Assert.True(processed.State is SavedToOneDrive, $"Expected SavedToOneDrive but was {processed.State}.");
+    }
+
     private static GenerateExpectedRecordsTimer BuildTimerFunction(
         IInvoiceRecordRepository recordRepo,
+        DateOnly today,
+        InvoiceSourceResult sourceResult,
         params InvoiceConfiguration[] configurations)
     {
-        var generator = new ExpectedRecordGenerator(
+        var configRepo = new FakeConfigurationRepository(configurations);
+        var generator = new ExpectedRecordGenerator(recordRepo, configRepo, NullLogger<ExpectedRecordGenerator>.Instance);
+        var processor = new DueInvoiceProcessor(
             recordRepo,
-            new FakeConfigurationRepository(configurations),
-            NullLogger<ExpectedRecordGenerator>.Instance);
+            configRepo,
+            [new FakeInvoiceSourceIntegration(sourceResult)],
+            new FakeOneDriveIntegration(),
+            new InvoiceFilename(new InvoiceFilenameSettings { Culture = CultureInfo.GetCultureInfo("en-GB") }),
+            generator,
+            new FixedTimeProvider(today),
+            NullLogger<DueInvoiceProcessor>.Instance);
         return new GenerateExpectedRecordsTimer(
             generator,
+            processor,
             NullLogger<GenerateExpectedRecordsTimer>.Instance);
     }
 }

@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\InvoiceManager.Core\InvoiceManager.Core.csproj" />
     <ProjectReference Include="..\InvoiceManager.Infrastructure\InvoiceManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\InvoiceManager.Integrations.Microsoft365\InvoiceManager.Integrations.Microsoft365.csproj" />
   </ItemGroup>
 
   <ItemGroup>

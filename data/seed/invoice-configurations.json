@@ -11,7 +11,8 @@
     "oneDriveDestination": "/drives/REPLACE_WITH_DRIVE_ID/root:/Bills/Microsoft 365",
     "startDate": "2025-01-10",
     "billingAccountId": "REPLACE_WITH_BILLING_ACCOUNT_ID",
-    "dateToleranceDays": 5
+    "dateToleranceDays": 5,
+    "amountTolerance": 0.00
   },
   {
     "id": "m365-copilot",
@@ -25,6 +26,7 @@
     "oneDriveDestination": "/drives/REPLACE_WITH_DRIVE_ID/root:/Bills/Microsoft 365",
     "startDate": "2025-01-10",
     "billingAccountId": "REPLACE_WITH_BILLING_ACCOUNT_ID",
-    "dateToleranceDays": 5
+    "dateToleranceDays": 5,
+    "amountTolerance": 0.00
   }
 ]

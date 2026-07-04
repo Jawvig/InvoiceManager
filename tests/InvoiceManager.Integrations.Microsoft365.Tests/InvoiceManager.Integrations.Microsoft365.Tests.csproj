@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <AzureCosmosDisableNewtonsoftJsonCheck>true</AzureCosmosDisableNewtonsoftJsonCheck>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\InvoiceManager.Infrastructure\InvoiceManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\InvoiceManager.Integrations.Microsoft365\InvoiceManager.Integrations.Microsoft365.csproj" />
     <ProjectReference Include="..\InvoiceManager.TestSupport\InvoiceManager.TestSupport.csproj" />
   </ItemGroup>
 

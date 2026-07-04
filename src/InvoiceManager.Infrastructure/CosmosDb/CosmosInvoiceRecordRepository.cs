@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Repositories;
@@ -58,5 +59,39 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
         {
             // Record already exists for this configuration and expected date — idempotent no-op.
         }
+    }
+
+    public async Task<IReadOnlyList<InvoiceRecord>> ListDueAsync(
+        DateOnly asOf,
+        CancellationToken cancellationToken = default)
+    {
+        // Cross-partition: due records may belong to any configuration.
+        var query = new QueryDefinition(
+            "SELECT * FROM c " +
+            "WHERE (c.status = @expectedStatus OR c.status = @retrievedStatus) " +
+            "AND c.expectedDate <= @asOf")
+            .WithParameter("@expectedStatus", nameof(Expected))
+            .WithParameter("@retrievedStatus", nameof(Retrieved))
+            .WithParameter("@asOf", asOf.ToString("O", CultureInfo.InvariantCulture));
+
+        using var iterator = container.GetItemQueryIterator<InvoiceRecordDocument>(query);
+
+        var records = new List<InvoiceRecord>();
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            foreach (var document in page)
+                records.Add(document.ToRecord());
+        }
+
+        return records;
+    }
+
+    public async Task ReplaceAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
+    {
+        var document = InvoiceRecordDocument.FromRecord(record);
+        var partitionKey = new PartitionKey(record.ConfigurationId.Value);
+
+        await container.UpsertItemAsync(document, partitionKey, cancellationToken: cancellationToken);
     }
 }

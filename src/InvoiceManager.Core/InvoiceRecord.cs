@@ -12,6 +12,7 @@ public sealed record InvoiceRecord(
     DateOnly ExpectedDate,
     int DateToleranceDays,
     Money ExpectedAmount,
+    decimal AmountTolerance,
     VatMode ExpectedVatMode,
     InvoiceWorkflowState State)
 {
