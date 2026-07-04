@@ -21,16 +21,15 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var db = await emulator.Client.CreateDatabaseIfNotExistsAsync(TestDatabase);
-        await db.Database.CreateContainerIfNotExistsAsync(
-            new ContainerProperties("invoice-records", "/configurationId"));
+        await emulator.EnsureDatabaseAndContainerAsync(
+            TestDatabase, new ContainerProperties("invoice-records", "/configurationId"));
 
         repository = new CosmosInvoiceRecordRepository(emulator.Client, TestDatabase);
     }
 
     public async Task DisposeAsync()
     {
-        await emulator.Client.GetDatabase(TestDatabase).DeleteAsync();
+        await emulator.DeleteDatabaseAsync(TestDatabase);
     }
 
     [Fact]
