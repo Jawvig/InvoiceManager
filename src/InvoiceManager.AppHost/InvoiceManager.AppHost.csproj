@@ -16,4 +16,9 @@
     <PackageReference Include="Aspire.Hosting.Azure.CosmosDB" Version="13.4.6" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\InvoiceManager.AdminWeb\InvoiceManager.AdminWeb.csproj" />
+    <ProjectReference Include="..\InvoiceManager.Functions\InvoiceManager.Functions.csproj" />
+  </ItemGroup>
+
 </Project>

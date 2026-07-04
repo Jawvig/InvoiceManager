@@ -218,7 +218,7 @@ Triggered on: Push to `main` branch or pull request.
 2. Setup .NET 11 preview SDK, as pinned by `global.json`.
 3. Restore NuGet dependencies.
 4. Build solution.
-5. Run unit tests.
+5. Run unit tests and non-Docker integration checks.
 6. Publish artifacts.
 
 ### Test Environment Deployment
@@ -286,6 +286,14 @@ dotnet user-secrets set "AzureOptions:TenantId" "your-tenant-id"
 
 Local secrets are stored in `%APPDATA%\Microsoft\UserSecrets\` and never committed.
 
+The Aspire AppHost starts the Cosmos DB emulator, the Functions app, and the
+admin website together. Azure Functions Core Tools v4 must be available as
+`func` on `PATH` for local orchestration and for the full AppHost integration
+test. Dockerized emulator tests are marked with `Category=Integration` and are
+run locally rather than on hosted CI runners. Aspire injects the Cosmos
+connection string into both application projects and injects the Functions base
+URL into the admin website.
+
 #### GitHub Actions Secrets
 
 Repository secrets are configured in GitHub Settings → Secrets and Variables:
@@ -321,7 +329,9 @@ Example secrets in Key Vault:
 
 Cosmos DB connection is configured via:
 
-1. **Local Development**: Cosmos DB emulator connection string in `local.settings.json` (not committed).
+1. **Local Development**: Cosmos DB emulator connection string supplied by
+   Aspire when running through AppHost, or by `local.settings.json` when running
+   the Functions project directly.
 2. **Test Environment**: Connection endpoint and key stored in Key Vault.
 3. **Production Environment**: Connection endpoint and key stored in Key Vault with stricter RBAC assignments.
 
