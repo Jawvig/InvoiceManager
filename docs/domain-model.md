@@ -104,7 +104,7 @@ Source and OneDrive integrations translate those criteria into provider-specific
 search and matching behavior without exposing those details to the core
 workflow.
 
-See [workflow-reconciliation.md#search-criteria](workflow-reconciliation.md#search-criteria)
+See [workflow.md#search-criteria](workflow.md#search-criteria)
 for the workflow rules that use these criteria.
 
 ## Retrieved Invoice
@@ -147,7 +147,7 @@ source invoice ID where available, OneDrive location where available, and the
 reason the match was accepted.
 
 Provider-specific matching behavior is defined in
-[workflow-reconciliation.md#source-matching](workflow-reconciliation.md#source-matching).
+[workflow.md#source-matching](workflow.md#source-matching).
 
 ## Invoice Date
 
@@ -187,7 +187,7 @@ The saved location should be stored after upload so later runs can avoid
 duplicating files and can show where the invoice was saved.
 
 OneDrive reconciliation behavior is defined in
-[workflow-reconciliation.md#onedrive-reconciliation](workflow-reconciliation.md#onedrive-reconciliation).
+[workflow.md#onedrive-reconciliation](workflow.md#onedrive-reconciliation).
 
 ## FreeAgent Bill
 

@@ -146,8 +146,12 @@ or manual re-run can safely detect that the next expected record already exists.
 
 ## Status Transitions
 
-Exact persisted status names should be finalized during implementation, but the
-workflow should support these conceptual transitions:
+The implemented state machine for the `InvoiceWorkflowState` union — including the
+`NotYetFound` / `NotFound` / `RetrievalError` retry states and the tolerance-deadline
+rules — is drawn in [workflow-states.md](workflow-states.md).
+
+The broader conceptual transitions (including the still-deferred FreeAgent and
+next-expected steps) are:
 
 ```text
 Expected

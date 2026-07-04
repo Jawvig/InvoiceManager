@@ -192,7 +192,7 @@ steps through status, retry, reconciliation, OneDrive, FreeAgent, and
 next-invoice fields on `invoice-records`.
 
 See
-[workflow-reconciliation.md#status-transitions](workflow-reconciliation.md#status-transitions)
+[workflow.md#status-transitions](workflow.md#status-transitions)
 for the processing sequence and retry behavior.
 
 ## Open Data Decisions
