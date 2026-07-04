@@ -108,7 +108,8 @@ Candidate fields:
 - `freeAgentBillUrl`
 - `nextInvoiceRecordId`
 - `nextInvoiceCreatedAt`
-- `lastError`
+- `lastError` — present when `status` is `RetrievalError`; the technical failure
+  detail from the last retrieval attempt, used for diagnosis
 - `retryCount`
 - `createdAt`
 - `updatedAt`

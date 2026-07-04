@@ -17,9 +17,11 @@ public sealed record NotYetFound;
 public sealed record NotFound;
 
 /// <summary>
-/// A retrieval attempt failed with an error; later runs should retry.
+/// A retrieval attempt failed with a technical error, so the system could not
+/// determine whether the invoice exists. <see cref="ErrorMessage"/> captures the
+/// failure for diagnosis. Later runs always retry, with no retry limit.
 /// </summary>
-public sealed record RetrievalError;
+public sealed record RetrievalError(string ErrorMessage);
 
 /// <summary>
 /// The invoice has been found by an integration and its actual values read.

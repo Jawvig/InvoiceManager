@@ -215,12 +215,14 @@ without the values that state requires.
 Current states:
 
 - `Expected` — no payload.
-- `NotYetFound` — no payload; a retrieval attempt ran but the invoice was not
-  available yet.
-- `NotFound` — no payload; the invoice could not be found within the tolerance
-  window.
-- `RetrievalError` — no payload; a retrieval attempt failed and should be
-  retried.
+- `NotYetFound` — no payload; a retrieval attempt found no match while the record
+  was still within its tolerance window (today is before
+  `expectedDate + dateToleranceDays`). Retried on later runs.
+- `NotFound` — no payload; the invoice could not be found on or after the
+  tolerance deadline. Terminal state requiring user intervention.
+- `RetrievalError` — requires an error message; a retrieval attempt failed with a
+  technical error, so the system could not determine whether the invoice exists.
+  Always retried, with no retry limit.
 - `Retrieved` — requires `ActualInvoiceDetails`.
 - `ReconciledFromOneDrive` — requires `ActualInvoiceDetails` and
   `OneDriveDetails`.

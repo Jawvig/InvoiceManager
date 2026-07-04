@@ -90,37 +90,77 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ListDueAsync_ReturnsExpectedAndRetrievedRecordsDueOnOrBeforeDate()
+    public async Task ListDueAsync_ReturnsRetryableRecordsDueOnOrBeforeDate()
     {
         var expectedDue = BuildRecord(
             new InvoiceConfigurationId("due-expected"),
             new DateOnly(2025, 7, 1),
             state: new Expected());
+        var notYetFoundDue = BuildRecord(
+            new InvoiceConfigurationId("due-notyetfound"),
+            new DateOnly(2025, 7, 2),
+            state: new NotYetFound());
+        var retrievalErrorDue = BuildRecord(
+            new InvoiceConfigurationId("due-retrievalerror"),
+            new DateOnly(2025, 7, 3),
+            state: new RetrievalError("transient failure"));
         var retrievedDue = BuildRecord(
             new InvoiceConfigurationId("due-retrieved"),
-            new DateOnly(2025, 7, 2),
+            new DateOnly(2025, 7, 4),
             state: new Retrieved(BuildActualDetails()));
         var futureExpected = BuildRecord(
             new InvoiceConfigurationId("future-expected"),
             new DateOnly(2025, 8, 1),
             state: new Expected());
+        var notFoundDue = BuildRecord(
+            new InvoiceConfigurationId("due-notfound"),
+            new DateOnly(2025, 7, 5),
+            state: new NotFound());
         var savedDue = BuildRecord(
             new InvoiceConfigurationId("saved-due"),
-            new DateOnly(2025, 7, 3),
+            new DateOnly(2025, 7, 6),
             state: new SavedToOneDrive(
                 BuildActualDetails(),
                 new OneDriveDetails("/drives/test/root:/Bills/Test/saved.pdf")));
 
         await repository!.CreateIfNotExistsAsync(expectedDue);
+        await repository.CreateIfNotExistsAsync(notYetFoundDue);
+        await repository.CreateIfNotExistsAsync(retrievalErrorDue);
         await repository.CreateIfNotExistsAsync(retrievedDue);
         await repository.CreateIfNotExistsAsync(futureExpected);
+        await repository.CreateIfNotExistsAsync(notFoundDue);
         await repository.CreateIfNotExistsAsync(savedDue);
 
         var due = await repository.ListDueAsync(new DateOnly(2025, 7, 15));
 
+        // Expected, NotYetFound, RetrievalError and Retrieved are retryable; NotFound
+        // (terminal), SavedToOneDrive (done) and future-dated records are excluded.
+        InvoiceRecordId[] expected = [expectedDue.Id, notYetFoundDue.Id, retrievalErrorDue.Id, retrievedDue.Id];
         Assert.Equal(
-            [expectedDue.Id, retrievedDue.Id],
+            expected.OrderBy(id => id.Value),
             due.Select(r => r.Id).OrderBy(id => id.Value));
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_PersistsRetrievalErrorMessage()
+    {
+        var record = BuildRecord(
+            new InvoiceConfigurationId("retrieval-error-record"),
+            new DateOnly(2025, 7, 1),
+            state: new Expected());
+        await repository!.CreateIfNotExistsAsync(record);
+
+        var errored = record with { State = new RetrievalError("billing API returned 503") };
+        await repository.ReplaceAsync(errored);
+
+        var stored = RequireRecord(await repository.GetMostRecentAsync(record.ConfigurationId));
+        if (stored.State is not RetrievalError error)
+        {
+            Assert.Fail($"Expected RetrievalError but was {stored.State}.");
+            return;
+        }
+
+        Assert.Equal("billing API returned 503", error.ErrorMessage);
     }
 
     [Fact]

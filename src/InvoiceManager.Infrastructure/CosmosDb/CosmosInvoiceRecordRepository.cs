@@ -65,12 +65,16 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
         DateOnly asOf,
         CancellationToken cancellationToken = default)
     {
-        // Cross-partition: due records may belong to any configuration.
+        // Cross-partition: due records may belong to any configuration. Retryable
+        // statuses (Expected, NotYetFound, RetrievalError, Retrieved) are all picked
+        // up; the terminal NotFound state is excluded.
         var query = new QueryDefinition(
             "SELECT * FROM c " +
-            "WHERE (c.status = @expectedStatus OR c.status = @retrievedStatus) " +
+            "WHERE c.status IN (@expectedStatus, @notYetFoundStatus, @retrievalErrorStatus, @retrievedStatus) " +
             "AND c.expectedDate <= @asOf")
             .WithParameter("@expectedStatus", nameof(Expected))
+            .WithParameter("@notYetFoundStatus", nameof(NotYetFound))
+            .WithParameter("@retrievalErrorStatus", nameof(RetrievalError))
             .WithParameter("@retrievedStatus", nameof(Retrieved))
             .WithParameter("@asOf", asOf.ToString("O", CultureInfo.InvariantCulture));
 
