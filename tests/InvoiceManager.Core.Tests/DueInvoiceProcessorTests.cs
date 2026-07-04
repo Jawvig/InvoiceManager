@@ -2,6 +2,7 @@ using System.Globalization;
 using InvoiceManager.Core.Integrations;
 using InvoiceManager.Core.Repositories;
 using InvoiceManager.TestSupport;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaMoney;
 
@@ -154,8 +155,47 @@ public sealed class DueInvoiceProcessorTests
     }
 
     [Fact]
-    public async Task ProcessDueAsync_LeavesRecordExpected_OnNoMatch()
+    public async Task ProcessDueAsync_LeavesRecordExpected_WhenNoMatchWithinToleranceWindow()
     {
+        // Expected 2025-07-14 + 5 day tolerance = deadline 2025-07-19, still ahead of today (2025-07-15).
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 14));
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 14));
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+        var oneDrive = new FakeOneDriveIntegration();
+
+        var processor = BuildProcessor(records, new FakeInvoiceSourceIntegration(new NoInvoiceMatch()), oneDrive, config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingNoMatch);
+        Assert.True(records.All.Single().State is Expected);
+        Assert.Empty(oneDrive.Uploads);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_ClearsRetrievalErrorBackToExpected_WhenCleanPollFindsNoMatchWithinWindow()
+    {
+        // Expected 2025-07-14 + 5 day tolerance = deadline 2025-07-19, still ahead of today (2025-07-15).
+        // A RetrievalError record polled successfully (no throw) with no match resets to Expected.
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 14));
+        var erroredRecord = Records.Build(
+            config,
+            expectedDate: new DateOnly(2025, 7, 14),
+            state: new RetrievalError("earlier transient failure"));
+        var records = new InMemoryInvoiceRecordRepository(erroredRecord);
+
+        var processor = BuildProcessor(records, new FakeInvoiceSourceIntegration(new NoInvoiceMatch()), new FakeOneDriveIntegration(), config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingNoMatch);
+        Assert.True(records.All.Single().State is Expected);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_MarksNotFound_WhenNoMatchOnToleranceDeadline()
+    {
+        // Expected 2025-07-10 + 5 day tolerance = deadline 2025-07-15, which is today: on or after → NotFound.
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
         var records = new InMemoryInvoiceRecordRepository(dueRecord);
@@ -165,9 +205,108 @@ public sealed class DueInvoiceProcessorTests
 
         var results = await processor.ProcessDueAsync();
 
-        Assert.True(Assert.Single(results) is ProcessingSkippedNoMatch);
-        Assert.True(records.All.Single().State is Expected);
+        Assert.True(Assert.Single(results) is ProcessingNotFound);
+        Assert.True(records.All.Single().State is NotFound);
         Assert.Empty(oneDrive.Uploads);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_MarksNotFoundDirectly_WhenFirstProcessedAfterToleranceWindow()
+    {
+        // Expected 2025-07-01 + 5 day tolerance = deadline 2025-07-06, already elapsed by today (2025-07-15).
+        // A still-Expected record processed for the first time after its window goes straight to NotFound.
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 1));
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 1), state: new Expected());
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+
+        var processor = BuildProcessor(records, new FakeInvoiceSourceIntegration(new NoInvoiceMatch()), new FakeOneDriveIntegration(), config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingNotFound);
+        Assert.True(records.All.Single().State is NotFound);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_MarksRetrievalError_WhenRetrievalThrows()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+
+        var source = new ThrowingSourceIntegration(
+            failFor: new DateOnly(2025, 7, 10),
+            otherwise: new NoInvoiceMatch());
+        var processor = BuildProcessor(records, source, new FakeOneDriveIntegration(), config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingFailed);
+        var stored = records.All.Single();
+        if (stored.State is not RetrievalError error)
+        {
+            Assert.Fail($"Expected RetrievalError but was {stored.State}.");
+            return;
+        }
+
+        Assert.Equal("Simulated source failure.", error.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_RetriesRetrievalErrorRecord_AndSavesOnLaterMatch()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var erroredRecord = Records.Build(
+            config,
+            expectedDate: new DateOnly(2025, 7, 10),
+            state: new RetrievalError("earlier transient failure"));
+        var records = new InMemoryInvoiceRecordRepository(erroredRecord);
+
+        var match = BuildMatch(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), "G152207778");
+        var oneDrive = new FakeOneDriveIntegration();
+        var processor = BuildProcessor(records, new FakeInvoiceSourceIntegration(match), oneDrive, config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingSucceeded);
+        Assert.True(records.All.Single(r => r.Id == erroredRecord.Id).State is SavedToOneDrive);
+        Assert.Single(oneDrive.Uploads);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_LogsRunSummaryWithPerOutcomeCounts()
+    {
+        var savedConfig = Configurations.Build(id: new InvoiceConfigurationId("config-saved"), startDate: new DateOnly(2025, 7, 10));
+        var notFoundConfig = Configurations.Build(id: new InvoiceConfigurationId("config-notfound"), startDate: new DateOnly(2025, 7, 1));
+        var savedRecord = Records.Build(savedConfig, expectedDate: new DateOnly(2025, 7, 10));
+        var notFoundRecord = Records.Build(notFoundConfig, expectedDate: new DateOnly(2025, 7, 1));
+        var records = new InMemoryInvoiceRecordRepository(savedRecord, notFoundRecord);
+
+        var source = new DateDrivenSourceIntegration(
+            matches: new Dictionary<DateOnly, InvoiceSourceResult>
+            {
+                [new DateOnly(2025, 7, 10)] = BuildMatch(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), "SRC-1"),
+                [new DateOnly(2025, 7, 1)] = new NoInvoiceMatch(),
+            });
+        var logger = new ListLogger<DueInvoiceProcessor>();
+
+        var processor = new DueInvoiceProcessor(
+            records,
+            new FakeConfigurationRepository(savedConfig, notFoundConfig),
+            [source],
+            new FakeOneDriveIntegration(),
+            BuildFilename(),
+            BuildGenerator(records, savedConfig, notFoundConfig),
+            new FixedTimeProvider(Today),
+            logger);
+
+        await processor.ProcessDueAsync();
+
+        var summary = Assert.Single(logger.Messages, m => m.Contains("run complete"));
+        Assert.Contains("1 saved", summary);
+        Assert.Contains("0 no match yet", summary);
+        Assert.Contains("1 not found", summary);
+        Assert.Contains("0 failed", summary);
     }
 
     [Fact]
@@ -199,6 +338,7 @@ public sealed class DueInvoiceProcessorTests
         var failure = Assert.Single(results, r => r is ProcessingFailed);
         Assert.True(failure is ProcessingFailed failed && failed.RecordId == failingRecord.Id);
         Assert.Single(results, r => r is ProcessingSucceeded);
+        Assert.True(records.All.Single(r => r.Id == failingRecord.Id).State is RetrievalError);
     }
 
     private static InvoiceMatch BuildMatch(DateOnly date, Money amount, string sourceInvoiceId) =>
@@ -254,5 +394,47 @@ public sealed class DueInvoiceProcessorTests
             criteria.ExpectedDate == failFor
                 ? throw new InvalidOperationException("Simulated source failure.")
                 : Task.FromResult(otherwise);
+    }
+
+    /// <summary>Returns a preconfigured result per expected date, for multi-record runs.</summary>
+    private sealed class DateDrivenSourceIntegration(IReadOnlyDictionary<DateOnly, InvoiceSourceResult> matches)
+        : IInvoiceSourceIntegration
+    {
+        public IntegrationType IntegrationType => IntegrationType.Microsoft365;
+
+        public Task<InvoiceSourceResult> FindInvoiceAsync(
+            InvoiceSearchCriteria criteria,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(matches[criteria.ExpectedDate]);
+    }
+
+    /// <summary>Captures rendered log messages for asserting emitted telemetry.</summary>
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        private readonly List<string> messages = [];
+
+        public IReadOnlyList<string> Messages => messages;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            messages.Add(formatter(state, exception));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
     }
 }

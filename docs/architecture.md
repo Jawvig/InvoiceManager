@@ -13,7 +13,7 @@ Initial triggers:
 - Optional HTTP trigger for manual local or operational re-runs.
 
 The timer-triggered workflow should coordinate the invoice processing loop
-described in [workflow-reconciliation.md](workflow-reconciliation.md).
+described in [workflow.md](workflow.md).
 
 ## Azure Hosting
 
@@ -81,9 +81,9 @@ The core workflow should not know the details of Microsoft Graph, OpenAI billing
 APIs, Azure billing APIs, OneDrive APIs, or FreeAgent APIs.
 
 The core workflow should not reimplement provider-specific matching rules. See
-[workflow-reconciliation.md#source-matching](workflow-reconciliation.md#source-matching)
+[workflow.md#source-matching](workflow.md#source-matching)
 and
-[workflow-reconciliation.md#onedrive-reconciliation](workflow-reconciliation.md#onedrive-reconciliation)
+[workflow.md#onedrive-reconciliation](workflow.md#onedrive-reconciliation)
 for the matching contract between the workflow and integrations.
 
 ## Integration Model
@@ -105,7 +105,7 @@ The exact C# interfaces will be defined during implementation, but they should
 support provider-independent workflow testing.
 
 Matching criteria and accepted-match result details are owned by
-[workflow-reconciliation.md](workflow-reconciliation.md).
+[workflow.md](workflow.md).
 
 ## Storage
 

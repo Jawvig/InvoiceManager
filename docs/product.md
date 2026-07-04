@@ -42,7 +42,7 @@ the core workflow.
 Microsoft 365 may produce more than one invoice for the same period, such as
 separate invoices for Copilot and Office 365 extensions. These should be modeled
 as separate expected invoices even when they use the same source integration. See
-[workflow-reconciliation.md#source-matching](workflow-reconciliation.md#source-matching)
+[workflow.md#source-matching](workflow.md#source-matching)
 for the matching rules used when a provider does not expose a stable product
 identifier before the PDF is opened.
 
@@ -76,7 +76,7 @@ sequence after successful processing.
 
 See [Domain Model: Expected Invoice](domain-model.md#expected-invoice) for the
 shared vocabulary, [data-model.md](data-model.md) for persisted fields, and
-[workflow-reconciliation.md](workflow-reconciliation.md) for matching,
+[workflow.md](workflow.md) for matching,
 reconciliation, retry, and next-record behavior.
 
 ## FreeAgent Workflow

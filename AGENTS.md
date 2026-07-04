@@ -61,3 +61,10 @@ Be careful with:
 - Prefer integration tests with fakes or test doubles before calling real
   external services.
 - Do not require real secrets or paid cloud resources for unit tests.
+- The Cosmos emulator integration tests (`InvoiceManager.Infrastructure.IntegrationTests`,
+  tagged `[Trait("Category", "Integration")]`) require the Dockerised Cosmos
+  emulator and are **not run in CI** — the emulator is too slow/unreliable to warm
+  up on hosted runners. Run them locally with Docker before pushing changes that
+  touch persistence:
+  `dotnet test tests/InvoiceManager.Infrastructure.IntegrationTests`.
+  CI runs everything else via `dotnet test --filter "Category!=Integration"`.

@@ -52,9 +52,29 @@ records (steps 1–2), retrieves a match from the Microsoft 365 source integrati
 record (step 10), persisting after each step (`Expected → Retrieved →
 SavedToOneDrive`). If a run fails after `Retrieved` and before
 `SavedToOneDrive`, the next run treats that record as due again and resumes the
-source retrieval/save path. OneDrive reconciliation (steps 3–4), the not-found /
-retry states (`NotYetFound`, `NotFound`, `RetrievalError`), and FreeAgent
-attachment (step 9) are deferred to later work.
+source retrieval/save path.
+
+The not-found / retry states are also implemented (step 6). When the source
+returns no match, the record stays `Expected` while today is before its tolerance
+deadline (`expectedDate + dateToleranceDays`) and moves to the terminal `NotFound`
+on or after that deadline — so a record first processed after its window has
+elapsed goes straight to `NotFound`. Reaching `NotFound` deliberately stops the
+recurrence for that configuration: the next expected record is created only from
+a success state, so a missing invoice halts the schedule on the assumption the
+subscription was cancelled. Resuming a genuinely-skipped period needs manual
+intervention for now (see
+[Next-Expected Creation and Cancellation](domain-model.md#next-expected-creation-and-cancellation)).
+A technical failure during retrieval moves
+the record to `RetrievalError` (carrying the failure detail in `lastError`); a
+later clean poll that still finds no match clears it back to `Expected`.
+`ListDueAsync` picks up `Expected`, `RetrievalError`, and `Retrieved` records;
+`RetrievalError` is always retryable with no retry limit. Each run emits
+structured telemetry — a per-record logging scope (record, configuration,
+integration type) plus a run summary with saved / no-match / not-found / failed
+counts — captured by Application Insights.
+
+OneDrive reconciliation (steps 3–4) and FreeAgent attachment (step 9) are
+deferred to later work.
 
 ## Search Criteria
 
@@ -133,8 +153,12 @@ or manual re-run can safely detect that the next expected record already exists.
 
 ## Status Transitions
 
-Exact persisted status names should be finalized during implementation, but the
-workflow should support these conceptual transitions:
+The implemented state machine for the `InvoiceWorkflowState` union — including the
+`NotFound` / `RetrievalError` retry states and the tolerance-deadline rules — is
+drawn in [workflow-states.md](workflow-states.md).
+
+The broader conceptual transitions (including the still-deferred FreeAgent and
+next-expected steps) are:
 
 ```text
 Expected

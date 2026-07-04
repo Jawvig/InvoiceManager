@@ -102,6 +102,10 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("oneDriveDetails")]
     public OneDriveDetailsDocument? OneDriveDetails { get; init; }
 
+    // Present only for the RetrievalError state: the technical failure detail.
+    [JsonPropertyName("lastError")]
+    public string? LastError { get; init; }
+
     public InvoiceRecord ToRecord() =>
         new(
             new InvoiceConfigurationId(ConfigurationId),
@@ -115,7 +119,7 @@ internal sealed class InvoiceRecordDocument
 
     public static InvoiceRecordDocument FromRecord(InvoiceRecord record)
     {
-        var (status, actualDetails, oneDriveDetails) = StorageFields(record.State);
+        var (status, actualDetails, oneDriveDetails, lastError) = StorageFields(record.State);
         return new InvoiceRecordDocument
         {
             Id = record.Id.Value,
@@ -130,15 +134,15 @@ internal sealed class InvoiceRecordDocument
             Status = status,
             ActualInvoiceDetails = actualDetails,
             OneDriveDetails = oneDriveDetails,
+            LastError = lastError,
         };
     }
 
     private InvoiceWorkflowState ToState() => Status switch
     {
         nameof(Expected) => new Expected(),
-        nameof(NotYetFound) => new NotYetFound(),
         nameof(NotFound) => new NotFound(),
-        nameof(RetrievalError) => new RetrievalError(),
+        nameof(RetrievalError) => new RetrievalError(LastError ?? string.Empty),
         nameof(Retrieved) => new Retrieved(RequiredActualDetails()),
         nameof(ReconciledFromOneDrive) => new ReconciledFromOneDrive(RequiredActualDetails(), RequiredOneDriveDetails()),
         nameof(SavedToOneDrive) => new SavedToOneDrive(RequiredActualDetails(), RequiredOneDriveDetails()),
@@ -156,24 +160,26 @@ internal sealed class InvoiceRecordDocument
         ?? throw new InvalidOperationException(
             $"Invoice record document '{Id}' has status '{Status}' but is missing 'oneDriveDetails'.");
 
-    private static (string Status, ActualInvoiceDetailsDocument? ActualDetails, OneDriveDetailsDocument? OneDriveDetails)
+    private static (string Status, ActualInvoiceDetailsDocument? ActualDetails, OneDriveDetailsDocument? OneDriveDetails, string? LastError)
         StorageFields(InvoiceWorkflowState state) => state switch
         {
-            Expected => (nameof(Expected), null, null),
-            NotYetFound => (nameof(NotYetFound), null, null),
-            NotFound => (nameof(NotFound), null, null),
-            RetrievalError => (nameof(RetrievalError), null, null),
+            Expected => (nameof(Expected), null, null, null),
+            NotFound => (nameof(NotFound), null, null, null),
+            RetrievalError error => (nameof(RetrievalError), null, null, error.ErrorMessage),
             Retrieved retrieved => (
                 nameof(Retrieved),
                 ActualInvoiceDetailsDocument.FromDetails(retrieved.ActualDetails),
+                null,
                 null),
             ReconciledFromOneDrive reconciled => (
                 nameof(ReconciledFromOneDrive),
                 ActualInvoiceDetailsDocument.FromDetails(reconciled.ActualDetails),
-                OneDriveDetailsDocument.FromDetails(reconciled.OneDriveDetails)),
+                OneDriveDetailsDocument.FromDetails(reconciled.OneDriveDetails),
+                null),
             SavedToOneDrive saved => (
                 nameof(SavedToOneDrive),
                 ActualInvoiceDetailsDocument.FromDetails(saved.ActualDetails),
-                OneDriveDetailsDocument.FromDetails(saved.OneDriveDetails)),
+                OneDriveDetailsDocument.FromDetails(saved.OneDriveDetails),
+                null),
         };
 }
