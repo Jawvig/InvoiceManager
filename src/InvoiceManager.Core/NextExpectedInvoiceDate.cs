@@ -41,7 +41,7 @@ public static class NextExpectedInvoiceDate
                 new NextExpectedDate(AddFrequency(saved.ActualDetails.ActualInvoiceDate, frequency)),
             ReconciledFromOneDrive reconciled =>
                 new NextExpectedDate(AddFrequency(reconciled.ActualDetails.ActualInvoiceDate, frequency)),
-            Expected or NotYetFound or NotFound or RetrievalError or Retrieved =>
+            Expected or NotFound or RetrievalError or Retrieved =>
                 new InvoiceInProgress(),
         };
 

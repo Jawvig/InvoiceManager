@@ -7,9 +7,9 @@ namespace InvoiceManager.Core;
 /// <summary>
 /// Processes invoice records that are due for retrieval: for each due record it
 /// asks the matching source integration for the invoice, saves it to OneDrive,
-/// and creates the next expected record. Records that are not yet available move
-/// to <see cref="NotYetFound"/> (retried on later runs) until their tolerance
-/// window elapses, after which they move to the terminal <see cref="NotFound"/>.
+/// and creates the next expected record. Records that are not yet available stay
+/// <see cref="Expected"/> (retried on later runs) until their tolerance window
+/// elapses, after which they move to the terminal <see cref="NotFound"/>.
 /// A technical failure moves the record to <see cref="RetrievalError"/> (always
 /// retried) and is isolated so the other records still run. State is persisted
 /// after each step so a later run can continue without repeating completed work.
@@ -143,10 +143,12 @@ public sealed class DueInvoiceProcessor(
 
     /// <summary>
     /// Records the absence of a source match. Within the tolerance window the
-    /// record is set to <see cref="NotYetFound"/> so a later run retries it; on or
-    /// after the deadline it is set to the terminal <see cref="NotFound"/>. Because
-    /// the deadline is checked against every run, a record processed for the first
-    /// time after its window has elapsed goes straight to <see cref="NotFound"/>.
+    /// record stays <see cref="Expected"/> so a later run retries it (a prior
+    /// <see cref="RetrievalError"/> is cleared back to <see cref="Expected"/> once a
+    /// clean poll returns no match); on or after the deadline it is set to the
+    /// terminal <see cref="NotFound"/>. Because the deadline is checked against
+    /// every run, a record processed for the first time after its window has
+    /// elapsed goes straight to <see cref="NotFound"/>.
     /// </summary>
     private async Task<DueInvoiceProcessingResult> RecordNoMatchAsync(
         InvoiceRecord record,
@@ -157,13 +159,15 @@ public sealed class DueInvoiceProcessor(
 
         if (asOf < deadline)
         {
-            var notYetFound = record with { State = new NotYetFound() };
-            await recordRepository.ReplaceAsync(notYetFound, cancellationToken);
+            // Only write when the state actually changes (e.g. clearing a prior
+            // RetrievalError); an already-Expected record needs no write.
+            if (record.State is not Expected)
+                await recordRepository.ReplaceAsync(record with { State = new Expected() }, cancellationToken);
             logger.LogInformation(
-                "No invoice match found yet for record {RecordId}; within tolerance until {Deadline}.",
+                "No invoice match found yet for record {RecordId}; still expected, within tolerance until {Deadline}.",
                 record.Id,
                 deadline);
-            return new ProcessingNotYetFound(record.Id);
+            return new ProcessingNoMatch(record.Id);
         }
 
         var notFound = record with { State = new NotFound() };
@@ -179,10 +183,10 @@ public sealed class DueInvoiceProcessor(
     {
         logger.LogInformation(
             "Due invoice processing run complete: {ProcessedCount} processed, {SavedCount} saved, " +
-            "{NotYetFoundCount} not yet found, {NotFoundCount} not found, {FailedCount} failed.",
+            "{NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed.",
             results.Count,
             results.Count(r => r is ProcessingSucceeded),
-            results.Count(r => r is ProcessingNotYetFound),
+            results.Count(r => r is ProcessingNoMatch),
             results.Count(r => r is ProcessingNotFound),
             results.Count(r => r is ProcessingFailed));
     }

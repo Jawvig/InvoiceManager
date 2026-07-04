@@ -96,10 +96,6 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
             new InvoiceConfigurationId("due-expected"),
             new DateOnly(2025, 7, 1),
             state: new Expected());
-        var notYetFoundDue = BuildRecord(
-            new InvoiceConfigurationId("due-notyetfound"),
-            new DateOnly(2025, 7, 2),
-            state: new NotYetFound());
         var retrievalErrorDue = BuildRecord(
             new InvoiceConfigurationId("due-retrievalerror"),
             new DateOnly(2025, 7, 3),
@@ -124,7 +120,6 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
                 new OneDriveDetails("/drives/test/root:/Bills/Test/saved.pdf")));
 
         await repository!.CreateIfNotExistsAsync(expectedDue);
-        await repository.CreateIfNotExistsAsync(notYetFoundDue);
         await repository.CreateIfNotExistsAsync(retrievalErrorDue);
         await repository.CreateIfNotExistsAsync(retrievedDue);
         await repository.CreateIfNotExistsAsync(futureExpected);
@@ -133,9 +128,9 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
 
         var due = await repository.ListDueAsync(new DateOnly(2025, 7, 15));
 
-        // Expected, NotYetFound, RetrievalError and Retrieved are retryable; NotFound
-        // (terminal), SavedToOneDrive (done) and future-dated records are excluded.
-        InvoiceRecordId[] expected = [expectedDue.Id, notYetFoundDue.Id, retrievalErrorDue.Id, retrievedDue.Id];
+        // Expected, RetrievalError and Retrieved are retryable; NotFound (terminal),
+        // SavedToOneDrive (done) and future-dated records are excluded.
+        InvoiceRecordId[] expected = [expectedDue.Id, retrievalErrorDue.Id, retrievedDue.Id];
         Assert.Equal(
             expected.OrderBy(id => id.Value),
             due.Select(r => r.Id).OrderBy(id => id.Value));

@@ -9,20 +9,16 @@ stateDiagram-v2
 
     [*] --> Expected : ExpectedRecordGenerator creates the due record
 
-    %% --- Retrieval attempt (Expected / NotYetFound / RetrievalError are all "due") ---
+    %% --- Retrieval attempt (Expected / RetrievalError are both "due") ---
+    %% Expected covers "not yet attempted" and "attempted, no match yet, in window".
     Expected --> Retrieved : source match found
-    Expected --> NotYetFound : no match, before deadline
+    Expected --> Expected : no match, before deadline
     Expected --> NotFound : no match, on or after deadline
     Expected --> RetrievalError : technical failure during retrieval
 
-    NotYetFound --> Retrieved : source match found (later run)
-    NotYetFound --> NotYetFound : no match, still before deadline
-    NotYetFound --> NotFound : no match, on or after deadline
-    NotYetFound --> RetrievalError : technical failure during retrieval
-
     %% RetrievalError is always retried, with no retry limit.
     RetrievalError --> Retrieved : source match found (retry)
-    RetrievalError --> NotYetFound : no match, before deadline (retry)
+    RetrievalError --> Expected : no match, before deadline (clears error)
     RetrievalError --> NotFound : no match, on or after deadline (retry)
     RetrievalError --> RetrievalError : technical failure again
 

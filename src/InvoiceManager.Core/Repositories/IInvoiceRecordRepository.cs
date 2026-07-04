@@ -20,11 +20,11 @@ public interface IInvoiceRecordRepository
     /// <summary>
     /// Returns every record still awaiting processing or eligible for retry whose
     /// expected date is on or before <paramref name="asOf"/>, across all
-    /// configurations. This includes records still awaiting retrieval
-    /// (<see cref="Expected"/>), records not yet available (<see cref="NotYetFound"/>),
-    /// records that failed a previous retrieval (<see cref="RetrievalError"/>), and
-    /// records retrieved before a previous save attempt failed (<see cref="Retrieved"/>).
-    /// The terminal <see cref="NotFound"/> state is excluded.
+    /// configurations. This includes records still awaiting retrieval or not yet
+    /// available (<see cref="Expected"/>), records that failed a previous retrieval
+    /// (<see cref="RetrievalError"/>), and records retrieved before a previous save
+    /// attempt failed (<see cref="Retrieved"/>). The terminal <see cref="NotFound"/>
+    /// state is excluded.
     /// </summary>
     Task<IReadOnlyList<InvoiceRecord>> ListDueAsync(DateOnly asOf, CancellationToken cancellationToken = default);
 

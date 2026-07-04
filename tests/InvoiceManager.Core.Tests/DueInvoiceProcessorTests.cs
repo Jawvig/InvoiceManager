@@ -155,7 +155,7 @@ public sealed class DueInvoiceProcessorTests
     }
 
     [Fact]
-    public async Task ProcessDueAsync_MarksNotYetFound_WhenNoMatchWithinToleranceWindow()
+    public async Task ProcessDueAsync_LeavesRecordExpected_WhenNoMatchWithinToleranceWindow()
     {
         // Expected 2025-07-14 + 5 day tolerance = deadline 2025-07-19, still ahead of today (2025-07-15).
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 14));
@@ -167,9 +167,29 @@ public sealed class DueInvoiceProcessorTests
 
         var results = await processor.ProcessDueAsync();
 
-        Assert.True(Assert.Single(results) is ProcessingNotYetFound);
-        Assert.True(records.All.Single().State is NotYetFound);
+        Assert.True(Assert.Single(results) is ProcessingNoMatch);
+        Assert.True(records.All.Single().State is Expected);
         Assert.Empty(oneDrive.Uploads);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_ClearsRetrievalErrorBackToExpected_WhenCleanPollFindsNoMatchWithinWindow()
+    {
+        // Expected 2025-07-14 + 5 day tolerance = deadline 2025-07-19, still ahead of today (2025-07-15).
+        // A RetrievalError record polled successfully (no throw) with no match resets to Expected.
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 14));
+        var erroredRecord = Records.Build(
+            config,
+            expectedDate: new DateOnly(2025, 7, 14),
+            state: new RetrievalError("earlier transient failure"));
+        var records = new InMemoryInvoiceRecordRepository(erroredRecord);
+
+        var processor = BuildProcessor(records, new FakeInvoiceSourceIntegration(new NoInvoiceMatch()), new FakeOneDriveIntegration(), config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingNoMatch);
+        Assert.True(records.All.Single().State is Expected);
     }
 
     [Fact]
@@ -284,7 +304,7 @@ public sealed class DueInvoiceProcessorTests
 
         var summary = Assert.Single(logger.Messages, m => m.Contains("run complete"));
         Assert.Contains("1 saved", summary);
-        Assert.Contains("0 not yet found", summary);
+        Assert.Contains("0 no match yet", summary);
         Assert.Contains("1 not found", summary);
         Assert.Contains("0 failed", summary);
     }

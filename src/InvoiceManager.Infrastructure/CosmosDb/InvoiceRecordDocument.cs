@@ -141,7 +141,6 @@ internal sealed class InvoiceRecordDocument
     private InvoiceWorkflowState ToState() => Status switch
     {
         nameof(Expected) => new Expected(),
-        nameof(NotYetFound) => new NotYetFound(),
         nameof(NotFound) => new NotFound(),
         nameof(RetrievalError) => new RetrievalError(LastError ?? string.Empty),
         nameof(Retrieved) => new Retrieved(RequiredActualDetails()),
@@ -165,7 +164,6 @@ internal sealed class InvoiceRecordDocument
         StorageFields(InvoiceWorkflowState state) => state switch
         {
             Expected => (nameof(Expected), null, null, null),
-            NotYetFound => (nameof(NotYetFound), null, null, null),
             NotFound => (nameof(NotFound), null, null, null),
             RetrievalError error => (nameof(RetrievalError), null, null, error.ErrorMessage),
             Retrieved retrieved => (

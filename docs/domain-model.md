@@ -214,9 +214,9 @@ without the values that state requires.
 
 Current states:
 
-- `Expected` — no payload.
-- `NotYetFound` — no payload; a retrieval attempt found no match while the record
-  was still within its tolerance window (today is before
+- `Expected` — no payload; the invoice is still due for retrieval. Covers both
+  records never yet attempted and records whose attempts have so far found no
+  match while still within the tolerance window (today is before
   `expectedDate + dateToleranceDays`). Retried on later runs.
 - `NotFound` — no payload; the invoice could not be found on or after the
   tolerance deadline. Terminal state requiring user intervention.

@@ -1,18 +1,14 @@
 namespace InvoiceManager.Core;
 
 /// <summary>
-/// The invoice is expected but no attempt has yet been made to find it.
+/// The invoice is expected and still due for retrieval. Covers both records that
+/// have never been attempted and records whose retrieval attempts have so far
+/// found no match while still inside the tolerance window; later runs retry.
 /// </summary>
 public sealed record Expected;
 
 /// <summary>
-/// A retrieval attempt ran but the invoice was not available yet; later runs
-/// should try again.
-/// </summary>
-public sealed record NotYetFound;
-
-/// <summary>
-/// The invoice could not be found within the configured tolerance window.
+/// The invoice could not be found on or after the configured tolerance deadline.
 /// </summary>
 public sealed record NotFound;
 
@@ -47,7 +43,6 @@ public sealed record SavedToOneDrive(ActualInvoiceDetails ActualDetails, OneDriv
 /// </summary>
 public union InvoiceWorkflowState(
     Expected,
-    NotYetFound,
     NotFound,
     RetrievalError,
     Retrieved,

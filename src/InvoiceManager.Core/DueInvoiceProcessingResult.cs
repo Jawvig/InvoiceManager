@@ -8,10 +8,10 @@ public sealed record ProcessingSucceeded(InvoiceRecordId RecordId);
 
 /// <summary>
 /// No source-system invoice matched the due record, but it is still within its
-/// tolerance window; the record is set to <see cref="NotYetFound"/> for a later
-/// run to retry.
+/// tolerance window; the record is left <see cref="Expected"/> for a later run to
+/// retry.
 /// </summary>
-public sealed record ProcessingNotYetFound(InvoiceRecordId RecordId);
+public sealed record ProcessingNoMatch(InvoiceRecordId RecordId);
 
 /// <summary>
 /// No source-system invoice matched the due record and its tolerance window has
@@ -29,6 +29,6 @@ public sealed record ProcessingFailed(InvoiceRecordId RecordId, Exception Except
 /// <summary>The outcome of processing a single due invoice record.</summary>
 public union DueInvoiceProcessingResult(
     ProcessingSucceeded,
-    ProcessingNotYetFound,
+    ProcessingNoMatch,
     ProcessingNotFound,
     ProcessingFailed);

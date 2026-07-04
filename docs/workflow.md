@@ -55,16 +55,17 @@ SavedToOneDrive`). If a run fails after `Retrieved` and before
 source retrieval/save path.
 
 The not-found / retry states are also implemented (step 6). When the source
-returns no match, the record moves to `NotYetFound` while today is before its
-tolerance deadline (`expectedDate + dateToleranceDays`) and to the terminal
-`NotFound` on or after that deadline — so a record first processed after its
-window has elapsed goes straight to `NotFound`. A technical failure during
-retrieval moves the record to `RetrievalError` (carrying the failure detail in
-`lastError`). `ListDueAsync` picks up `Expected`, `NotYetFound`,
-`RetrievalError`, and `Retrieved` records; `RetrievalError` is always retryable
-with no retry limit. Each run emits structured telemetry — a per-record logging
-scope (record, configuration, integration type) plus a run summary with saved /
-not-yet-found / not-found / failed counts — captured by Application Insights.
+returns no match, the record stays `Expected` while today is before its tolerance
+deadline (`expectedDate + dateToleranceDays`) and moves to the terminal `NotFound`
+on or after that deadline — so a record first processed after its window has
+elapsed goes straight to `NotFound`. A technical failure during retrieval moves
+the record to `RetrievalError` (carrying the failure detail in `lastError`); a
+later clean poll that still finds no match clears it back to `Expected`.
+`ListDueAsync` picks up `Expected`, `RetrievalError`, and `Retrieved` records;
+`RetrievalError` is always retryable with no retry limit. Each run emits
+structured telemetry — a per-record logging scope (record, configuration,
+integration type) plus a run summary with saved / no-match / not-found / failed
+counts — captured by Application Insights.
 
 OneDrive reconciliation (steps 3–4) and FreeAgent attachment (step 9) are
 deferred to later work.
@@ -147,8 +148,8 @@ or manual re-run can safely detect that the next expected record already exists.
 ## Status Transitions
 
 The implemented state machine for the `InvoiceWorkflowState` union — including the
-`NotYetFound` / `NotFound` / `RetrievalError` retry states and the tolerance-deadline
-rules — is drawn in [workflow-states.md](workflow-states.md).
+`NotFound` / `RetrievalError` retry states and the tolerance-deadline rules — is
+drawn in [workflow-states.md](workflow-states.md).
 
 The broader conceptual transitions (including the still-deferred FreeAgent and
 next-expected steps) are:

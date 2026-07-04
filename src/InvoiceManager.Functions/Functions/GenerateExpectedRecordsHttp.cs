@@ -27,10 +27,10 @@ public sealed class GenerateExpectedRecordsHttp(
 
         var processingResults = await processor.ProcessDueAsync(cancellationToken);
         logger.LogInformation(
-            "Due invoice processing complete: {SavedCount} saved, {NotYetFoundCount} not yet found, " +
+            "Due invoice processing complete: {SavedCount} saved, {NoMatchCount} no match yet, " +
             "{NotFoundCount} not found, {FailedCount} failed.",
             processingResults.Count(r => r is ProcessingSucceeded),
-            processingResults.Count(r => r is ProcessingNotYetFound),
+            processingResults.Count(r => r is ProcessingNoMatch),
             processingResults.Count(r => r is ProcessingNotFound),
             processingResults.Count(r => r is ProcessingFailed));
 
@@ -43,7 +43,7 @@ public sealed class GenerateExpectedRecordsHttp(
             processingResults.Select(result => result switch
             {
                 ProcessingSucceeded saved => new RecordResultDto(saved.RecordId.Value, "SavedToOneDrive", null),
-                ProcessingNotYetFound notYetFound => new RecordResultDto(notYetFound.RecordId.Value, "NotYetFound", null),
+                ProcessingNoMatch noMatch => new RecordResultDto(noMatch.RecordId.Value, "NoMatch", null),
                 ProcessingNotFound notFound => new RecordResultDto(notFound.RecordId.Value, "NotFound", null),
                 ProcessingFailed failed => new RecordResultDto(failed.RecordId.Value, "Failed", failed.Exception.Message),
             }).ToList());
