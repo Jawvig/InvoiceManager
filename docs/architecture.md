@@ -29,16 +29,23 @@ practical:
 
 Local development should use Aspire as the orchestration entry point.
 
-The Aspire AppHost should eventually coordinate:
+The Aspire AppHost coordinates:
 
-- The Azure Functions project.
+- The Azure Functions project, launched through Aspire's first-class Azure
+  Functions integration (`Aspire.Hosting.Azure.Functions`).
 - The local admin website used to capture delegated Microsoft authorization.
-- Local or emulator-backed development dependencies where practical.
-- Configuration needed for local development.
-- Observability views useful during development.
+- Cosmos DB through the local emulator.
+- Configuration needed for local development, including Cosmos connection
+  strings for both application projects and the Functions base URL for the
+  admin website.
+- Health checks and observability views useful during development.
 
 Aspire is currently intended for local development orchestration, not as the
 primary production hosting model.
+
+The Functions app exposes `/api/health`, which succeeds only when Cosmos DB is
+reachable. The admin website exposes `/health`, which succeeds only when Cosmos
+DB is reachable and the Functions health endpoint responds successfully.
 
 ## Project Structure
 
@@ -57,9 +64,11 @@ src/
   InvoiceManager.Integrations.FreeAgent/
 
 tests/
+  InvoiceManager.AppHost.IntegrationTests/
   InvoiceManager.AdminWeb.Tests/
   InvoiceManager.Core.Tests/
   InvoiceManager.Functions.Tests/
+  InvoiceManager.Infrastructure.IntegrationTests/
   InvoiceManager.Infrastructure.Tests/
 ```
 

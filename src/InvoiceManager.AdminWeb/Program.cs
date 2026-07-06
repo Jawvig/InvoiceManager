@@ -1,8 +1,11 @@
 using Azure.Identity;
+using InvoiceManager.Infrastructure.CosmosDb;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
+using Microsoft.Azure.Cosmos;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -42,6 +45,12 @@ builder.Services
 builder.Services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, MicrosoftOpenIdConnectOptionsSetup>();
 
 builder.Services.AddAuthorization();
+builder.Services.AddHttpClient<FunctionsHealthCheck>();
+builder.Services.AddSingleton(_ => CosmosClientFactory.Create(builder.Configuration));
+builder.Services
+    .AddHealthChecks()
+    .AddCheck<CosmosHealthCheck>("cosmos")
+    .AddCheck<FunctionsHealthCheck>("functions");
 builder.Services.AddRazorPages();
 
 var app = builder.Build();
@@ -60,6 +69,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();
+app.MapHealthChecks("/health");
 app.MapRazorPages()
    .WithStaticAssets();
 
@@ -156,5 +166,61 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
     public void Configure(OpenIdConnectOptions options)
     {
         Configure(Options.DefaultName, options);
+    }
+}
+
+internal sealed class CosmosHealthCheck(CosmosClient cosmosClient, ILogger<CosmosHealthCheck> logger)
+    : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await cosmosClient.ReadAccountAsync().WaitAsync(cancellationToken);
+            return HealthCheckResult.Healthy();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Admin web Cosmos health check failed.");
+            return HealthCheckResult.Unhealthy("Cosmos DB is not reachable.", ex);
+        }
+    }
+}
+
+internal sealed class FunctionsHealthCheck(
+    HttpClient httpClient,
+    IConfiguration configuration,
+    ILogger<FunctionsHealthCheck> logger)
+    : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var functionsBaseUrl = configuration.GetValue<Uri?>("Functions:BaseUrl");
+        if (functionsBaseUrl is null)
+        {
+            return HealthCheckResult.Unhealthy("Functions:BaseUrl is not configured.");
+        }
+
+        try
+        {
+            var healthUri = new Uri(functionsBaseUrl, "/api/health");
+            using var response = await httpClient.GetAsync(healthUri, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return HealthCheckResult.Healthy();
+            }
+
+            return HealthCheckResult.Unhealthy(
+                $"Functions app health endpoint returned {(int)response.StatusCode} {response.ReasonPhrase}.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Admin web Functions health check failed.");
+            return HealthCheckResult.Unhealthy("Functions app is not reachable.", ex);
+        }
     }
 }

@@ -31,7 +31,8 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var appHost = await DistributedApplicationTestingBuilder
-            .CreateAsync<Projects.InvoiceManager_AppHost>();
+            .CreateAsync<Projects.InvoiceManager_AppHost>(
+                ["--AppHost:IncludeApplications=false"]);
         app = await appHost.BuildAsync();
         await app.StartAsync();
         ConnectionString = await app.GetConnectionStringAsync("cosmos")

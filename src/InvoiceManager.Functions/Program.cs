@@ -1,5 +1,4 @@
 using System.Globalization;
-using Azure.Identity;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
 using InvoiceManager.Core.Repositories;
@@ -17,13 +16,9 @@ var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
     .ConfigureServices((context, services) =>
     {
-        var cosmosEndpoint = context.Configuration["CosmosEndpoint"]
-            ?? throw new InvalidOperationException("CosmosEndpoint configuration is required.");
         var databaseName = context.Configuration["CosmosDatabase"] ?? "invoicemanager";
 
-        services.AddSingleton(_ =>
-            new CosmosClient(cosmosEndpoint, new DefaultAzureCredential(),
-                CosmosInvoiceConfigurationRepository.BuildClientOptions()));
+        services.AddSingleton(_ => CosmosClientFactory.Create(context.Configuration));
 
         services.AddSingleton<IInvoiceConfigurationRepository>(sp =>
             new CosmosInvoiceConfigurationRepository(sp.GetRequiredService<CosmosClient>(), databaseName));
