@@ -1,3 +1,4 @@
+using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -12,13 +13,16 @@ public class IndexModel : PageModel
 {
     private readonly IMicrosoftAuthorizationStore authorizationStore;
     private readonly MicrosoftAuthorizationOptions authorizationOptions;
+    private readonly IExpectedRecordGenerationTrigger expectedRecordGenerationTrigger;
 
     public IndexModel(
         IMicrosoftAuthorizationStore authorizationStore,
-        IOptions<MicrosoftAuthorizationOptions> authorizationOptions)
+        IOptions<MicrosoftAuthorizationOptions> authorizationOptions,
+        IExpectedRecordGenerationTrigger expectedRecordGenerationTrigger)
     {
         this.authorizationStore = authorizationStore;
         this.authorizationOptions = authorizationOptions.Value;
+        this.expectedRecordGenerationTrigger = expectedRecordGenerationTrigger;
     }
 
     public bool IsSignedIn { get; private set; }
@@ -81,6 +85,21 @@ public class IndexModel : PageModel
         return SignOut(
             new AuthenticationProperties { RedirectUri = "/" },
             CookieAuthenticationDefaults.AuthenticationScheme);
+    }
+
+    public async Task<IActionResult> OnPostGenerateExpectedRecordsAsync()
+    {
+        var result = await expectedRecordGenerationTrigger.TriggerAsync(HttpContext.RequestAborted);
+        TempData["StatusMessage"] = result switch
+        {
+            ExpectedRecordGenerationTriggered triggered =>
+                $"Expected record generation was triggered (HTTP {triggered.StatusCode}).",
+            ExpectedRecordGenerationNotConfigured =>
+                "The Functions app URL is not configured, so expected record generation could not be triggered.",
+            ExpectedRecordGenerationFailed failed =>
+                $"Expected record generation could not be triggered. {failed.Message}",
+        };
+        return RedirectToPage();
     }
 
     private async Task LoadPageStateAsync(string? status)

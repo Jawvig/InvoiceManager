@@ -1,5 +1,6 @@
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.AdminWeb.Pages;
+using InvoiceManager.AdminWeb.Services;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -118,7 +119,10 @@ public sealed class AdminHomePageTests
             });
     }
 
-    private static IndexModel CreateIndexModel(bool hasTokenCache, bool isSignedIn)
+    private static IndexModel CreateIndexModel(
+        bool hasTokenCache,
+        bool isSignedIn,
+        IExpectedRecordGenerationTrigger? expectedRecordGenerationTrigger = null)
     {
         var model = new IndexModel(
             new FakeMicrosoftAuthorizationStore(hasTokenCache),
@@ -128,7 +132,8 @@ public sealed class AdminHomePageTests
                 ClientId = "22222222-2222-2222-2222-222222222222",
                 ClientSecret = "client-secret",
                 KeyVaultUri = new Uri("https://example.vault.azure.net/")
-            }));
+            }),
+            expectedRecordGenerationTrigger ?? new FakeExpectedRecordGenerationTrigger());
 
         var identity = isSignedIn
             ? new ClaimsIdentity([new Claim(ClaimTypes.Name, "Admin User")], "Test")
@@ -144,6 +149,55 @@ public sealed class AdminHomePageTests
         model.TempData = new TempDataDictionary(httpContext, new FakeTempDataProvider());
 
         return model;
+    }
+
+    [Fact]
+    public async Task GenerateExpectedRecords_TriggersFunction_AndSurfacesResultAsStatusMessage()
+    {
+        var trigger = new FakeExpectedRecordGenerationTrigger(
+            new ExpectedRecordGenerationTriggered(207));
+        var model = CreateIndexModel(hasTokenCache: true, isSignedIn: true, trigger);
+
+        var result = await model.OnPostGenerateExpectedRecordsAsync();
+
+        Assert.IsType<Microsoft.AspNetCore.Mvc.RedirectToPageResult>(result);
+        Assert.True(trigger.WasTriggered);
+        Assert.Equal(
+            "Expected record generation was triggered (HTTP 207).",
+            model.TempData["StatusMessage"]);
+    }
+
+    [Fact]
+    public async Task GenerateExpectedRecords_ReportsMissingConfiguration_WhenFunctionsUrlIsNotConfigured()
+    {
+        var trigger = new FakeExpectedRecordGenerationTrigger(
+            new ExpectedRecordGenerationNotConfigured());
+        var model = CreateIndexModel(hasTokenCache: true, isSignedIn: true, trigger);
+
+        await model.OnPostGenerateExpectedRecordsAsync();
+
+        Assert.Equal(
+            "The Functions app URL is not configured, so expected record generation could not be triggered.",
+            model.TempData["StatusMessage"]);
+    }
+
+    private sealed class FakeExpectedRecordGenerationTrigger : IExpectedRecordGenerationTrigger
+    {
+        private readonly ExpectedRecordGenerationTriggerResult result;
+
+        public FakeExpectedRecordGenerationTrigger(
+            ExpectedRecordGenerationTriggerResult? result = null)
+        {
+            this.result = result ?? new ExpectedRecordGenerationTriggered(207);
+        }
+
+        public bool WasTriggered { get; private set; }
+
+        public Task<ExpectedRecordGenerationTriggerResult> TriggerAsync(CancellationToken cancellationToken)
+        {
+            WasTriggered = true;
+            return Task.FromResult(result);
+        }
     }
 
     private sealed class FakeTempDataProvider : ITempDataProvider

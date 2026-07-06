@@ -1,4 +1,5 @@
 using Azure.Identity;
+using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Infrastructure.CosmosDb;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.Azure.Cosmos;
@@ -46,6 +47,7 @@ builder.Services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, Microsoft
 
 builder.Services.AddAuthorization();
 builder.Services.AddHttpClient<FunctionsHealthCheck>();
+builder.Services.AddHttpClient<IExpectedRecordGenerationTrigger, FunctionsExpectedRecordGenerationTrigger>();
 builder.Services.AddSingleton(_ => CosmosClientFactory.Create(builder.Configuration));
 builder.Services
     .AddHealthChecks()
