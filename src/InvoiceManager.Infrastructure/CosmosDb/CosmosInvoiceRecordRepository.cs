@@ -3,6 +3,8 @@ using System.Net;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Repositories;
 using Microsoft.Azure.Cosmos;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace InvoiceManager.Infrastructure.CosmosDb;
 
@@ -15,10 +17,15 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
     private const string ContainerName = "invoice-records";
 
     private readonly Container container;
+    private readonly ILogger<CosmosInvoiceRecordRepository> logger;
 
-    public CosmosInvoiceRecordRepository(CosmosClient cosmosClient, string databaseName)
+    public CosmosInvoiceRecordRepository(
+        CosmosClient cosmosClient,
+        string databaseName,
+        ILogger<CosmosInvoiceRecordRepository>? logger = null)
     {
         container = cosmosClient.GetContainer(databaseName, ContainerName);
+        this.logger = logger ?? NullLogger<CosmosInvoiceRecordRepository>.Instance;
     }
 
     public async Task<Option<InvoiceRecord>> GetMostRecentAsync(
@@ -58,6 +65,10 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
         {
             // Record already exists for this configuration and expected date — idempotent no-op.
+            // Logged so an operator can see that no new record was created (and why).
+            logger.LogDebug(
+                "Expected record for configuration {ConfigurationId} on {ExpectedDate} already exists; create skipped (idempotent no-op).",
+                record.ConfigurationId, record.ExpectedDate);
         }
     }
 

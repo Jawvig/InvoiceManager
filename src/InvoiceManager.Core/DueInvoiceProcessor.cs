@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using InvoiceManager.Core.Integrations;
 using InvoiceManager.Core.Repositories;
 using Microsoft.Extensions.Logging;
@@ -38,19 +39,44 @@ public sealed class DueInvoiceProcessor(
     {
         var asOf = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
 
+        using var runActivity = Telemetry.ActivitySource.StartActivity("process_due_invoices");
+        runActivity?.SetTag("invoice.as_of", asOf.ToString("O"));
+
         var configurations = await configurationRepository.ListActiveAsync(cancellationToken);
         var configurationsById = configurations.ToDictionary(configuration => configuration.Id);
 
         var dueRecords = await recordRepository.ListDueAsync(asOf, cancellationToken);
         var results = new List<DueInvoiceProcessingResult>(dueRecords.Count);
 
+        runActivity?.SetTag("invoice.due_count", dueRecords.Count);
         logger.LogInformation("Due invoice processing run started for {DueRecordCount} record(s) as of {AsOf}.", dueRecords.Count, asOf);
 
+        var skippedCount = 0;
         foreach (var record in dueRecords)
         {
-            // Skip records whose configuration is no longer active or present.
+            // Skip records whose configuration is no longer active or present: nothing
+            // further can be done for them this run, so record why and move on.
             if (!configurationsById.TryGetValue(record.ConfigurationId, out var configuration))
+            {
+                skippedCount++;
+                runActivity?.AddEvent(new ActivityEvent("record_skipped_inactive_configuration",
+                    tags: new ActivityTagsCollection
+                    {
+                        ["invoice.record_id"] = record.Id.Value,
+                        ["invoice.configuration_id"] = record.ConfigurationId.Value,
+                    }));
+                logger.LogInformation(
+                    "Skipping due record {RecordId}: configuration {ConfigurationId} is no longer active or present; no action taken.",
+                    record.Id, record.ConfigurationId);
                 continue;
+            }
+
+            using var recordActivity = Telemetry.ActivitySource.StartActivity("process_invoice_record");
+            recordActivity?.SetTag("invoice.record_id", record.Id.Value);
+            recordActivity?.SetTag("invoice.configuration_id", record.ConfigurationId.Value);
+            recordActivity?.SetTag("invoice.integration_type", configuration.IntegrationType.ToString());
+            recordActivity?.SetTag("invoice.description", record.InvoiceDescription);
+            recordActivity?.SetTag("invoice.expected_date", record.ExpectedDate.ToString("O"));
 
             using var scope = logger.BeginScope(new Dictionary<string, object>
             {
@@ -63,26 +89,43 @@ public sealed class DueInvoiceProcessor(
 
             try
             {
-                results.Add(await ProcessAsync(record, configuration, asOf, cancellationToken));
+                var result = await ProcessAsync(record, configuration, asOf, recordActivity, cancellationToken);
+                recordActivity?.SetTag("invoice.outcome", OutcomeName(result));
+                results.Add(result);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // A failure outside retrieval (for example a save or next-record step) leaves
                 // the record in its last persisted, already-retryable state. Report it without
                 // stopping the other records.
+                recordActivity?.SetTag("invoice.outcome", "failed");
+                recordActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                recordActivity?.AddException(ex);
                 logger.LogError(ex, "Processing failed for invoice record {RecordId}.", record.Id);
                 results.Add(new ProcessingFailed(record.Id, ex));
             }
         }
 
+        runActivity?.SetTag("invoice.skipped_count", skippedCount);
+        SetRunSummaryTags(runActivity, results);
         LogRunSummary(results);
         return results;
     }
+
+    private static string OutcomeName(DueInvoiceProcessingResult result) => result switch
+    {
+        ProcessingSucceeded => "saved",
+        ProcessingNoMatch => "no_match",
+        ProcessingNotFound => "not_found",
+        ProcessingFailed => "failed",
+        _ => "unknown",
+    };
 
     private async Task<DueInvoiceProcessingResult> ProcessAsync(
         InvoiceRecord record,
         InvoiceConfiguration configuration,
         DateOnly asOf,
+        Activity? recordActivity,
         CancellationToken cancellationToken)
     {
         if (!sourcesByType.TryGetValue(configuration.IntegrationType, out var source))
@@ -109,16 +152,23 @@ public sealed class DueInvoiceProcessor(
             // invoice exists. Record RetrievalError (always retryable) and move on.
             var errored = record with { State = new RetrievalError(ex.Message) };
             await recordRepository.ReplaceAsync(errored, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("state_retrieval_error"));
+            recordActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            recordActivity?.AddException(ex);
             logger.LogError(ex, "Retrieval failed for invoice record {RecordId}; marked RetrievalError.", record.Id);
             return new ProcessingFailed(record.Id, ex);
         }
 
         if (result is not InvoiceMatch match)
-            return await RecordNoMatchAsync(record, asOf, cancellationToken);
+            return await RecordNoMatchAsync(record, asOf, recordActivity, cancellationToken);
 
         // Retrieved: persist before saving so a later run resumes from here.
         var retrieved = record with { State = new Retrieved(match.Details) };
         await recordRepository.ReplaceAsync(retrieved, cancellationToken);
+        recordActivity?.AddEvent(new ActivityEvent("state_retrieved"));
+        logger.LogInformation(
+            "Invoice {SourceInvoiceId} retrieved for record {RecordId}; marked Retrieved before saving.",
+            match.Details.SourceInvoiceId.Value, record.Id);
 
         var fileName = invoiceFilename.Generate(
             match.Details.ActualInvoiceDate,
@@ -134,6 +184,7 @@ public sealed class DueInvoiceProcessor(
         // Saved to OneDrive: persist before creating the next expected record.
         var saved = retrieved with { State = new SavedToOneDrive(match.Details, oneDriveDetails) };
         await recordRepository.ReplaceAsync(saved, cancellationToken);
+        recordActivity?.AddEvent(new ActivityEvent("state_saved_to_onedrive"));
 
         await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
 
@@ -153,6 +204,7 @@ public sealed class DueInvoiceProcessor(
     private async Task<DueInvoiceProcessingResult> RecordNoMatchAsync(
         InvoiceRecord record,
         DateOnly asOf,
+        Activity? recordActivity,
         CancellationToken cancellationToken)
     {
         var deadline = record.ExpectedDate.AddDays(record.DateToleranceDays);
@@ -163,6 +215,7 @@ public sealed class DueInvoiceProcessor(
             // RetrievalError); an already-Expected record needs no write.
             if (record.State is not Expected)
                 await recordRepository.ReplaceAsync(record with { State = new Expected() }, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("no_match_within_tolerance"));
             logger.LogInformation(
                 "No invoice match found yet for record {RecordId}; still expected, within tolerance until {Deadline}.",
                 record.Id,
@@ -172,11 +225,24 @@ public sealed class DueInvoiceProcessor(
 
         var notFound = record with { State = new NotFound() };
         await recordRepository.ReplaceAsync(notFound, cancellationToken);
+        recordActivity?.AddEvent(new ActivityEvent("state_not_found_past_deadline"));
         logger.LogWarning(
             "No invoice match found for record {RecordId} by tolerance deadline {Deadline}; marked NotFound.",
             record.Id,
             deadline);
         return new ProcessingNotFound(record.Id);
+    }
+
+    private static void SetRunSummaryTags(Activity? activity, IReadOnlyList<DueInvoiceProcessingResult> results)
+    {
+        if (activity is null)
+            return;
+
+        activity.SetTag("invoice.processed_count", results.Count);
+        activity.SetTag("invoice.saved_count", results.Count(r => r is ProcessingSucceeded));
+        activity.SetTag("invoice.no_match_count", results.Count(r => r is ProcessingNoMatch));
+        activity.SetTag("invoice.not_found_count", results.Count(r => r is ProcessingNotFound));
+        activity.SetTag("invoice.failed_count", results.Count(r => r is ProcessingFailed));
     }
 
     private void LogRunSummary(IReadOnlyList<DueInvoiceProcessingResult> results)
