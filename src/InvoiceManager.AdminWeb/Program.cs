@@ -82,12 +82,17 @@ public partial class Program
 internal sealed class MicrosoftOpenIdConnectOptionsSetup
     : IConfigureNamedOptions<OpenIdConnectOptions>
 {
+    // The auth-code redemption may only request scopes for a SINGLE resource; the
+    // Entra v2 token endpoint rejects a mixed-resource scope set with AADSTS28000.
+    // We redeem for Microsoft Graph alone, whose only job here is to seed the MSAL
+    // cache with a refresh token + account. Consent for the other resources (ARM
+    // billing, Graph Files.ReadWrite.All) is gathered on the interactive authorize
+    // leg below, so downstream AcquireTokenSilent calls can mint per-resource tokens
+    // for either resource from that same refresh token. openid/profile/offline_access
+    // are reserved scopes MSAL adds automatically.
     private static readonly string[] DownstreamScopes =
     [
-        "User.Read",
-        "https://management.azure.com/user_impersonation",
-        "https://graph.microsoft.com/Files.ReadWrite.All",
-        "offline_access"
+        "User.Read"
     ];
 
     private readonly IOptions<MicrosoftAuthorizationOptions> microsoftAuthorizationOptions;
