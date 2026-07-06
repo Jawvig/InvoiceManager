@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Net;
@@ -39,16 +40,27 @@ public sealed class MicrosoftBillingInvoiceSource(
         InvoiceSearchCriteria criteria,
         CancellationToken cancellationToken = default)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity("find_invoice.microsoft365");
+        activity?.SetTag("invoice.billing_account_id", criteria.BillingAccountId);
+        activity?.SetTag("invoice.expected_date", criteria.ExpectedDate.ToString("O"));
+        activity?.SetTag("invoice.date_tolerance_days", criteria.DateToleranceDays);
+
         var token = await tokenProvider.AcquireTokenAsync([settings.Scope], cancellationToken);
 
         var invoices = await ListInvoicesAsync(criteria, token, cancellationToken);
+        activity?.SetTag("invoice.candidate_count", invoices.Count);
         if (SelectBestMatch(invoices, criteria) is not BillingInvoice match)
         {
+            activity?.AddEvent(new ActivityEvent("no_match"));
             logger.LogInformation(
-                "No Microsoft 365 invoice matched criteria for billing account {BillingAccountId} around {ExpectedDate}.",
-                criteria.BillingAccountId, criteria.ExpectedDate);
+                "No Microsoft 365 invoice matched criteria for billing account {BillingAccountId} around {ExpectedDate} " +
+                "({CandidateCount} candidate(s) considered).",
+                criteria.BillingAccountId, criteria.ExpectedDate, invoices.Count);
             return new NoInvoiceMatch();
         }
+
+        activity?.SetTag("invoice.matched_name", match.Name);
+        activity?.AddEvent(new ActivityEvent("match_selected"));
 
         var document = match.Properties.Documents?.FirstOrDefault(d => d.Kind == "Invoice")
             ?? throw new InvalidOperationException(
@@ -57,6 +69,9 @@ public sealed class MicrosoftBillingInvoiceSource(
         var downloadUrl = await RequestDownloadUrlAsync(criteria.BillingAccountId, match.Name, document.Name, token, cancellationToken);
         var payload = await DownloadAsync(downloadUrl, cancellationToken);
         var pdf = ExtractPdf(payload);
+        logger.LogInformation(
+            "Retrieved Microsoft 365 invoice {InvoiceName} ({PdfBytes} bytes) for billing account {BillingAccountId}.",
+            match.Name, pdf.Length, criteria.BillingAccountId);
 
         var details = new ActualInvoiceDetails(
             DateOnly.FromDateTime(match.Properties.InvoiceDate.UtcDateTime),
@@ -141,6 +156,7 @@ public sealed class MicrosoftBillingInvoiceSource(
     {
         var response = initialResponse;
         var deadline = DateTimeOffset.UtcNow + settings.MaxPollDuration;
+        var pollCount = 0;
 
         while (true)
         {
@@ -157,7 +173,18 @@ public sealed class MicrosoftBillingInvoiceSource(
             var delay = response.Headers.RetryAfter?.Delta ?? settings.PollInterval;
 
             if (DateTimeOffset.UtcNow + delay > deadline)
+            {
+                Activity.Current?.SetStatus(ActivityStatusCode.Error, "Download polling exceeded the maximum duration.");
+                logger.LogWarning(
+                    "Microsoft 365 document download did not complete within {MaxPollDuration} after {PollCount} poll(s); giving up.",
+                    settings.MaxPollDuration, pollCount);
                 throw new TimeoutException($"The document download did not complete within {settings.MaxPollDuration}.");
+            }
+
+            pollCount++;
+            logger.LogDebug(
+                "Microsoft 365 document download not ready (poll {PollCount}); retrying after {Delay}.",
+                pollCount, delay);
 
             await Task.Delay(delay, cancellationToken);
 

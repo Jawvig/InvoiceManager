@@ -10,7 +10,9 @@ using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Trace;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
@@ -18,13 +20,31 @@ var host = new HostBuilder()
     {
         var databaseName = context.Configuration["CosmosDatabase"] ?? "invoicemanager";
 
+        // Export the workflow's custom spans (and the outbound HTTP calls under them) so a
+        // human can view the trace tree. Locally, Aspire injects OTEL_EXPORTER_OTLP_ENDPOINT
+        // and the spans appear in the Aspire dashboard; without that endpoint (e.g. in Azure)
+        // no OTLP exporter is registered, so this stays quiet and the Functions runtime's own
+        // Application Insights export (host.json) continues to carry invocation telemetry.
+        services.AddOpenTelemetry()
+            .WithTracing(tracing =>
+            {
+                tracing.AddSource(Telemetry.ActivitySourceName);
+                tracing.AddHttpClientInstrumentation();
+
+                if (!string.IsNullOrWhiteSpace(context.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+                    tracing.AddOtlpExporter();
+            });
+
         services.AddSingleton(_ => CosmosClientFactory.Create(context.Configuration));
 
         services.AddSingleton<IInvoiceConfigurationRepository>(sp =>
             new CosmosInvoiceConfigurationRepository(sp.GetRequiredService<CosmosClient>(), databaseName));
 
         services.AddSingleton<IInvoiceRecordRepository>(sp =>
-            new CosmosInvoiceRecordRepository(sp.GetRequiredService<CosmosClient>(), databaseName));
+            new CosmosInvoiceRecordRepository(
+                sp.GetRequiredService<CosmosClient>(),
+                databaseName,
+                sp.GetRequiredService<ILogger<CosmosInvoiceRecordRepository>>()));
 
         services.AddSingleton<ExpectedRecordGenerator>();
 
