@@ -14,8 +14,6 @@ namespace InvoiceManager.Infrastructure.CosmosDb;
 /// </summary>
 public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
 {
-    private const string ContainerName = "invoice-records";
-
     private readonly Container container;
     private readonly ILogger<CosmosInvoiceRecordRepository> logger;
 
@@ -24,7 +22,7 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
         string databaseName,
         ILogger<CosmosInvoiceRecordRepository>? logger = null)
     {
-        container = cosmosClient.GetContainer(databaseName, ContainerName);
+        container = cosmosClient.GetContainer(databaseName, CosmosSchema.InvoiceRecords.Name);
         this.logger = logger ?? NullLogger<CosmosInvoiceRecordRepository>.Instance;
     }
 

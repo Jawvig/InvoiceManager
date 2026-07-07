@@ -11,13 +11,11 @@ namespace InvoiceManager.Infrastructure.CosmosDb;
 /// </summary>
 public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfigurationRepository
 {
-    private const string ContainerName = "invoice-configurations";
-
     private readonly Container container;
 
     public CosmosInvoiceConfigurationRepository(CosmosClient cosmosClient, string databaseName)
     {
-        container = cosmosClient.GetContainer(databaseName, ContainerName);
+        container = cosmosClient.GetContainer(databaseName, CosmosSchema.InvoiceConfigurations.Name);
     }
 
     /// <summary>
