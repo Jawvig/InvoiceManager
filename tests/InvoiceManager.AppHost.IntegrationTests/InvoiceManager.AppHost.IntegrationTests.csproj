@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\InvoiceManager.AppHost\InvoiceManager.AppHost.csproj"
                       IsAspireProjectResource="false" />
+    <ProjectReference Include="..\..\src\InvoiceManager.Infrastructure\InvoiceManager.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

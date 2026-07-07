@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\InvoiceManager.AdminWeb\InvoiceManager.AdminWeb.csproj" />
     <ProjectReference Include="..\InvoiceManager.Functions\InvoiceManager.Functions.csproj" />
+    <ProjectReference Include="..\..\tools\InvoiceManager.Seeder\InvoiceManager.Seeder.csproj" />
   </ItemGroup>
 
 </Project>
