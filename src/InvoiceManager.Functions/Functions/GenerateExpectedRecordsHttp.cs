@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using InvoiceManager.Core;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -12,6 +13,8 @@ public sealed class GenerateExpectedRecordsHttp(
     ILogger<GenerateExpectedRecordsHttp> logger)
 {
     private const HttpStatusCode MultiStatus = (HttpStatusCode)207;
+
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     [Function("GenerateExpectedRecordsHttp")]
     public async Task<HttpResponseData> RunAsync(
@@ -48,10 +51,15 @@ public sealed class GenerateExpectedRecordsHttp(
                 ProcessingFailed failed => new RecordResultDto(failed.RecordId.Value, "Failed", failed.Exception.Message),
             }).ToList());
 
-        var response = req.CreateResponse();
-        await response.WriteAsJsonAsync(body, cancellationToken);
-        // WriteAsJsonAsync sets 200; override after writing.
-        response.StatusCode = MultiStatus;
+        // Set the status as part of the write: under the ASP.NET Core integration
+        // WriteAsJsonAsync starts the response, so assigning StatusCode afterwards throws
+        // "response has already started".
+        // Set the status at creation and write the body ourselves: under the ASP.NET Core
+        // integration WriteAsJsonAsync starts the response and forces 200, so the status
+        // must be fixed before the first write rather than overridden after it.
+        var response = req.CreateResponse(MultiStatus);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(JsonSerializer.Serialize(body, SerializerOptions), cancellationToken);
         return response;
     }
 
