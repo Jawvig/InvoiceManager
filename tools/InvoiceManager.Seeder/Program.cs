@@ -34,6 +34,13 @@ Console.WriteLine($"  Ensure schema: {ensureSchema}");
 Console.WriteLine($"  Seed file:     {Path.GetFullPath(seedFilePath)}");
 
 var json = await File.ReadAllTextAsync(seedFilePath);
+
+// The seed file ships readable placeholders for values we must not commit (the
+// OneDrive drive id lives inside a path, the M365 billing account id is a whole
+// field). Substitute the real values from configuration before deserializing so a
+// single string replace covers both the embedded and standalone cases.
+json = ReplaceSeedTokens(json, configuration);
+
 var records = JsonSerializer.Deserialize<List<SeedInvoiceConfigurationRecord>>(
     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
     ?? throw new InvalidOperationException("Seed file is empty or invalid.");
@@ -76,6 +83,52 @@ catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forb
 }
 
 Console.WriteLine("Seeding complete.");
+
+static string ReplaceSeedTokens(string json, IConfiguration configuration)
+{
+    // token in seed file  ->  config key (env var: InvoiceManager__Seed__<name>)
+    var tokens = new (string Token, string ConfigKey, string EnvVar)[]
+    {
+        ("REPLACE_WITH_DRIVE_ID", "InvoiceManager:Seed:DriveId", "InvoiceManager__Seed__DriveId"),
+        ("REPLACE_WITH_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:BillingAccountId", "InvoiceManager__Seed__BillingAccountId"),
+    };
+
+    var missing = new List<string>();
+    foreach (var (token, configKey, envVar) in tokens)
+    {
+        // Only require a value when its token is actually present, so seed files that
+        // don't use a token (e.g. future non-M365 configs) need no extra configuration.
+        if (!json.Contains(token, StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        var value = configuration[configKey];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            missing.Add(envVar);
+            continue;
+        }
+
+        json = json.Replace(token, value, StringComparison.Ordinal);
+    }
+
+    if (missing.Count > 0)
+    {
+        Console.Error.WriteLine(
+            "Seed file requires real values that are not configured. Set the following " +
+            "environment variable(s) before seeding:");
+        foreach (var envVar in missing)
+        {
+            Console.Error.WriteLine($"  {envVar}");
+        }
+        Console.Error.WriteLine(
+            "See tools/dev-setup/Set-SeedEnvironment.ps1.example for a setup script.");
+        Environment.Exit(3);
+    }
+
+    return json;
+}
 
 static async Task EnsureSchemaAsync(CosmosClient client, string databaseName)
 {
