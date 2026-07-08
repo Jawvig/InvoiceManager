@@ -316,7 +316,7 @@ function Invoke-ConfigurationSeeder {
     try {
         # Build once so every retry runs the pre-compiled binary rather than
         # triggering a fresh compilation on each attempt.
-        Invoke-CheckedCommand -Command @("dotnet", "build", "--project", $seederProject)
+        Invoke-CheckedCommand -Command @("dotnet", "build", $seederProject)
 
         # Cosmos DB data-plane RBAC can take up to ~60 s to propagate after
         # terraform apply creates the role assignment. The seeder exits 2 on a
@@ -334,7 +334,7 @@ function Invoke-ConfigurationSeeder {
                 throw "Seeder failed with exit code $exitCode (attempt $attempt/$maxAttempts)."
             }
 
-            Write-Host "Seeder attempt $attempt/$maxAttempts: Cosmos 403 (RBAC propagation delay). Retrying in 30 s..."
+            Write-Host "Seeder attempt $attempt/${maxAttempts}: Cosmos 403 (RBAC propagation delay). Retrying in 30 s..."
             Start-Sleep -Seconds 30
         }
     }
