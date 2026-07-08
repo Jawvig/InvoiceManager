@@ -1,0 +1,5 @@
+{
+    "appHost": {
+        "path": "src\\InvoiceManager.AppHost\\InvoiceManager.AppHost.csproj"
+    }
+}
