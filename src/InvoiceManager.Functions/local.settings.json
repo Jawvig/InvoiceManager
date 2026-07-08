@@ -4,10 +4,6 @@
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
     "CosmosEndpoint": "https://localhost:8081",
-    "CosmosDatabase": "invoicemanager",
-    "MicrosoftAuthorization:TenantId": "00000000-0000-0000-0000-000000000000",
-    "MicrosoftAuthorization:ClientId": "00000000-0000-0000-0000-000000000000",
-    "MicrosoftAuthorization:ClientSecret": "REPLACE_WITH_CLIENT_SECRET",
-    "MicrosoftAuthorization:KeyVaultUri": "https://REPLACE_WITH_KEY_VAULT.vault.azure.net/"
+    "CosmosDatabase": "invoicemanager"
   }
 }
