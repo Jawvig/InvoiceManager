@@ -67,8 +67,13 @@ var host = new HostBuilder()
 
         // Microsoft delegated authentication (reuses the MSAL cache the admin website
         // persisted to Key Vault) for both the billing API and OneDrive uploads.
+        // Validate at startup (like the admin website) so a missing TenantId/ClientId/
+        // ClientSecret fails fast here rather than at the first M365 token acquisition.
+        // ClientSecret is loaded from Key Vault above, so it is present by validation time.
         services.AddOptions<MicrosoftAuthorizationOptions>()
-            .Bind(context.Configuration.GetSection(MicrosoftAuthorizationOptions.SectionName));
+            .Bind(context.Configuration.GetSection(MicrosoftAuthorizationOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<MicrosoftAuthorizationOptions>, MicrosoftAuthorizationOptionsValidator>();
         services.AddOptions<MicrosoftBillingOptions>()
             .Bind(context.Configuration.GetSection(MicrosoftBillingOptions.SectionName));
 
