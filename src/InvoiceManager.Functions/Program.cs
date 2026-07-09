@@ -24,8 +24,11 @@ var host = new HostBuilder()
         // Function App's managed identity in Azure). Added after the other sources so the
         // vault wins, matching the admin website. ClientSecret is the Entra app secret MSAL
         // uses to redeem M365 tokens; it is not used to reach Key Vault itself.
+        // Skip a loopback placeholder (e.g. the AppHost's https://localhost/ default when no
+        // real vault is configured): eagerly binding Key Vault would fail the connection and
+        // crash startup before the host listens. A real vault URI is never loopback.
         var keyVaultUri = config.Build().GetValue<Uri?>("MicrosoftAuthorization:KeyVaultUri");
-        if (keyVaultUri is not null)
+        if (keyVaultUri is not null && !keyVaultUri.IsLoopback)
         {
             config.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
         }
