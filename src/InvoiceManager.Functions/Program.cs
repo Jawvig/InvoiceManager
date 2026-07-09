@@ -1,4 +1,5 @@
 using System.Globalization;
+using Azure.Identity;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
 using InvoiceManager.Core.Repositories;
@@ -16,6 +17,19 @@ using OpenTelemetry.Trace;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
+    .ConfigureAppConfiguration(config =>
+    {
+        // Load MicrosoftAuthorization--* secrets (notably ClientSecret) from Key Vault,
+        // authenticating with DefaultAzureCredential (developer credentials locally, the
+        // Function App's managed identity in Azure). Added after the other sources so the
+        // vault wins, matching the admin website. ClientSecret is the Entra app secret MSAL
+        // uses to redeem M365 tokens; it is not used to reach Key Vault itself.
+        var keyVaultUri = config.Build().GetValue<Uri?>("MicrosoftAuthorization:KeyVaultUri");
+        if (keyVaultUri is not null)
+        {
+            config.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+        }
+    })
     .ConfigureServices((context, services) =>
     {
         var databaseName = context.Configuration["CosmosDatabase"] ?? "invoicemanager";

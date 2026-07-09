@@ -26,16 +26,15 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithArgs("--ensure-schema", seedFile)
         .WaitFor(cosmos);
 
-    // Microsoft delegated auth settings. The admin website captures the token cache and
-    // both it and the Functions app read it back from the same Key Vault, so both need
-    // identical values. Real values come from AppHost user-secrets; the placeholders keep
-    // local infra starting when they are absent (the M365 flow itself stays unconfigured).
+    // Microsoft delegated auth settings shared by the admin website and the Functions app.
+    // TenantId/ClientId/KeyVaultUri come from AppHost user-secrets (placeholders keep local
+    // infra starting when absent). ClientSecret is deliberately NOT forwarded: both apps load
+    // it (and any other MicrosoftAuthorization--* secret) from Key Vault via DefaultAzure
+    // credentials, so it never passes through the AppHost environment.
     var microsoftAuthTenantId =
         builder.Configuration["MicrosoftAuthorization:TenantId"] ?? "00000000-0000-0000-0000-000000000000";
     var microsoftAuthClientId =
         builder.Configuration["MicrosoftAuthorization:ClientId"] ?? "00000000-0000-0000-0000-000000000001";
-    var microsoftAuthClientSecret =
-        builder.Configuration["MicrosoftAuthorization:ClientSecret"] ?? "local-development-placeholder";
     var microsoftAuthKeyVaultUri =
         builder.Configuration["MicrosoftAuthorization:KeyVaultUri"] ?? "https://localhost/";
 
@@ -46,12 +45,10 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         // integration surfaces the reference as cosmos__accountEndpoint instead, so
         // inject the connection string explicitly to keep the factory working.
         .WithEnvironment("ConnectionStrings__cosmos", cosmos.Resource.ConnectionStringExpression)
-        // Forward the Microsoft auth config so the Functions app reads the shared token
-        // cache from the real Key Vault instead of the placeholder in local.settings.json
-        // (an unreachable placeholder vault otherwise throws when the cache is accessed).
+        // Forward the Microsoft auth config so the Functions app reaches the real Key Vault
+        // (for the shared token cache and the ClientSecret) instead of a placeholder.
         .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
         .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
-        .WithEnvironment("MicrosoftAuthorization__ClientSecret", microsoftAuthClientSecret)
         .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
         .WaitFor(cosmos)
         .WaitForCompletion(seeder)
@@ -62,7 +59,6 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithReference(cosmos)
         .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
         .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
-        .WithEnvironment("MicrosoftAuthorization__ClientSecret", microsoftAuthClientSecret)
         .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
         .WithEnvironment("Functions__BaseUrl", functions.GetEndpoint("http"))
         .WaitFor(cosmos)
