@@ -1,0 +1,8 @@
+{
+    "azureFunctions.projectSubpath": "src\\InvoiceManager.Functions",
+    "azureFunctions.deploySubpath": "src\\InvoiceManager.Functions/bin/Release/net11.0/publish",
+    "azureFunctions.projectLanguage": "C#",
+    "azureFunctions.projectRuntime": "~4",
+    "debug.internalConsoleOptions": "neverOpen",
+    "azureFunctions.preDeployTask": "publish (functions)"
+}

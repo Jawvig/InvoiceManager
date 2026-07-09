@@ -235,7 +235,7 @@ function Ensure-StorageContainer {
     )
 }
 
-function Set-AdminWebUserSecret {
+function Set-ProjectUserSecret {
     param(
         [string] $ProjectPath,
         [string] $Key,
@@ -261,7 +261,7 @@ function Set-TestAdminWebLocalConfiguration {
         throw ".NET SDK is required to configure local admin website user secrets."
     }
 
-    Write-Section "Configuring local admin website"
+    Write-Section "Configuring local user secrets"
 
     Push-Location $TerraformRoot
     try {
@@ -271,13 +271,22 @@ function Set-TestAdminWebLocalConfiguration {
         Pop-Location
     }
 
-    $adminWebProject = Join-Path $RepoRoot "src/InvoiceManager.AdminWeb/InvoiceManager.AdminWeb.csproj"
+    # These non-secret values are read both by the admin website (when run directly) and by
+    # the AppHost, which reads its OWN user-secrets store and forwards them to the Functions
+    # and admin website resources. Set them for both projects so a clean setup needs no manual
+    # step. The client secret is never stored here; it stays in Key Vault.
+    $projects = @(
+        (Join-Path $RepoRoot "src/InvoiceManager.AdminWeb/InvoiceManager.AdminWeb.csproj"),
+        (Join-Path $RepoRoot "src/InvoiceManager.AppHost/InvoiceManager.AppHost.csproj")
+    )
 
-    Set-AdminWebUserSecret -ProjectPath $adminWebProject -Key "MicrosoftAuthorization:TenantId" -Value $outputs.tenant_id.value
-    Set-AdminWebUserSecret -ProjectPath $adminWebProject -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
-    Set-AdminWebUserSecret -ProjectPath $adminWebProject -Key "MicrosoftAuthorization:KeyVaultUri" -Value $outputs.key_vault_uri.value
+    foreach ($project in $projects) {
+        Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:TenantId" -Value $outputs.tenant_id.value
+        Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
+        Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:KeyVaultUri" -Value $outputs.key_vault_uri.value
+    }
 
-    Write-Host "Local admin website user secrets configured for the test environment."
+    Write-Host "Local user secrets configured for the test environment (admin website + AppHost)."
     Write-Host "Client secret remains in Key Vault as MicrosoftAuthorization--ClientSecret."
 }
 
@@ -316,7 +325,7 @@ function Invoke-ConfigurationSeeder {
     try {
         # Build once so every retry runs the pre-compiled binary rather than
         # triggering a fresh compilation on each attempt.
-        Invoke-CheckedCommand -Command @("dotnet", "build", "--project", $seederProject)
+        Invoke-CheckedCommand -Command @("dotnet", "build", $seederProject)
 
         # Cosmos DB data-plane RBAC can take up to ~60 s to propagate after
         # terraform apply creates the role assignment. The seeder exits 2 on a
@@ -334,7 +343,7 @@ function Invoke-ConfigurationSeeder {
                 throw "Seeder failed with exit code $exitCode (attempt $attempt/$maxAttempts)."
             }
 
-            Write-Host "Seeder attempt $attempt/$maxAttempts: Cosmos 403 (RBAC propagation delay). Retrying in 30 s..."
+            Write-Host "Seeder attempt $attempt/${maxAttempts}: Cosmos 403 (RBAC propagation delay). Retrying in 30 s..."
             Start-Sleep -Seconds 30
         }
     }

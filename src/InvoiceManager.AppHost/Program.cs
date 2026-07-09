@@ -26,6 +26,16 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithArgs("--ensure-schema", seedFile)
         .WaitFor(cosmos);
 
+    // Microsoft delegated auth settings shared by the admin website and the Functions app.
+    // TenantId/ClientId/KeyVaultUri come from AppHost user-secrets and are required: fail fast
+    // here rather than forward placeholders that only defer the failure to the running apps.
+    // ClientSecret is deliberately NOT forwarded: both apps load it (and any other
+    // MicrosoftAuthorization secret) from Key Vault via DefaultAzureCredential, so it never
+    // passes through the AppHost environment.
+    var microsoftAuthTenantId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:TenantId");
+    var microsoftAuthClientId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:ClientId");
+    var microsoftAuthKeyVaultUri = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:KeyVaultUri");
+
     var functions = builder
         .AddAzureFunctionsProject<Projects.InvoiceManager_Functions>("functions")
         .WithReference(cosmos)
@@ -33,6 +43,11 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         // integration surfaces the reference as cosmos__accountEndpoint instead, so
         // inject the connection string explicitly to keep the factory working.
         .WithEnvironment("ConnectionStrings__cosmos", cosmos.Resource.ConnectionStringExpression)
+        // Forward the Microsoft auth config so the Functions app reaches the real Key Vault
+        // (for the shared token cache and the ClientSecret) instead of a placeholder.
+        .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
+        .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
+        .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
         .WaitFor(cosmos)
         .WaitForCompletion(seeder)
         .WithHttpHealthCheck("/api/health");
@@ -40,18 +55,9 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
     builder
         .AddProject<Projects.InvoiceManager_AdminWeb>("adminweb")
         .WithReference(cosmos)
-        .WithEnvironment(
-            "MicrosoftAuthorization__TenantId",
-            builder.Configuration["MicrosoftAuthorization:TenantId"] ?? "00000000-0000-0000-0000-000000000000")
-        .WithEnvironment(
-            "MicrosoftAuthorization__ClientId",
-            builder.Configuration["MicrosoftAuthorization:ClientId"] ?? "00000000-0000-0000-0000-000000000001")
-        .WithEnvironment(
-            "MicrosoftAuthorization__ClientSecret",
-            builder.Configuration["MicrosoftAuthorization:ClientSecret"] ?? "local-development-placeholder")
-        .WithEnvironment(
-            "MicrosoftAuthorization__KeyVaultUri",
-            builder.Configuration["MicrosoftAuthorization:KeyVaultUri"] ?? "https://localhost/")
+        .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
+        .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
+        .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
         .WithEnvironment("Functions__BaseUrl", functions.GetEndpoint("http"))
         .WaitFor(cosmos)
         .WaitForCompletion(seeder)
@@ -60,3 +66,21 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
 }
 
 builder.Build().Run();
+
+internal static class ConfigurationExtensions
+{
+    /// <summary>
+    /// Returns a required configuration value, failing fast when it is absent or blank so a
+    /// misconfiguration surfaces at startup instead of as a deferred downstream error.
+    /// </summary>
+    public static string GetRequiredValue(this IConfiguration configuration, string key)
+    {
+        // GetRequiredSection throws when the key is absent; also reject a present-but-blank value.
+        var value = configuration.GetRequiredSection(key).Value;
+        return string.IsNullOrWhiteSpace(value)
+            ? throw new InvalidOperationException(
+                $"Required configuration value '{key}' is not set. Configure it in user-secrets " +
+                $"for the AppHost (dotnet user-secrets set) or as an environment variable.")
+            : value;
+    }
+}
