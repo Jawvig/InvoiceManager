@@ -63,7 +63,12 @@ Complete
 Terraform manages all Azure infrastructure including:
 
 - **Azure Functions**: Flex Consumption plan (`azurerm_function_app_flex_consumption`)
-  running the `dotnet-isolated` InvoiceManager service.
+  running the `dotnet-isolated` InvoiceManager service. Flex supports
+  dotnet-isolated 8.0/9.0/10.0 but not net11.0, so the Functions app and the
+  libraries it depends on multi-target `net10.0;net11.0`: net10.0 is deployed
+  (`functions_runtime_version = "10.0"`, published with `-f net10.0`) while net11.0
+  is used for local Aspire runs. The `union` support types absent from net10.0 are
+  polyfilled for that target (`src/InvoiceManager.Core/Polyfills/UnionSupport.cs`).
 - **Admin website**: Azure Container Apps (scale-to-zero) pulling a public
   ghcr.io image; ingress exposed on port 8080.
 - **Azure Cosmos DB**: Serverless database for invoice configuration and state.

@@ -44,7 +44,7 @@ variable "adminweb_image" {
 }
 
 variable "functions_runtime_version" {
-  description = "dotnet-isolated stack version for the Flex Consumption Functions app. The code targets net11.0; override if Azure does not yet offer that stack."
+  description = "dotnet-isolated stack version for the Flex Consumption Functions app. Flex supports 8.0/9.0/10.0 (not net11.0 yet), so the app is published as net10.0 from its multi-targeted project."
   type        = string
-  default     = "11.0"
+  default     = "10.0"
 }
