@@ -15,12 +15,26 @@ var configuration = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
-// --ensure-schema creates the database and containers before seeding. It is passed only
-// by the local Aspire bootstrap: the emulator starts empty and nothing else provisions
-// its schema. In the cloud the flag is omitted because Terraform owns schema and the
-// seeder's identity holds only a data-plane role.
-var ensureSchema = args.Contains("--ensure-schema", StringComparer.OrdinalIgnoreCase);
-var positionalArgs = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
+// Flags:
+//   --ensure-schema   create the database and containers before seeding. Passed only by the
+//                     local Aspire bootstrap: the emulator starts empty. In the cloud
+//                     Terraform owns schema and the seeder's identity holds only a data role.
+//   --clear-database  delete every item from the containers (data-plane deletes) before
+//                     seeding, giving a clean slate. Refused against production without --force.
+//   --force           override the production --clear-database guard.
+//   --environment <n> deployment environment. When "test", downloads are nested under a root
+//                     "Test" folder so they never collide with production files.
+var (ensureSchema, clearDatabase, force, environment, positionalArgs) = ParseArgs(args);
+
+var isTest = string.Equals(environment, "test", StringComparison.OrdinalIgnoreCase);
+var isProduction = string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase);
+
+if (clearDatabase && isProduction && !force)
+{
+    await Console.Error.WriteLineAsync(
+        "Refusing --clear-database against the production environment. Pass --force to override.");
+    Environment.Exit(4);
+}
 
 var databaseName = configuration["CosmosDatabase"] ?? "invoicemanager";
 
@@ -29,9 +43,11 @@ var seedFilePath = positionalArgs.Length > 0
     : Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "seed", "invoice-configurations.json");
 
 Console.WriteLine($"Seeder starting.");
-Console.WriteLine($"  Database:      {databaseName}");
-Console.WriteLine($"  Ensure schema: {ensureSchema}");
-Console.WriteLine($"  Seed file:     {Path.GetFullPath(seedFilePath)}");
+Console.WriteLine($"  Database:       {databaseName}");
+Console.WriteLine($"  Environment:    {environment ?? "(none)"}");
+Console.WriteLine($"  Ensure schema:  {ensureSchema}");
+Console.WriteLine($"  Clear database: {clearDatabase}");
+Console.WriteLine($"  Seed file:      {Path.GetFullPath(seedFilePath)}");
 
 var json = await File.ReadAllTextAsync(seedFilePath);
 
@@ -55,7 +71,7 @@ var configurations = records.Select(r => new InvoiceConfiguration(
     new Money(r.DefaultExpectedAmount, r.DefaultExpectedCurrency),
     Enum.Parse<VatMode>(r.DefaultVatMode, ignoreCase: true),
     r.IsActive,
-    r.OneDriveDestination,
+    InjectEnvironmentFolder(r.OneDriveDestination, isTest),
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
     r.BillingAccountId,
     r.DateToleranceDays,
@@ -68,6 +84,11 @@ try
     if (ensureSchema)
     {
         await EnsureSchemaAsync(cosmosClient, databaseName);
+    }
+
+    if (clearDatabase)
+    {
+        await ClearDatabaseAsync(cosmosClient, databaseName);
     }
 
     var repository = new CosmosInvoiceConfigurationRepository(cosmosClient, databaseName);
@@ -141,4 +162,109 @@ static async Task EnsureSchemaAsync(CosmosClient client, string databaseName)
             new ContainerProperties(container.Name, container.PartitionKeyPath));
         Console.WriteLine($"Ensured container '{container.Name}' ({container.PartitionKeyPath}).");
     }
+}
+
+// Deletes every item from each known container using data-plane deletes only, so it works
+// with just the seeder's Cosmos data-plane role (no control-plane container recreate).
+static async Task ClearDatabaseAsync(CosmosClient client, string databaseName)
+{
+    foreach (var definition in CosmosSchema.Containers)
+    {
+        var container = client.GetContainer(databaseName, definition.Name);
+        var partitionKeyProperty = definition.PartitionKeyPath.TrimStart('/');
+
+        // Read all ids + partition-key values first, then delete, so we never mutate a
+        // container while its query iterator is still open.
+        var toDelete = new List<(string Id, string PartitionKey)>();
+        using var iterator = container.GetItemQueryIterator<JsonElement>("SELECT * FROM c");
+        while (iterator.HasMoreResults)
+        {
+            foreach (var item in await iterator.ReadNextAsync())
+            {
+                var id = item.GetProperty("id").GetString();
+                var partitionKey = item.GetProperty(partitionKeyProperty).GetString();
+                if (id is not null && partitionKey is not null)
+                {
+                    toDelete.Add((id, partitionKey));
+                }
+            }
+        }
+
+        foreach (var (id, partitionKey) in toDelete)
+        {
+            await container.DeleteItemAsync<JsonElement>(id, new PartitionKey(partitionKey));
+        }
+
+        Console.WriteLine($"Cleared {toDelete.Count} item(s) from '{definition.Name}'.");
+    }
+}
+
+// For the test environment, nest every OneDrive destination under a single root "Test"
+// folder (inserted immediately after the drive "root:/" marker), mirroring the production
+// tree inside it so test downloads never collide with production files.
+static string InjectEnvironmentFolder(string oneDriveDestination, bool isTest)
+{
+    if (!isTest)
+    {
+        return oneDriveDestination;
+    }
+
+    const string rootMarker = "root:/";
+    var markerIndex = oneDriveDestination.IndexOf(rootMarker, StringComparison.Ordinal);
+    if (markerIndex < 0)
+    {
+        // Unrecognised path shape; leave it untouched rather than corrupt it.
+        return oneDriveDestination;
+    }
+
+    var insertionPoint = markerIndex + rootMarker.Length;
+    return string.Concat(
+        oneDriveDestination.AsSpan(0, insertionPoint),
+        "Test/",
+        oneDriveDestination.AsSpan(insertionPoint));
+}
+
+static (bool EnsureSchema, bool ClearDatabase, bool Force, string? Environment, string[] Positional) ParseArgs(string[] args)
+{
+    var ensureSchema = false;
+    var clearDatabase = false;
+    var force = false;
+    string? environment = null;
+    var positional = new List<string>();
+
+    for (var i = 0; i < args.Length; i++)
+    {
+        var arg = args[i];
+        if (arg.Equals("--ensure-schema", StringComparison.OrdinalIgnoreCase))
+        {
+            ensureSchema = true;
+        }
+        else if (arg.Equals("--clear-database", StringComparison.OrdinalIgnoreCase))
+        {
+            clearDatabase = true;
+        }
+        else if (arg.Equals("--force", StringComparison.OrdinalIgnoreCase))
+        {
+            force = true;
+        }
+        else if (arg.Equals("--environment", StringComparison.OrdinalIgnoreCase))
+        {
+            if (i + 1 >= args.Length)
+            {
+                throw new ArgumentException("--environment requires a value, e.g. --environment test.");
+            }
+
+            environment = args[++i];
+        }
+        else if (arg.StartsWith("--", StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"Unknown option '{arg}'.");
+        }
+        else
+        {
+            positional.Add(arg);
+        }
+    }
+
+    return (ensureSchema, clearDatabase, force, environment, positional.ToArray());
 }

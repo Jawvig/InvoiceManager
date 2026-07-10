@@ -1,0 +1,184 @@
+name: Deploy
+
+# Runs only after the CI workflow completes successfully on main, so deployment always
+# follows a green build + test. Feature branches and pull requests never deploy.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write # push the admin website image to ghcr
+  id-token: write # Azure OIDC login
+
+jobs:
+  build-images:
+    name: Build & publish artifacts
+    # For workflow_run, only proceed when CI passed. workflow_dispatch has no such gate.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Build the exact commit CI validated (workflow_run reports the triggering SHA).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Compute image reference
+        id: meta
+        run: |
+          owner_lc=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${owner_lc}/invoicemanager-adminweb" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      # --- Admin website container image (public ghcr package) ---
+      - name: Log in to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push admin website image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/InvoiceManager.AdminWeb/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:latest
+
+      # --- Functions app package ---
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '11.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Publish Functions app
+        run: dotnet publish src/InvoiceManager.Functions/InvoiceManager.Functions.csproj --configuration Release --output ./functions_publish
+
+      - name: Upload Functions package
+        uses: actions/upload-artifact@v7
+        with:
+          name: functions-package
+          path: ./functions_publish
+
+  deploy-test:
+    name: Deploy (test)
+    needs: build-images
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - name: Check infrastructure is provisioned
+        id: check
+        # Deploy-Infra.ps1 publishes these Environment variables after a successful apply.
+        # Before infra exists they are empty, so we skip deployment gracefully instead of failing.
+        run: |
+          if [ -z "${{ vars.FUNCTIONS_APP_NAME }}" ] || [ -z "${{ vars.ADMINWEB_CONTAINER_APP_NAME }}" ]; then
+            echo "::notice::Infrastructure not provisioned for 'test' (GitHub Environment variables unset). Run scripts/Deploy-Infra.ps1 -Environment test. Skipping deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Azure login
+        if: steps.check.outputs.ready == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download Functions package
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: functions-package
+          path: ./functions_publish
+
+      - name: Deploy Functions app
+        if: steps.check.outputs.ready == 'true'
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.FUNCTIONS_APP_NAME }}
+          package: ./functions_publish
+
+      - name: Deploy admin website
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          az containerapp update \
+            --name "${{ vars.ADMINWEB_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ needs.build-images.outputs.image }}:${{ needs.build-images.outputs.tag }}"
+
+      - name: Smoke check
+        if: steps.check.outputs.ready == 'true'
+        continue-on-error: true
+        run: |
+          curl -fsS --retry 5 --retry-all-errors "${{ vars.FUNCTIONS_DEFAULT_HOSTNAME }}/api/health"
+          curl -fsS --retry 5 --retry-all-errors "https://${{ vars.ADMINWEB_FQDN }}/health"
+
+  deploy-production:
+    name: Deploy (production)
+    needs: [build-images, deploy-test]
+    runs-on: ubuntu-latest
+    # The 'production' GitHub Environment carries the required-reviewer approval gate.
+    environment: production
+    steps:
+      - name: Check infrastructure is provisioned
+        id: check
+        run: |
+          if [ -z "${{ vars.FUNCTIONS_APP_NAME }}" ] || [ -z "${{ vars.ADMINWEB_CONTAINER_APP_NAME }}" ]; then
+            echo "::notice::Infrastructure not provisioned for 'production'. Run scripts/Deploy-Infra.ps1 -Environment production. Skipping deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Azure login
+        if: steps.check.outputs.ready == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download Functions package
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: functions-package
+          path: ./functions_publish
+
+      - name: Deploy Functions app
+        if: steps.check.outputs.ready == 'true'
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.FUNCTIONS_APP_NAME }}
+          package: ./functions_publish
+
+      - name: Deploy admin website
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          az containerapp update \
+            --name "${{ vars.ADMINWEB_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ needs.build-images.outputs.image }}:${{ needs.build-images.outputs.tag }}"
+
+      - name: Smoke check
+        if: steps.check.outputs.ready == 'true'
+        continue-on-error: true
+        run: |
+          curl -fsS --retry 5 --retry-all-errors "${{ vars.FUNCTIONS_DEFAULT_HOSTNAME }}/api/health"
+          curl -fsS --retry 5 --retry-all-errors "https://${{ vars.ADMINWEB_FQDN }}/health"

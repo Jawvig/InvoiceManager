@@ -32,7 +32,19 @@ variable "location" {
 }
 
 variable "redirect_uris" {
-  description = "Allowed web redirect URIs for the future admin authentication site."
+  description = "Additional allowed web redirect URIs (e.g. https://localhost:5001/signin-oidc for local admin auth). The deployed Container Apps callback is appended automatically."
   type        = list(string)
   default     = []
+}
+
+variable "adminweb_image" {
+  description = "Container image for the admin website, published to a public ghcr.io package. CI updates the running tag out-of-band, so this is only the initial/bootstrap reference."
+  type        = string
+  default     = "mcr.microsoft.com/azuredocs/aci-helloworld:latest"
+}
+
+variable "functions_runtime_version" {
+  description = "dotnet-isolated stack version for the Flex Consumption Functions app. The code targets net11.0; override if Azure does not yet offer that stack."
+  type        = string
+  default     = "11.0"
 }
