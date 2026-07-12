@@ -20,8 +20,16 @@ param(
 
     # Build and push the real admin website image before applying, so the Container App is
     # created against a genuine image (a better apply test than the bootstrap reference).
-    [switch] $PublishAdminWebImage
+    [switch] $PublishAdminWebImage,
+
+    # Use an already-published admin website image reference (no build/push). Mutually
+    # exclusive with -PublishAdminWebImage; use when the image was pushed out-of-band.
+    [string] $AdminWebImage
 )
+
+if ($PublishAdminWebImage -and $AdminWebImage) {
+    throw "-PublishAdminWebImage and -AdminWebImage are mutually exclusive."
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -410,9 +418,21 @@ function Publish-GitHubEnvironmentVariables {
         Pop-Location
     }
 
-    # GitHub Environment variable name -> Terraform output value. The environment is named
-    # after the deployment environment (test/production) and also carries the production
-    # approval gate.
+    # Ensure the target GitHub Environment exists before setting environment-scoped variables
+    # (setting a variable does not auto-create the environment). Idempotent; tolerate failure
+    # such as insufficient token scope. The production environment additionally carries the
+    # required-reviewer approval gate, configured separately in repository settings.
+    try {
+        Invoke-CheckedCommand -Command @(
+            "gh", "api", "--method", "PUT", "repos/{owner}/{repo}/environments/$Environment", "--silent"
+        )
+        Write-Host "Ensured GitHub environment '$Environment' exists."
+    }
+    catch {
+        Write-Warning "Could not ensure the GitHub '$Environment' environment exists; variable publishing may fail."
+    }
+
+    # GitHub Environment variable name -> Terraform output value.
     $variables = [ordered]@{
         FUNCTIONS_APP_NAME          = $outputs.functions_app_name.value
         FUNCTIONS_DEFAULT_HOSTNAME  = $outputs.functions_default_hostname.value
@@ -434,6 +454,10 @@ function Publish-GitHubEnvironmentVariables {
             Write-Warning "  Failed to set $name (does the GitHub '$Environment' environment exist?)."
         }
     }
+
+    # The tolerated gh failures above leave $LASTEXITCODE non-zero, which would otherwise make
+    # the whole script report failure despite a successful deploy. Reset it on this path.
+    $global:LASTEXITCODE = 0
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -508,6 +532,7 @@ try {
 
     # Electively build + push the real admin website image and pin the plan to it, so the
     # Container App is created against a genuine image rather than the bootstrap reference.
+    # -AdminWebImage takes an already-published reference and skips the build/push.
     if ($PublishAdminWebImage) {
         Write-Section "Publishing admin website image"
         $publishScript = Join-Path $PSScriptRoot "Publish-AdminWebImage.ps1"
@@ -518,6 +543,10 @@ try {
         }
         Write-Host "Admin website image: $adminWebImage"
         $planArgs += "-var=adminweb_image=$adminWebImage"
+    }
+    elseif ($AdminWebImage) {
+        Write-Host "Using pre-published admin website image: $AdminWebImage"
+        $planArgs += "-var=adminweb_image=$AdminWebImage"
     }
 
     $planArgs += "-out=$Environment.tfplan"
