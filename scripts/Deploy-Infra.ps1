@@ -419,17 +419,33 @@ function Publish-GitHubEnvironmentVariables {
     }
 
     # Ensure the target GitHub Environment exists before setting environment-scoped variables
-    # (setting a variable does not auto-create the environment). Idempotent; tolerate failure
-    # such as insufficient token scope. The production environment additionally carries the
-    # required-reviewer approval gate, configured separately in repository settings.
+    # (setting a variable does not auto-create the environment). Create it ONLY when absent:
+    # a bare PUT replaces the environment and would reset its protection rules, wiping the
+    # production required-reviewer/branch-policy gate. Tolerate failure (e.g. token scope).
+    $environmentExists = $false
     try {
         Invoke-CheckedCommand -Command @(
-            "gh", "api", "--method", "PUT", "repos/{owner}/{repo}/environments/$Environment", "--silent"
+            "gh", "api", "repos/{owner}/{repo}/environments/$Environment", "--silent"
         )
-        Write-Host "Ensured GitHub environment '$Environment' exists."
+        $environmentExists = $true
     }
     catch {
-        Write-Warning "Could not ensure the GitHub '$Environment' environment exists; variable publishing may fail."
+        $environmentExists = $false
+    }
+
+    if ($environmentExists) {
+        Write-Host "GitHub environment '$Environment' already exists; leaving its protection rules unchanged."
+    }
+    else {
+        try {
+            Invoke-CheckedCommand -Command @(
+                "gh", "api", "--method", "PUT", "repos/{owner}/{repo}/environments/$Environment", "--silent"
+            )
+            Write-Host "Created GitHub environment '$Environment'."
+        }
+        catch {
+            Write-Warning "Could not create the GitHub '$Environment' environment; variable publishing may fail."
+        }
     }
 
     # GitHub Environment variable name -> Terraform output value.
