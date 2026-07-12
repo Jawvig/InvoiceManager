@@ -317,9 +317,18 @@ environments: `FUNCTIONS_APP_NAME`, `FUNCTIONS_DEFAULT_HOSTNAME`,
    `az containerapp update --image ...:<sha>`. **Before `Deploy-Infra.ps1` has
    ever run the variables are empty, so the job skips gracefully instead of
    failing.**
-3. **deploy-production** (`environment: production`): same steps after test; the
-   `production` GitHub Environment's required-reviewer rule is the manual
-   approval gate.
+3. **deploy-production** (`environment: production`): same steps after test.
+   Guarded two ways:
+   - A **job-level `if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'`**. Environment
+     variables are invisible to a job-level `if`, so the guard uses a
+     repository-level variable that `Deploy-Infra.ps1 -Environment production`
+     sets after a successful production apply. Until production is live the job is
+     skipped entirely, so it does not queue an approval prompt on every push to
+     `main`.
+   - Once the job does start, the **`production` GitHub Environment's
+     required-reviewer rule** (and a `main`-only deployment branch policy) is the
+     manual approval gate. `Deploy-Infra.ps1` creates the environment only when
+     absent so it never resets these protection rules.
 
 The Container App's image is managed by CI via `az containerapp update`;
 Terraform uses `ignore_changes` on the container image so it does not revert the

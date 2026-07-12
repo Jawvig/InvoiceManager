@@ -471,6 +471,20 @@ function Publish-GitHubEnvironmentVariables {
         }
     }
 
+    # Repository-level flag that enables the deploy workflow's production job. It gates that
+    # job at the job level (environment variables are invisible to a job-level `if`), so the
+    # job — and its required-reviewer approval prompt — only appears once production infra
+    # exists. Set only when deploying production.
+    if ($Environment -eq "production") {
+        try {
+            Invoke-CheckedCommand -Command @("gh", "variable", "set", "PRODUCTION_DEPLOY_ENABLED", "--body", "true")
+            Write-Host "  Set repository variable PRODUCTION_DEPLOY_ENABLED=true."
+        }
+        catch {
+            Write-Warning "  Failed to set PRODUCTION_DEPLOY_ENABLED; the production deploy job will stay gated off."
+        }
+    }
+
     # The tolerated gh failures above leave $LASTEXITCODE non-zero, which would otherwise make
     # the whole script report failure despite a successful deploy. Reset it on this path.
     $global:LASTEXITCODE = 0

@@ -135,6 +135,12 @@ jobs:
     name: Deploy (production)
     needs: [build-images, deploy-test]
     runs-on: ubuntu-latest
+    # Job-level guard: only start this job once production infrastructure exists. Environment
+    # variables are not visible to a job-level `if` (the environment is not assigned until the
+    # job starts), so gate on a repository variable that Deploy-Infra.ps1 sets after a
+    # successful production apply. This prevents the job from starting — and pinging the
+    # required reviewer for approval — on every push to main before production is live.
+    if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
     # The 'production' GitHub Environment carries the required-reviewer approval gate.
     environment: production
     steps:
