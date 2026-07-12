@@ -75,6 +75,10 @@ jobs:
         with:
           name: functions-package
           path: ./functions_publish
+          # The .NET isolated publish output has a hidden `.azurefunctions` directory that
+          # Flex Consumption requires at the zip root. upload-artifact excludes hidden files
+          # by default, which drops it and fails deployment with InvalidPackageContentException.
+          include-hidden-files: true
 
   deploy-test:
     name: Deploy (test)
