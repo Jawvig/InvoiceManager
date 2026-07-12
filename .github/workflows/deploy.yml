@@ -66,9 +66,9 @@ jobs:
           dotnet-quality: 'preview'
 
       - name: Publish Functions app
-        # net10.0 is the framework Flex Consumption supports; the project multi-targets
-        # net10.0;net11.0 so the framework must be pinned for publish.
-        run: dotnet publish src/InvoiceManager.Functions/InvoiceManager.Functions.csproj --configuration Release --framework net10.0 --output ./functions_publish
+        # PublishForAzure flips the single-target Functions project to net10.0 (the framework
+        # Flex Consumption supports; it has no net11.0 stack).
+        run: dotnet publish src/InvoiceManager.Functions/InvoiceManager.Functions.csproj --configuration Release -p:PublishForAzure=true --output ./functions_publish
 
       - name: Upload Functions package
         uses: actions/upload-artifact@v7
