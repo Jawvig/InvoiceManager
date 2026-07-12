@@ -47,3 +47,38 @@ output "key_vault_uri" {
   description = "Key Vault URI for environment secrets."
   value       = azurerm_key_vault.invoice_manager.vault_uri
 }
+
+output "functions_app_name" {
+  description = "Azure Functions app name. Consumed by CI to deploy the published package."
+  value       = azurerm_function_app_flex_consumption.functions.name
+}
+
+output "functions_default_hostname" {
+  description = "Functions app base URL used by the admin website (Functions:BaseUrl)."
+  value       = "https://${azurerm_function_app_flex_consumption.functions.default_hostname}"
+}
+
+output "adminweb_container_app_name" {
+  description = "Admin website Container App name. Consumed by CI to update the running image."
+  value       = azurerm_container_app.adminweb.name
+}
+
+output "adminweb_fqdn" {
+  description = "Admin website public hostname."
+  value       = local.adminweb_fqdn
+}
+
+output "adminweb_signin_redirect_uri" {
+  description = "Deployed admin website OIDC callback registered on the Entra app."
+  value       = local.adminweb_signin_redirect_uri
+}
+
+output "functions_identity_client_id" {
+  description = "Client ID of the Functions app user-assigned identity."
+  value       = azurerm_user_assigned_identity.functions.client_id
+}
+
+output "adminweb_identity_client_id" {
+  description = "Client ID of the admin website user-assigned identity."
+  value       = azurerm_user_assigned_identity.adminweb.client_id
+}

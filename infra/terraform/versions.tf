@@ -5,8 +5,9 @@ terraform {
 
   required_providers {
     azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      source = "hashicorp/azurerm"
+      # >= 4.20 for a mature azurerm_function_app_flex_consumption resource.
+      version = "~> 4.20"
     }
 
     azuread = {

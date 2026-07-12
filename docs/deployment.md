@@ -62,13 +62,28 @@ Complete
 
 Terraform manages all Azure infrastructure including:
 
-- **Azure Functions**: Consumption plan for the InvoiceManager service.
+- **Azure Functions**: Flex Consumption plan (`azurerm_function_app_flex_consumption`)
+  running the `dotnet-isolated` InvoiceManager service. Flex supports
+  dotnet-isolated 8.0/9.0/10.0 but not net11.0, so the deployed artifact is net10.0
+  (`functions_runtime_version = "10.0"`). The libraries the Functions app depends on
+  multi-target `net10.0;net11.0`, but the **Functions project itself is single-target**
+  (net11.0 for local Aspire runs, net10.0 only when published with
+  `dotnet publish -p:PublishForAzure=true`) — Aspire launches it with `dotnet run`,
+  which rejects a multi-targeted project. The `union` support types absent from
+  net10.0 are polyfilled for that target
+  (`src/InvoiceManager.Core/Polyfills/UnionSupport.cs`).
+- **Admin website**: Azure Container Apps (scale-to-zero) pulling a public
+  ghcr.io image; ingress exposed on port 8080.
 - **Azure Cosmos DB**: Serverless database for invoice configuration and state.
 - **Azure Key Vault**: Secrets storage for credentials and API keys.
-- **Application Insights**: Telemetry and monitoring.
-- **Storage Accounts**: For function app staging and application storage.
+- **Managed identities**: One user-assigned identity per app, each granted the
+  Key Vault and Cosmos DB roles it needs (see below).
+- **Application Insights + Log Analytics**: Telemetry and monitoring, shared by
+  both apps.
+- **Storage Accounts**: Function app host/deployment storage (identity-based).
 - **Microsoft Identity Setup**: Entra app registration, service principal, and
-  local admin redirect URIs used for delegated authorization capture.
+  redirect URIs (local admin plus the deployed Container Apps callback) used for
+  delegated authorization capture.
 
 ### Terraform Structure
 
@@ -99,9 +114,34 @@ The initial Terraform configuration creates the Microsoft identity foundation:
   and captured Microsoft authorization token-cache material.
 - Azure RBAC assignments for Key Vault data-plane access. Terraform grants the
   deployment identity `Key Vault Secrets Officer` on the environment vault so it
-  can write Terraform-managed secrets during apply. Runtime applications should
-  use their own managed identities and narrower Key Vault roles when those Azure
-  hosting resources are added.
+  can write Terraform-managed secrets during apply.
+
+Terraform also creates the runtime hosting and its access grants:
+
+- **Compute**: the Flex Consumption Functions app and the admin website
+  Container App, each with its own user-assigned managed identity.
+- **Key Vault**: both identities receive `Key Vault Secrets Officer` — not the
+  read-only `Secrets User` — because each app reads *and writes*
+  `MicrosoftAuthorization--MsalTokenCache` (MSAL persists the refreshed cache
+  back to the vault).
+- **Cosmos DB** (data plane): the Functions identity gets the built-in
+  **Data Contributor** role (reads/writes invoice records); the admin website
+  identity gets **Data Reader** (it only reads the account for its health check).
+- **Storage**: the Functions identity gets `Storage Blob Data Owner` +
+  `Storage Queue Data Contributor` for the identity-based host storage
+  connection.
+- **App configuration**: Terraform sets each app's settings (Cosmos endpoint +
+  database, the `MicrosoftAuthorization` tenant/client/vault values, App Insights
+  connection string, `Functions:BaseUrl` for the admin site, and `AZURE_CLIENT_ID`
+  so `DefaultAzureCredential` selects the app's user-assigned identity) —
+  mirroring the values Aspire/user-secrets supply locally. `ClientSecret` and the
+  MSAL token cache are never set here; they load from Key Vault at runtime.
+
+The admin website OIDC callback (`https://adminweb.<env-domain>/signin-oidc`) is
+derived from the Container Apps environment default domain and appended to the
+Entra app registration's redirect URIs. It is computed from the *environment*
+(not the container app resource) to avoid a dependency cycle with the app
+registration that supplies the app's `ClientId`.
 
 ### Environment-Specific Configuration
 
@@ -136,8 +176,16 @@ Use the PowerShell bootstrap script from the repository root:
 Parameter syntax:
 
 ```text
-./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove]
+./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-SkipGitHubVars] [-PublishAdminWebImage]
 ```
+
+`-PublishAdminWebImage` electively runs the admin website image build (the same
+`src/InvoiceManager.AdminWeb/Dockerfile` CI uses, via
+`scripts/Publish-AdminWebImage.ps1`), pushes it to the ghcr package, and pins the
+Terraform plan to that image (`-var=adminweb_image=...`). Use it so the first
+apply creates the Container App against a genuine image on port 8080 rather than
+the stock bootstrap reference. Requires Docker and a prior `docker login ghcr.io`;
+the ghcr package must be made public once for anonymous pulls.
 
 The script:
 
@@ -150,6 +198,23 @@ The script:
 6. Runs `terraform plan`.
 7. Runs `terraform apply` when the plan has changes, unless `-PlanOnly` is
    supplied.
+8. Seeds the invoice configurations, passing `--environment <env>` (and
+   `--clear-database` when `-ClearDatabase` is supplied — see below).
+9. Publishes the deployment-target GitHub Environment variables unless
+   `-SkipGitHubVars` is supplied.
+
+### Seeding behavior (`--environment`, `--clear-database`)
+
+The seeder receives `--environment <env>` so it can make the data
+environment-aware, and optionally `--clear-database`:
+
+- **Test folder isolation**: when the environment is `test`, every configuration's
+  OneDrive destination is nested under a single root `Test` folder (inserted after
+  `root:/`, mirroring the production tree inside it) so test downloads never
+  collide with production files.
+- **`-ClearDatabase`**: deletes all items from the Cosmos containers (data-plane
+  deletes only) before seeding, for a clean re-seed. It is **refused against
+  `production`** unless the seeder is also passed `--force`.
 
 The script does not install Terraform or Azure CLI automatically. If either tool
 is missing, it prints installation instructions for the current operator to
@@ -174,10 +239,18 @@ authorization for Azure Resource Manager and Microsoft Graph, then persists the
 serialized MSAL token cache in the environment Key Vault as
 `MicrosoftAuthorization--MsalTokenCache`.
 
-The first version is local-first. Terraform configures
-`https://localhost:5001/signin-oidc` as the callback URI for both test and
-production app registrations. Deployed hosting for the admin website is a later
-decision.
+The admin website runs both locally (from `src/InvoiceManager.AdminWeb`) and
+deployed to Azure Container Apps. Terraform registers two callback URIs on each
+app registration: the local `https://localhost:5001/signin-oidc` (from
+`redirect_uris` in the `.tfvars`) and the deployed
+`https://adminweb.<env-domain>/signin-oidc` (derived automatically from the
+Container Apps environment). Behind the Container Apps ingress the app honors
+`X-Forwarded-Proto` (forwarded-headers middleware) so the callback is built as
+`https://`.
+
+The deployed image is a **public ghcr.io package** pulled anonymously, so no
+registry credential is stored anywhere and there is nothing to rotate. CI builds
+and pushes the image (see the deploy workflow below).
 
 Terraform creates the admin website application password for every environment
 and stores it in Key Vault as `MicrosoftAuthorization--ClientSecret`. The secret
@@ -207,46 +280,59 @@ files, or manage FreeAgent authorization in this first implementation.
 
 ## GitHub Actions Workflow
 
-The deployment pipeline is orchestrated by GitHub Actions workflows.
+Two workflows orchestrate the pipeline: `ci.yml` (build/test/terraform-validate)
+and `deploy.yml` (deployment). **Infrastructure is provisioned out-of-band by
+`scripts/Deploy-Infra.ps1`** (locally or from an operator machine); the deploy
+workflow only ships application code to infrastructure that already exists.
 
-### Build Workflow
+### CI Workflow (`ci.yml`)
 
-Triggered on: Push to `main` branch or pull request.
+Triggered on: push to `main` and pull requests.
 
-**Steps**:
 1. Checkout code.
 2. Setup .NET 11 preview SDK, as pinned by `global.json`.
-3. Restore NuGet dependencies.
-4. Build solution.
-5. Run unit tests and non-Docker integration checks.
-6. Publish artifacts.
+3. Restore, format-check, build, vulnerable-package check.
+4. Run unit tests and non-Docker checks (`Category!=Integration`).
+5. Terraform `fmt`/`validate`/`tflint`.
 
-### Test Environment Deployment
+### Deploy Workflow (`deploy.yml`)
 
-Triggered on: Successful build on `main` branch.
+Triggered on: successful completion of the CI workflow on `main` (via
+`workflow_run`), so deployment always follows a green build. Feature branches
+and pull requests never deploy.
 
-**Steps**:
-1. Download build artifacts.
-2. Terraform plan (test environment).
-3. Terraform apply (test environment).
-4. Deploy Azure Functions to test.
-5. Run integration tests against test environment.
-6. Publish test results.
+**How CI learns the deployment targets** — after a successful apply (or when
+Terraform reports no changes), `Deploy-Infra.ps1` publishes the concrete target
+names as **GitHub Environment variables** into the `test` / `production`
+environments: `FUNCTIONS_APP_NAME`, `FUNCTIONS_DEFAULT_HOSTNAME`,
+`ADMINWEB_CONTAINER_APP_NAME`, `ADMINWEB_FQDN`, `AZURE_RESOURCE_GROUP`. (Use
+`-SkipGitHubVars` to opt out; requires an authenticated `gh` CLI.)
 
-### Production Approval & Deployment
+**Jobs**:
+1. **build-images**: build + push the admin website image to the public ghcr
+   package (tagged with the commit SHA) using `GITHUB_TOKEN`; `dotnet publish`
+   the Functions app and upload it as an artifact.
+2. **deploy-test** (`environment: test`): if the Environment variables are set
+   (infra exists), Azure OIDC login, deploy the Functions package, and
+   `az containerapp update --image ...:<sha>`. **Before `Deploy-Infra.ps1` has
+   ever run the variables are empty, so the job skips gracefully instead of
+   failing.**
+3. **deploy-production** (`environment: production`): same steps after test.
+   Guarded two ways:
+   - A **job-level `if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'`**. Environment
+     variables are invisible to a job-level `if`, so the guard uses a
+     repository-level variable that `Deploy-Infra.ps1 -Environment production`
+     sets after a successful production apply. Until production is live the job is
+     skipped entirely, so it does not queue an approval prompt on every push to
+     `main`.
+   - Once the job does start, the **`production` GitHub Environment's
+     required-reviewer rule** (and a `main`-only deployment branch policy) is the
+     manual approval gate. `Deploy-Infra.ps1` creates the environment only when
+     absent so it never resets these protection rules.
 
-Triggered on: Manual approval via GitHub Environments.
-
-**Approval Gate**:
-- Requires approval from authorized GitHub users.
-- Can be configured in repository settings under "Environments".
-
-**Steps**:
-1. Download build artifacts.
-2. Terraform plan (production environment).
-3. Terraform apply (production environment).
-4. Deploy Azure Functions to production.
-5. Run smoke tests against production environment.
+The Container App's image is managed by CI via `az containerapp update`;
+Terraform uses `ignore_changes` on the container image so it does not revert the
+running tag to its bootstrap reference.
 
 ## Configuration & Secrets Management
 

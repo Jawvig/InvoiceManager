@@ -15,7 +15,12 @@ resource "azuread_application" "invoice_manager" {
   sign_in_audience = "AzureADMyOrg"
 
   web {
-    redirect_uris = var.redirect_uris
+    # Append the deployed admin website callback to any caller-supplied URIs (e.g. the
+    # local https://localhost:5001/signin-oidc). The URL is derived from the Container Apps
+    # environment default domain plus the fixed app name, NOT from the container app
+    # resource itself: the container app depends on this app registration (for ClientId),
+    # so referencing it here would create a cycle. The environment has no such dependency.
+    redirect_uris = concat(var.redirect_uris, [local.adminweb_signin_redirect_uri])
   }
 
   required_resource_access {
@@ -157,4 +162,275 @@ resource "azurerm_key_vault_secret" "microsoft_authorization_client_secret" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+# ---------------------------------------------------------------------------
+# Managed identities
+#
+# One user-assigned identity per app. User-assigned (rather than system-assigned)
+# lets us grant Key Vault / Cosmos / Storage RBAC BEFORE the apps exist, which
+# matters because each app must already have Key Vault read access the first time
+# it resolves secrets, and it keeps a stable principal across app recreation.
+# ---------------------------------------------------------------------------
+
+resource "azurerm_user_assigned_identity" "functions" {
+  name                = local.functions_identity_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+}
+
+resource "azurerm_user_assigned_identity" "adminweb" {
+  name                = local.adminweb_identity_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+}
+
+# ---------------------------------------------------------------------------
+# Observability: shared Log Analytics workspace + workspace-based App Insights.
+# The workspace also backs the Container Apps environment.
+# ---------------------------------------------------------------------------
+
+resource "azurerm_log_analytics_workspace" "main" {
+  name                = local.log_analytics_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+}
+
+resource "azurerm_application_insights" "main" {
+  name                = local.application_insights_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  workspace_id        = azurerm_log_analytics_workspace.main.id
+  application_type    = "web"
+}
+
+# ---------------------------------------------------------------------------
+# Functions app (Flex Consumption) + host storage
+# ---------------------------------------------------------------------------
+
+resource "azurerm_storage_account" "functions" {
+  name                            = local.functions_storage_name
+  location                        = azurerm_resource_group.invoice_manager.location
+  resource_group_name             = azurerm_resource_group.invoice_manager.name
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  min_tls_version                 = "TLS1_2"
+  allow_nested_items_to_be_public = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azurerm_storage_container" "functions_deployment" {
+  name                  = "deployment"
+  storage_account_id    = azurerm_storage_account.functions.id
+  container_access_type = "private"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azurerm_service_plan" "functions" {
+  name                = local.functions_plan_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  os_type             = "Linux"
+  sku_name            = "FC1"
+}
+
+resource "azurerm_function_app_flex_consumption" "functions" {
+  name                = local.functions_app_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  service_plan_id     = azurerm_service_plan.functions.id
+
+  storage_container_type            = "blobContainer"
+  storage_container_endpoint        = "${azurerm_storage_account.functions.primary_blob_endpoint}${azurerm_storage_container.functions_deployment.name}"
+  storage_authentication_type       = "UserAssignedIdentity"
+  storage_user_assigned_identity_id = azurerm_user_assigned_identity.functions.id
+
+  runtime_name    = "dotnet-isolated"
+  runtime_version = var.functions_runtime_version
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.functions.id]
+  }
+
+  site_config {
+    application_insights_connection_string = azurerm_application_insights.main.connection_string
+  }
+
+  app_settings = {
+    # AZURE_CLIENT_ID pins DefaultAzureCredential to this app's user-assigned identity
+    # (both apps use a parameterless DefaultAzureCredential that cannot otherwise choose).
+    AZURE_CLIENT_ID = azurerm_user_assigned_identity.functions.client_id
+
+    CosmosEndpoint = azurerm_cosmosdb_account.invoice_manager.endpoint
+    CosmosDatabase = local.cosmos_database_name
+
+    MicrosoftAuthorization__TenantId    = data.azurerm_client_config.current.tenant_id
+    MicrosoftAuthorization__ClientId    = azuread_application.invoice_manager.client_id
+    MicrosoftAuthorization__KeyVaultUri = azurerm_key_vault.invoice_manager.vault_uri
+  }
+
+  depends_on = [
+    azurerm_role_assignment.functions_storage_blob_owner,
+    azurerm_role_assignment.functions_storage_queue_contributor,
+  ]
+}
+
+# ---------------------------------------------------------------------------
+# Admin website (Azure Container Apps, public ghcr image)
+# ---------------------------------------------------------------------------
+
+resource "azurerm_container_app_environment" "main" {
+  name                       = local.container_app_environment_name
+  location                   = azurerm_resource_group.invoice_manager.location
+  resource_group_name        = azurerm_resource_group.invoice_manager.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+}
+
+resource "azurerm_container_app" "adminweb" {
+  name                         = local.adminweb_container_app_name
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  resource_group_name          = azurerm_resource_group.invoice_manager.name
+  revision_mode                = "Single"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.adminweb.id]
+  }
+
+  # No registry/secret block: the ghcr package is public, so the pull is anonymous.
+
+  template {
+    min_replicas = 0
+    max_replicas = 1
+
+    container {
+      name   = "adminweb"
+      image  = var.adminweb_image
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.adminweb.client_id
+      }
+      env {
+        # ASP.NET Core listens here; matches the ingress target_port below.
+        name  = "ASPNETCORE_HTTP_PORTS"
+        value = "8080"
+      }
+      env {
+        name  = "CosmosEndpoint"
+        value = azurerm_cosmosdb_account.invoice_manager.endpoint
+      }
+      env {
+        name  = "CosmosDatabase"
+        value = local.cosmos_database_name
+      }
+      env {
+        name  = "MicrosoftAuthorization__TenantId"
+        value = data.azurerm_client_config.current.tenant_id
+      }
+      env {
+        name  = "MicrosoftAuthorization__ClientId"
+        value = azuread_application.invoice_manager.client_id
+      }
+      env {
+        name  = "MicrosoftAuthorization__KeyVaultUri"
+        value = azurerm_key_vault.invoice_manager.vault_uri
+      }
+      env {
+        name  = "Functions__BaseUrl"
+        value = "https://${azurerm_function_app_flex_consumption.functions.default_hostname}"
+      }
+      env {
+        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+        value = azurerm_application_insights.main.connection_string
+      }
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8080
+    transport        = "auto"
+
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+
+  lifecycle {
+    # CI deploys concrete image tags via `az containerapp update --image ...:<sha>`.
+    # Ignore image drift so Terraform does not revert to the bootstrap reference.
+    ignore_changes = [template[0].container[0].image]
+  }
+}
+
+# ---------------------------------------------------------------------------
+# RBAC: Key Vault (data plane)
+#
+# Both identities get Secrets Officer, not the read-only Secrets User: each app
+# reads AND writes MicrosoftAuthorization--MsalTokenCache (MSAL silent-refresh
+# persists the updated cache back), which requires set permission.
+# ---------------------------------------------------------------------------
+
+resource "azurerm_role_assignment" "functions_key_vault_secrets_officer" {
+  scope                = azurerm_key_vault.invoice_manager.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = azurerm_user_assigned_identity.functions.principal_id
+}
+
+resource "azurerm_role_assignment" "adminweb_key_vault_secrets_officer" {
+  scope                = azurerm_key_vault.invoice_manager.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = azurerm_user_assigned_identity.adminweb.principal_id
+}
+
+# ---------------------------------------------------------------------------
+# RBAC: Cosmos DB (data plane)
+#
+# Functions reads/writes invoice records -> Data Contributor.
+# AdminWeb only calls ReadAccountAsync for its health check -> Data Reader.
+# ---------------------------------------------------------------------------
+
+resource "azurerm_cosmosdb_sql_role_assignment" "functions_data_contributor" {
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  account_name        = azurerm_cosmosdb_account.invoice_manager.name
+  role_definition_id  = "${azurerm_cosmosdb_account.invoice_manager.id}/sqlRoleDefinitions/${local.cosmos_data_contributor_role_id}"
+  principal_id        = azurerm_user_assigned_identity.functions.principal_id
+  scope               = azurerm_cosmosdb_account.invoice_manager.id
+}
+
+resource "azurerm_cosmosdb_sql_role_assignment" "adminweb_data_reader" {
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  account_name        = azurerm_cosmosdb_account.invoice_manager.name
+  role_definition_id  = "${azurerm_cosmosdb_account.invoice_manager.id}/sqlRoleDefinitions/${local.cosmos_data_reader_role_id}"
+  principal_id        = azurerm_user_assigned_identity.adminweb.principal_id
+  scope               = azurerm_cosmosdb_account.invoice_manager.id
+}
+
+# ---------------------------------------------------------------------------
+# RBAC: Functions host storage (identity-based AzureWebJobsStorage + deployment)
+# ---------------------------------------------------------------------------
+
+resource "azurerm_role_assignment" "functions_storage_blob_owner" {
+  scope                = azurerm_storage_account.functions.id
+  role_definition_name = "Storage Blob Data Owner"
+  principal_id         = azurerm_user_assigned_identity.functions.principal_id
+}
+
+resource "azurerm_role_assignment" "functions_storage_queue_contributor" {
+  scope                = azurerm_storage_account.functions.id
+  role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.functions.principal_id
 }

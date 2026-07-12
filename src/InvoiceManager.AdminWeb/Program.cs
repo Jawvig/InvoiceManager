@@ -6,12 +6,25 @@ using Microsoft.Azure.Cosmos;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Behind the Azure Container Apps ingress, TLS terminates at the proxy and the app receives
+// plain HTTP with the original scheme in X-Forwarded-Proto. Honor it so HttpsRedirection and
+// the OIDC callback URL are built as https:// (an http:// callback fails Entra validation).
+// The ingress IP is dynamic and is the only route to the container, so the default
+// known-proxy allowlist is cleared.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 var configuredKeyVaultUri = builder.Configuration.GetValue<Uri?>("MicrosoftAuthorization:KeyVaultUri");
 if (configuredKeyVaultUri is not null && !builder.Environment.IsEnvironment("Testing"))
@@ -56,6 +69,9 @@ builder.Services
 builder.Services.AddRazorPages();
 
 var app = builder.Build();
+
+// Must run before anything that inspects the request scheme (HttpsRedirection, auth).
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {

@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
+    <!-- Multi-targeted: net10.0 is deployed to Azure Functions Flex Consumption (which does
+         not yet support net11.0); net11.0 is used locally and by the rest of the solution. -->
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <LangVersion>preview</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

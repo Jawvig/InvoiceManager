@@ -12,8 +12,24 @@ param(
 
     [switch] $PlanOnly,
 
-    [switch] $AutoApprove
+    [switch] $AutoApprove,
+
+    [switch] $ClearDatabase,
+
+    [switch] $SkipGitHubVars,
+
+    # Build and push the real admin website image before applying, so the Container App is
+    # created against a genuine image (a better apply test than the bootstrap reference).
+    [switch] $PublishAdminWebImage,
+
+    # Use an already-published admin website image reference (no build/push). Mutually
+    # exclusive with -PublishAdminWebImage; use when the image was pushed out-of-band.
+    [string] $AdminWebImage
 )
+
+if ($PublishAdminWebImage -and $AdminWebImage) {
+    throw "-PublishAdminWebImage and -AdminWebImage are mutually exclusive."
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -293,7 +309,9 @@ function Set-TestAdminWebLocalConfiguration {
 function Invoke-ConfigurationSeeder {
     param(
         [string] $TerraformRoot,
-        [string] $RepoRoot
+        [string] $RepoRoot,
+        [string] $Environment,
+        [switch] $ClearDatabase
     )
 
     Write-Section "Seeding invoice configurations"
@@ -322,6 +340,15 @@ function Invoke-ConfigurationSeeder {
     # not passed here.
     $env:CosmosEndpoint = $cosmosEndpoint
     $env:CosmosDatabase = $cosmosDatabase
+
+    # Forward the environment so the seeder nests test downloads under a "Test" folder, and
+    # optionally clear the containers first for a clean re-seed.
+    $seederArgs = @($seedFile, "--environment", $Environment)
+    if ($ClearDatabase) {
+        $seederArgs += "--clear-database"
+        Write-Host "Clearing database contents before seeding (--clear-database)."
+    }
+
     try {
         # Build once so every retry runs the pre-compiled binary rather than
         # triggering a fresh compilation on each attempt.
@@ -332,7 +359,7 @@ function Invoke-ConfigurationSeeder {
         # transient 403; all other non-zero exits are permanent failures.
         $maxAttempts = 5
         for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            & dotnet run --project $seederProject --no-build -- $seedFile
+            & dotnet run --project $seederProject --no-build -- @seederArgs
             $exitCode = $LASTEXITCODE
 
             if ($exitCode -eq 0) { return }
@@ -352,6 +379,115 @@ function Invoke-ConfigurationSeeder {
         Remove-Item Env:\CosmosDatabase -ErrorAction SilentlyContinue
         if ($null -ne $savedArmKey) { $env:ARM_ACCESS_KEY = $savedArmKey }
     }
+}
+
+function Publish-GitHubEnvironmentVariables {
+    param(
+        [string] $TerraformRoot,
+        [string] $Environment
+    )
+
+    if ($SkipGitHubVars) {
+        Write-Host "Skipping GitHub environment variable publishing (-SkipGitHubVars)."
+        return
+    }
+
+    Write-Section "Publishing GitHub environment variables"
+
+    # Non-fatal: a missing/unauthenticated gh (or GitHub Environment) should not fail an
+    # otherwise successful infrastructure deploy. CI reads these variables to learn the
+    # concrete deployment targets, and skips deployment gracefully when they are absent.
+    if (-not (Test-Command "gh")) {
+        Write-Warning "GitHub CLI (gh) not found; skipping. Install it and re-run to enable CI deployment, or set the variables manually."
+        return
+    }
+
+    try {
+        Invoke-CheckedCommand -Command @("gh", "auth", "status")
+    }
+    catch {
+        Write-Warning "GitHub CLI is not authenticated (gh auth login); skipping variable publishing."
+        return
+    }
+
+    Push-Location $TerraformRoot
+    try {
+        $outputs = Invoke-JsonCommand -Command @("terraform", "output", "-json")
+    }
+    finally {
+        Pop-Location
+    }
+
+    # Ensure the target GitHub Environment exists before setting environment-scoped variables
+    # (setting a variable does not auto-create the environment). Create it ONLY when absent:
+    # a bare PUT replaces the environment and would reset its protection rules, wiping the
+    # production required-reviewer/branch-policy gate. Tolerate failure (e.g. token scope).
+    $environmentExists = $false
+    try {
+        Invoke-CheckedCommand -Command @(
+            "gh", "api", "repos/{owner}/{repo}/environments/$Environment", "--silent"
+        )
+        $environmentExists = $true
+    }
+    catch {
+        $environmentExists = $false
+    }
+
+    if ($environmentExists) {
+        Write-Host "GitHub environment '$Environment' already exists; leaving its protection rules unchanged."
+    }
+    else {
+        try {
+            Invoke-CheckedCommand -Command @(
+                "gh", "api", "--method", "PUT", "repos/{owner}/{repo}/environments/$Environment", "--silent"
+            )
+            Write-Host "Created GitHub environment '$Environment'."
+        }
+        catch {
+            Write-Warning "Could not create the GitHub '$Environment' environment; variable publishing may fail."
+        }
+    }
+
+    # GitHub Environment variable name -> Terraform output value.
+    $variables = [ordered]@{
+        FUNCTIONS_APP_NAME          = $outputs.functions_app_name.value
+        FUNCTIONS_DEFAULT_HOSTNAME  = $outputs.functions_default_hostname.value
+        ADMINWEB_CONTAINER_APP_NAME = $outputs.adminweb_container_app_name.value
+        ADMINWEB_FQDN               = $outputs.adminweb_fqdn.value
+        AZURE_RESOURCE_GROUP        = $outputs.resource_group_name.value
+    }
+
+    foreach ($name in $variables.Keys) {
+        try {
+            Invoke-CheckedCommand -Command @(
+                "gh", "variable", "set", $name,
+                "--env", $Environment,
+                "--body", $variables[$name]
+            )
+            Write-Host "  Set $name for environment '$Environment'."
+        }
+        catch {
+            Write-Warning "  Failed to set $name (does the GitHub '$Environment' environment exist?)."
+        }
+    }
+
+    # Repository-level flag that enables the deploy workflow's production job. It gates that
+    # job at the job level (environment variables are invisible to a job-level `if`), so the
+    # job — and its required-reviewer approval prompt — only appears once production infra
+    # exists. Set only when deploying production.
+    if ($Environment -eq "production") {
+        try {
+            Invoke-CheckedCommand -Command @("gh", "variable", "set", "PRODUCTION_DEPLOY_ENABLED", "--body", "true")
+            Write-Host "  Set repository variable PRODUCTION_DEPLOY_ENABLED=true."
+        }
+        catch {
+            Write-Warning "  Failed to set PRODUCTION_DEPLOY_ENABLED; the production deploy job will stay gated off."
+        }
+    }
+
+    # The tolerated gh failures above leave $LASTEXITCODE non-zero, which would otherwise make
+    # the whole script report failure despite a successful deploy. Reset it on this path.
+    $global:LASTEXITCODE = 0
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -417,21 +553,45 @@ try {
 
     $tfVarsFile = "$Environment.tfvars"
 
-    & terraform plan `
-        -detailed-exitcode `
-        "-var-file=$tfVarsFile" `
-        "-var=location=$Location" `
-        "-var=application_name=$ApplicationName" `
-        "-out=$Environment.tfplan"
+    $planArgs = @(
+        "-detailed-exitcode",
+        "-var-file=$tfVarsFile",
+        "-var=location=$Location",
+        "-var=application_name=$ApplicationName"
+    )
+
+    # Electively build + push the real admin website image and pin the plan to it, so the
+    # Container App is created against a genuine image rather than the bootstrap reference.
+    # -AdminWebImage takes an already-published reference and skips the build/push.
+    if ($PublishAdminWebImage) {
+        Write-Section "Publishing admin website image"
+        $publishScript = Join-Path $PSScriptRoot "Publish-AdminWebImage.ps1"
+        $imageTag = "$Environment-$(Get-Date -Format yyyyMMddHHmmss)"
+        $adminWebImage = & $publishScript -Tag $imageTag -Push | Select-Object -Last 1
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($adminWebImage)) {
+            throw "Failed to publish the admin website image."
+        }
+        Write-Host "Admin website image: $adminWebImage"
+        $planArgs += "-var=adminweb_image=$adminWebImage"
+    }
+    elseif ($AdminWebImage) {
+        Write-Host "Using pre-published admin website image: $AdminWebImage"
+        $planArgs += "-var=adminweb_image=$AdminWebImage"
+    }
+
+    $planArgs += "-out=$Environment.tfplan"
+
+    & terraform plan @planArgs
     $planExitCode = $LASTEXITCODE
 
     if ($planExitCode -eq 0) {
         Write-Host "Terraform plan completed with no changes."
         if (-not $PlanOnly) {
-            Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot
+            Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
             if ($Environment -eq "test") {
                 Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
             }
+            Publish-GitHubEnvironmentVariables -TerraformRoot $terraformRoot -Environment $Environment
         }
         return
     }
@@ -458,11 +618,13 @@ try {
 
     Invoke-CheckedCommand -Command $applyCommand
 
-    Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot
+    Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
 
     if ($Environment -eq "test") {
         Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
     }
+
+    Publish-GitHubEnvironmentVariables -TerraformRoot $terraformRoot -Environment $Environment
 }
 finally {
     Pop-Location
