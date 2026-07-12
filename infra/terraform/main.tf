@@ -218,12 +218,20 @@ resource "azurerm_storage_account" "functions" {
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"
   allow_nested_items_to_be_public = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_storage_container" "functions_deployment" {
   name                  = "deployment"
   storage_account_id    = azurerm_storage_account.functions.id
   container_access_type = "private"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_service_plan" "functions" {
