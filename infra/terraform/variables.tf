@@ -48,3 +48,35 @@ variable "functions_runtime_version" {
   type        = string
   default     = "10.0"
 }
+
+# ---------------------------------------------------------------------------
+# GitHub CI consolidation
+#
+# No account identity is hardcoded here: Deploy-Infra.ps1 derives these from the
+# authenticated `gh` context and passes them as -var. The empty-string defaults
+# only exist so a manage_github = false apply is not forced to supply them.
+# ---------------------------------------------------------------------------
+
+variable "github_owner" {
+  description = "GitHub account/organization that owns the repository. Must be provided by Deploy-Infra.ps1 (derived from `gh repo view`); required when manage_github is true."
+  type        = string
+  default     = ""
+}
+
+variable "github_repository" {
+  description = "GitHub repository name. Must be provided by Deploy-Infra.ps1 (derived from `gh repo view`); required when manage_github is true."
+  type        = string
+  default     = ""
+}
+
+variable "production_reviewer" {
+  description = "GitHub login of the required reviewer for the production deploy environment. Must be provided by Deploy-Infra.ps1 (derived from `gh api user`) for production applies."
+  type        = string
+  default     = ""
+}
+
+variable "manage_github" {
+  description = "When true, Terraform owns the GitHub deploy environment, its protection rules, the CI identity secrets, and the deploy-target variables. Set false for a GitHub-less apply."
+  type        = bool
+  default     = true
+}

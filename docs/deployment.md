@@ -176,7 +176,7 @@ Use the PowerShell bootstrap script from the repository root:
 Parameter syntax:
 
 ```text
-./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-SkipGitHubVars] [-PublishAdminWebImage]
+./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-PublishAdminWebImage]
 ```
 
 `-PublishAdminWebImage` electively runs the admin website image build (the same
@@ -189,19 +189,27 @@ the ghcr package must be made public once for anonymous pulls.
 
 The script:
 
-1. Checks that Terraform is installed.
-2. Checks that Azure CLI is installed.
-3. Prompts for Azure CLI login when needed.
+1. Checks that Terraform, Azure CLI, and GitHub CLI (`gh`) are installed.
+2. Prompts for Azure CLI login when needed.
+3. Confirms `gh` is authenticated and sources `GITHUB_TOKEN` from
+   `gh auth token` so the `github` Terraform provider can manage the deploy
+   environment. It also derives `github_owner` / `github_repository` (from
+   `gh repo view`) and `production_reviewer` (from `gh api user`) and passes
+   them to Terraform as `-var`, so no account identity is hardcoded.
 4. Creates the environment-specific Terraform state resource group, storage
    account, and blob container if missing.
 5. Runs `terraform init`.
 6. Runs `terraform plan`.
-7. Runs `terraform apply` when the plan has changes, unless `-PlanOnly` is
-   supplied.
-8. Seeds the invoice configurations, passing `--environment <env>` (and
+7. On the first apply only, deletes any leftover deploy-target GitHub
+   Environment variables that the retired publishing step created out-of-band
+   (they would otherwise collide with the provider's create); skipped once
+   Terraform owns them.
+8. Runs `terraform apply` when the plan has changes, unless `-PlanOnly` is
+   supplied. Terraform provisions the per-environment CI identity, its RBAC, and
+   the GitHub deploy environment, secrets, and variables (see the workflow
+   section below).
+9. Seeds the invoice configurations, passing `--environment <env>` (and
    `--clear-database` when `-ClearDatabase` is supplied — see below).
-9. Publishes the deployment-target GitHub Environment variables unless
-   `-SkipGitHubVars` is supplied.
 
 ### Seeding behavior (`--environment`, `--clear-database`)
 
@@ -301,12 +309,33 @@ Triggered on: successful completion of the CI workflow on `main` (via
 `workflow_run`), so deployment always follows a green build. Feature branches
 and pull requests never deploy.
 
-**How CI learns the deployment targets** — after a successful apply (or when
-Terraform reports no changes), `Deploy-Infra.ps1` publishes the concrete target
-names as **GitHub Environment variables** into the `test` / `production`
-environments: `FUNCTIONS_APP_NAME`, `FUNCTIONS_DEFAULT_HOSTNAME`,
-`ADMINWEB_CONTAINER_APP_NAME`, `ADMINWEB_FQDN`, `AZURE_RESOURCE_GROUP`. (Use
-`-SkipGitHubVars` to opt out; requires an authenticated `gh` CLI.)
+**How CI authenticates and learns the deployment targets** — the entire
+CI-deployment surface is **Terraform-owned, per environment**. Terraform state is
+already per-environment (a separate backend key per env), so a single config
+produces one CI identity and one GitHub deploy environment per environment,
+isolated from the other:
+
+- **CI identity** — an Entra app + federated credential (pure OIDC, no client
+  secret), federated to only its own GitHub environment
+  (`repo:<owner>/<repo>:environment:<env>`) and granted **Contributor scoped to
+  only that environment's resource group**. Its identifiers are written as
+  **environment-scoped GitHub Actions secrets** `AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (OIDC identifiers, not passwords);
+  `deploy.yml` reads them as `secrets.AZURE_*` unchanged.
+- **Deploy targets** — the concrete target names are written as
+  **environment-scoped GitHub Actions variables**: `FUNCTIONS_APP_NAME`,
+  `FUNCTIONS_DEFAULT_HOSTNAME`, `ADMINWEB_CONTAINER_APP_NAME`, `ADMINWEB_FQDN`,
+  `AZURE_RESOURCE_GROUP`.
+- **Deploy environment + gate** — Terraform (the `integrations/github` provider)
+  owns the `test` / `production` GitHub environment itself, its `main`-only
+  branch policy, and — for production only — the required-reviewer rule
+  (the reviewer is whoever runs `Deploy-Infra.ps1`, resolved from `gh api user`).
+  The environment and secrets are created-or-updated (PUT), so they adopt a
+  pre-existing GitHub environment with no `terraform import` and never drop the
+  reviewer gate.
+
+Set `manage_github = false` (via `-var`) for a GitHub-less apply that skips all
+of the above.
 
 **Jobs**:
 1. **build-images**: build + push the admin website image to the public ghcr
@@ -327,8 +356,9 @@ environments: `FUNCTIONS_APP_NAME`, `FUNCTIONS_DEFAULT_HOSTNAME`,
      `main`.
    - Once the job does start, the **`production` GitHub Environment's
      required-reviewer rule** (and a `main`-only deployment branch policy) is the
-     manual approval gate. `Deploy-Infra.ps1` creates the environment only when
-     absent so it never resets these protection rules.
+     manual approval gate. Terraform owns this environment and its protection
+     rules; because it creates-or-updates via PUT, the reviewer gate is set
+     atomically on first apply and never dropped (no `terraform import` needed).
 
 The Container App's image is managed by CI via `az containerapp update`;
 Terraform uses `ignore_changes` on the container image so it does not revert the
@@ -385,14 +415,19 @@ application projects and injects the Functions base URL into the admin website.
 
 #### GitHub Actions Secrets
 
-Repository secrets are configured in GitHub Settings → Secrets and Variables:
+The CI identity's OIDC identifiers are **environment-scoped** secrets that
+Terraform manages per environment (not repository-level secrets, and not
+hand-configured in the GitHub UI):
 
 - `AZURE_SUBSCRIPTION_ID`: Azure subscription for deployment.
 - `AZURE_TENANT_ID`: Azure AD tenant ID.
-- `AZURE_CLIENT_ID`: Service principal app ID for CI/CD.
-- `AZURE_CLIENT_SECRET`: Service principal secret for CI/CD.
+- `AZURE_CLIENT_ID`: The per-environment CI Entra app's client id.
 
-These are accessed in workflows via `${{ secrets.AZURE_SUBSCRIPTION_ID }}`.
+There is **no `AZURE_CLIENT_SECRET`** — authentication is pure OIDC federation
+(GitHub → Azure token exchange), so there is no password to store or rotate.
+These are accessed in workflows via `${{ secrets.AZURE_CLIENT_ID }}` within the
+`environment: test` / `environment: production` jobs, which resolve to the
+matching environment's secret.
 
 #### Azure Key Vault
 
@@ -468,24 +503,33 @@ environment = "test"
 environment = "production"
 ```
 
-## CI/CD Service Principal
+## CI/CD Identity
 
-A dedicated service principal is used for GitHub Actions deployments:
+The GitHub Actions deployment identity is **Terraform-owned, one per environment**
+(`infra/terraform/ci.tf`). There is no manual setup and no shared identity across
+environments:
 
-1. **Setup** (one-time):
-   - Create a service principal in Azure AD.
-   - Grant necessary RBAC roles (e.g., Owner or custom role for test/prod resource groups).
-   - Store credentials in GitHub repository secrets.
+1. **Provisioning** (by `Deploy-Infra.ps1` at apply time):
+   - An Entra app + service principal (`InvoiceManager-GitHubActions` for
+     production, `-test` suffix for test).
+   - A federated identity credential subject to only that environment's GitHub
+     deploy environment — no client secret.
+   - A **Contributor** role assignment scoped to only that environment's resource
+     group.
 
 2. **Permissions**:
-   - Manage resources in test and production resource groups.
-   - Read/write Terraform backend state.
-   - Deploy Azure Functions.
+   - Manage resources in **only its own** resource group (test CI cannot touch
+     production and vice-versa).
+   - Deploy the Functions package (Kudu) and update the Container App image.
+   - Terraform backend state is accessed by the operator running
+     `Deploy-Infra.ps1`, not by the CI identity.
 
 3. **Security**:
-   - Use `AZURE_CLIENT_SECRET` only in GitHub (never commit).
-   - Rotate credentials regularly.
-   - Consider using GitHub OIDC federation (federated credentials) instead of secrets for improved security.
+   - Pure OIDC federation — no stored secret to leak or rotate.
+   - Per-environment isolation limits blast radius.
+   - The identity, its RBAC, and the GitHub environment/secrets/variables are all
+     declared in Terraform and visible to code review, rather than hand-built
+     out-of-band.
 
 ## Deployment Checklist
 

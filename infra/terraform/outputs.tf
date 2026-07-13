@@ -82,3 +82,13 @@ output "adminweb_identity_client_id" {
   description = "Client ID of the admin website user-assigned identity."
   value       = azurerm_user_assigned_identity.adminweb.client_id
 }
+
+output "github_actions_client_id" {
+  description = "Client ID of the per-environment GitHub Actions CI Entra app (AZURE_CLIENT_ID for deploy.yml)."
+  value       = azuread_application.github_actions.client_id
+}
+
+output "github_actions_app_object_id" {
+  description = "Object ID of the per-environment GitHub Actions CI Entra app registration."
+  value       = azuread_application.github_actions.object_id
+}

@@ -8,6 +8,10 @@ locals {
   cosmos_account_name      = "${local.resource_name_prefix}-cosmos"
   cosmos_database_name     = "invoicemanager"
 
+  # Per-environment CI identity display name (e.g. InvoiceManager-GitHubActions-test;
+  # unsuffixed for production).
+  github_actions_app_display_name = "InvoiceManager-GitHubActions${local.environment_suffix}"
+
   log_analytics_name        = "${local.resource_name_prefix}-logs"
   application_insights_name = "${local.resource_name_prefix}-appi"
 
