@@ -49,6 +49,12 @@ variable "functions_runtime_version" {
   default     = "10.0"
 }
 
+variable "function_invoker_user_object_id" {
+  description = "Entra object ID of the operator granted the Functions 'Invoke' app role (so they can call the endpoint directly). Deploy-Infra.ps1 derives this from the signed-in user (az ad signed-in-user show); no account identity is hardcoded. Empty for a CI/service-principal apply, which manages no operator assignment."
+  type        = string
+  default     = ""
+}
+
 # ---------------------------------------------------------------------------
 # GitHub CI consolidation
 #

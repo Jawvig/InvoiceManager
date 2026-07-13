@@ -468,6 +468,23 @@ $tenantId = $account.tenantId
 Write-Host "Subscription: $($account.name) ($activeSubscriptionId)"
 Write-Host "Tenant: $tenantId"
 
+Write-Section "Deriving operator identity"
+
+# The signed-in user is granted the Functions "Invoke" app role so they can call the
+# endpoint directly. Derived from the authenticated context, not hardcoded (see
+# [[feedback-no-hardcoded-account-identity]]). A service-principal login (e.g. CI) has no
+# signed-in user, so this stays empty and Terraform manages no operator assignment.
+$functionInvokerUserObjectId = az ad signed-in-user show --query id --output tsv 2>$null
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($functionInvokerUserObjectId)) {
+    $functionInvokerUserObjectId = ""
+    $global:LASTEXITCODE = 0
+    Write-Host "No signed-in user (service-principal login?); no operator Invoke assignment will be managed."
+}
+else {
+    $functionInvokerUserObjectId = $functionInvokerUserObjectId.Trim()
+    Write-Host "Operator object id: $functionInvokerUserObjectId"
+}
+
 if ($SkipGitHubManagement) {
     Write-Section "Skipping GitHub management (-SkipGitHubManagement)"
     Write-Host "Terraform will run with manage_github=false: the CI identity, deploy environment,"
@@ -551,7 +568,8 @@ try {
         "-detailed-exitcode",
         "-var-file=$tfVarsFile",
         "-var=location=$Location",
-        "-var=application_name=$ApplicationName"
+        "-var=application_name=$ApplicationName",
+        "-var=function_invoker_user_object_id=$functionInvokerUserObjectId"
     )
 
     if ($SkipGitHubManagement) {

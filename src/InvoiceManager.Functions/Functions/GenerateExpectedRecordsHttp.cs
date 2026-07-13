@@ -18,7 +18,11 @@ public sealed class GenerateExpectedRecordsHttp(
 
     [Function("GenerateExpectedRecordsHttp")]
     public async Task<HttpResponseData> RunAsync(
-        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req,
+        // Anonymous at the host level: App Service Authentication (Easy Auth, Entra ID)
+        // sits in front and rejects unauthenticated callers with 401, and the app
+        // registration's "Invoke" role is assignment-required, so only the AdminWeb
+        // managed identity and the named operator can obtain a token to reach this.
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("Expected record generation triggered by HTTP request.");
