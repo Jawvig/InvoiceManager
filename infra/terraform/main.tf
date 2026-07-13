@@ -5,6 +5,12 @@ provider "azurerm" {
   features {}
 }
 
+# Authenticates via GITHUB_TOKEN (Deploy-Infra.ps1 sources it from `gh auth token`).
+# Only exercised when var.manage_github is true (see github.tf).
+provider "github" {
+  owner = var.github_owner
+}
+
 resource "azurerm_resource_group" "invoice_manager" {
   name     = local.resource_group_name
   location = var.location

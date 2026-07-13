@@ -16,7 +16,11 @@ param(
 
     [switch] $ClearDatabase,
 
-    [switch] $SkipGitHubVars,
+    # GitHub-less apply: pass -var=manage_github=false and skip every gh interaction (tool
+    # check, auth/token, owner/repo/reviewer derivation, and stale-variable deletion). For
+    # operators who can provision Azure but cannot administer GitHub. The Terraform-owned CI
+    # identity, deploy environment, secrets, and variables are then NOT managed.
+    [switch] $SkipGitHubManagement,
 
     # Build and push the real admin website image before applying, so the Container App is
     # created against a genuine image (a better apply test than the bootstrap reference).
@@ -69,6 +73,23 @@ function Show-AzureCliInstallHelp {
     Write-Host "  Windows: winget install Microsoft.AzureCLI"
     Write-Host "  macOS:   brew install azure-cli"
     Write-Host "  Linux:   follow the Microsoft package repository instructions for your distribution"
+}
+
+function Show-GitHubCliInstallHelp {
+    Write-Host "GitHub CLI (gh) is required but was not found on PATH."
+    Write-Host ""
+    Write-Host "Terraform now owns the GitHub deploy environment, its CI identity secrets, and the"
+    Write-Host "deploy-target variables, so an authenticated gh is required to supply GITHUB_TOKEN."
+    Write-Host ""
+    Write-Host "Install GitHub CLI from:"
+    Write-Host "  https://cli.github.com/"
+    Write-Host ""
+    Write-Host "Common options:"
+    Write-Host "  Windows: winget install GitHub.cli"
+    Write-Host "  macOS:   brew install gh"
+    Write-Host "  Linux:   follow the GitHub CLI package repository instructions for your distribution"
+    Write-Host ""
+    Write-Host "Then authenticate with 'gh auth login' (needs repo + environment admin scope)."
 }
 
 function Invoke-JsonCommand {
@@ -381,112 +402,38 @@ function Invoke-ConfigurationSeeder {
     }
 }
 
-function Publish-GitHubEnvironmentVariables {
-    param(
-        [string] $TerraformRoot,
-        [string] $Environment
-    )
+# The five deploy-target Environment variables Terraform now owns
+# (github_actions_environment_variable in github.tf).
+$script:DeployTargetVariableNames = @(
+    "FUNCTIONS_APP_NAME",
+    "FUNCTIONS_DEFAULT_HOSTNAME",
+    "ADMINWEB_CONTAINER_APP_NAME",
+    "ADMINWEB_FQDN",
+    "AZURE_RESOURCE_GROUP"
+)
 
-    if ($SkipGitHubVars) {
-        Write-Host "Skipping GitHub environment variable publishing (-SkipGitHubVars)."
-        return
-    }
+function Remove-StaleDeployTargetVariables {
+    param([string] $Environment)
 
-    Write-Section "Publishing GitHub environment variables"
+    # One-time migration: the retired Publish-GitHubEnvironmentVariables step POST-created
+    # these five variables out-of-band. On the first apply after consolidation they exist in
+    # GitHub but not in Terraform state, so the github provider's POST-create would 409.
+    # Delete them first so the create succeeds. This needs no Terraform state and therefore no
+    # `terraform import`. The caller only invokes this when the variables are NOT yet managed
+    # by Terraform, so a TF-managed variable is never deleted (which would cause drift).
+    Write-Section "Removing stale deploy-target variables (one-time migration)"
 
-    # Non-fatal: a missing/unauthenticated gh (or GitHub Environment) should not fail an
-    # otherwise successful infrastructure deploy. CI reads these variables to learn the
-    # concrete deployment targets, and skips deployment gracefully when they are absent.
-    if (-not (Test-Command "gh")) {
-        Write-Warning "GitHub CLI (gh) not found; skipping. Install it and re-run to enable CI deployment, or set the variables manually."
-        return
-    }
-
-    try {
-        Invoke-CheckedCommand -Command @("gh", "auth", "status")
-    }
-    catch {
-        Write-Warning "GitHub CLI is not authenticated (gh auth login); skipping variable publishing."
-        return
-    }
-
-    Push-Location $TerraformRoot
-    try {
-        $outputs = Invoke-JsonCommand -Command @("terraform", "output", "-json")
-    }
-    finally {
-        Pop-Location
-    }
-
-    # Ensure the target GitHub Environment exists before setting environment-scoped variables
-    # (setting a variable does not auto-create the environment). Create it ONLY when absent:
-    # a bare PUT replaces the environment and would reset its protection rules, wiping the
-    # production required-reviewer/branch-policy gate. Tolerate failure (e.g. token scope).
-    $environmentExists = $false
-    try {
-        Invoke-CheckedCommand -Command @(
-            "gh", "api", "repos/{owner}/{repo}/environments/$Environment", "--silent"
-        )
-        $environmentExists = $true
-    }
-    catch {
-        $environmentExists = $false
-    }
-
-    if ($environmentExists) {
-        Write-Host "GitHub environment '$Environment' already exists; leaving its protection rules unchanged."
-    }
-    else {
-        try {
-            Invoke-CheckedCommand -Command @(
-                "gh", "api", "--method", "PUT", "repos/{owner}/{repo}/environments/$Environment", "--silent"
-            )
-            Write-Host "Created GitHub environment '$Environment'."
-        }
-        catch {
-            Write-Warning "Could not create the GitHub '$Environment' environment; variable publishing may fail."
+    foreach ($name in $script:DeployTargetVariableNames) {
+        # gh exits non-zero when the variable/environment does not exist; that is expected on
+        # a fresh environment, so tolerate it and only report actual deletions.
+        gh variable delete $name --env $Environment 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Deleted stale variable $name from environment '$Environment'."
         }
     }
 
-    # GitHub Environment variable name -> Terraform output value.
-    $variables = [ordered]@{
-        FUNCTIONS_APP_NAME          = $outputs.functions_app_name.value
-        FUNCTIONS_DEFAULT_HOSTNAME  = $outputs.functions_default_hostname.value
-        ADMINWEB_CONTAINER_APP_NAME = $outputs.adminweb_container_app_name.value
-        ADMINWEB_FQDN               = $outputs.adminweb_fqdn.value
-        AZURE_RESOURCE_GROUP        = $outputs.resource_group_name.value
-    }
-
-    foreach ($name in $variables.Keys) {
-        try {
-            Invoke-CheckedCommand -Command @(
-                "gh", "variable", "set", $name,
-                "--env", $Environment,
-                "--body", $variables[$name]
-            )
-            Write-Host "  Set $name for environment '$Environment'."
-        }
-        catch {
-            Write-Warning "  Failed to set $name (does the GitHub '$Environment' environment exist?)."
-        }
-    }
-
-    # Repository-level flag that enables the deploy workflow's production job. It gates that
-    # job at the job level (environment variables are invisible to a job-level `if`), so the
-    # job — and its required-reviewer approval prompt — only appears once production infra
-    # exists. Set only when deploying production.
-    if ($Environment -eq "production") {
-        try {
-            Invoke-CheckedCommand -Command @("gh", "variable", "set", "PRODUCTION_DEPLOY_ENABLED", "--body", "true")
-            Write-Host "  Set repository variable PRODUCTION_DEPLOY_ENABLED=true."
-        }
-        catch {
-            Write-Warning "  Failed to set PRODUCTION_DEPLOY_ENABLED; the production deploy job will stay gated off."
-        }
-    }
-
-    # The tolerated gh failures above leave $LASTEXITCODE non-zero, which would otherwise make
-    # the whole script report failure despite a successful deploy. Reset it on this path.
+    # Tolerated gh failures above leave $LASTEXITCODE non-zero; reset so the caller does not
+    # mistake an expected "not found" for a deploy failure.
     $global:LASTEXITCODE = 0
 }
 
@@ -505,6 +452,11 @@ if (-not (Test-Command "az")) {
     exit 1
 }
 
+if (-not $SkipGitHubManagement -and -not (Test-Command "gh")) {
+    Show-GitHubCliInstallHelp
+    exit 1
+}
+
 Write-Host "Terraform: $(terraform version -json | ConvertFrom-Json | Select-Object -ExpandProperty terraform_version)"
 Write-Host "Azure CLI: $(az version --query '\"azure-cli\"' --output tsv)"
 
@@ -515,6 +467,48 @@ $tenantId = $account.tenantId
 
 Write-Host "Subscription: $($account.name) ($activeSubscriptionId)"
 Write-Host "Tenant: $tenantId"
+
+if ($SkipGitHubManagement) {
+    Write-Section "Skipping GitHub management (-SkipGitHubManagement)"
+    Write-Host "Terraform will run with manage_github=false: the CI identity, deploy environment,"
+    Write-Host "secrets, and variables are NOT managed, and no gh interaction occurs."
+}
+else {
+    Write-Section "Checking GitHub authentication"
+
+    # The github Terraform provider owns the deploy environment, its CI identity secrets, and the
+    # deploy-target variables, so it needs an authenticated gh to source GITHUB_TOKEN from.
+    # Operators without GitHub admin access can opt out entirely with -SkipGitHubManagement.
+    try {
+        Invoke-CheckedCommand -Command @("gh", "auth", "status")
+    }
+    catch {
+        throw "GitHub CLI is not authenticated. Run 'gh auth login' (needs repo + environment admin scope), or re-run with -SkipGitHubManagement for a GitHub-less apply."
+    }
+
+    $env:GITHUB_TOKEN = (gh auth token)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        throw "Could not obtain a GitHub token from 'gh auth token'."
+    }
+
+    # Derive the GitHub identity vars from the authenticated context so no account name is
+    # hardcoded in Terraform (see [[feedback-no-hardcoded-account-identity]]).
+    Push-Location $repoRoot
+    try {
+        $repoInfo = Invoke-JsonCommand -Command @("gh", "repo", "view", "--json", "owner,name")
+        $currentUser = Invoke-JsonCommand -Command @("gh", "api", "user")
+    }
+    finally {
+        Pop-Location
+    }
+
+    $githubOwner = $repoInfo.owner.login
+    $githubRepository = $repoInfo.name
+    $productionReviewer = $currentUser.login
+
+    Write-Host "GitHub repository: $githubOwner/$githubRepository"
+    Write-Host "Production reviewer (this user): $productionReviewer"
+}
 
 $suffix = Get-EnvironmentSuffix -Name $Environment
 $storageEnvironmentToken = Get-StorageEnvironmentToken -Name $Environment
@@ -560,6 +554,15 @@ try {
         "-var=application_name=$ApplicationName"
     )
 
+    if ($SkipGitHubManagement) {
+        $planArgs += "-var=manage_github=false"
+    }
+    else {
+        $planArgs += "-var=github_owner=$githubOwner"
+        $planArgs += "-var=github_repository=$githubRepository"
+        $planArgs += "-var=production_reviewer=$productionReviewer"
+    }
+
     # Electively build + push the real admin website image and pin the plan to it, so the
     # Container App is created against a genuine image rather than the bootstrap reference.
     # -AdminWebImage takes an already-published reference and skips the build/push.
@@ -591,13 +594,12 @@ try {
             if ($Environment -eq "test") {
                 Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
             }
-            Publish-GitHubEnvironmentVariables -TerraformRoot $terraformRoot -Environment $Environment
         }
         return
     }
 
     if ($planExitCode -ne 2) {
-        throw "Command failed: terraform plan -detailed-exitcode -var-file=$tfVarsFile -var=location=$Location -var=application_name=$ApplicationName -out=$Environment.tfplan"
+        throw "Command failed: terraform plan $($planArgs -join ' ')"
     }
 
     if ($PlanOnly) {
@@ -613,6 +615,20 @@ try {
         }
     }
 
+    # Delete the out-of-band deploy-target variables just before apply, but only when Terraform
+    # is not already managing them — otherwise the github provider's first POST-create would
+    # 409 against the ones the retired publishing step left behind. Once Terraform owns them
+    # (present in state) they must NOT be deleted, or the applied plan would leave GitHub in a
+    # drifted state. `terraform state list` is the ownership check. Skipped entirely for a
+    # GitHub-less apply, which touches no GitHub state.
+    if (-not $SkipGitHubManagement) {
+        $stateResources = & terraform state list
+        $variablesAlreadyManaged = @($stateResources | Where-Object { $_ -match 'github_actions_environment_variable' }).Count -gt 0
+        if (-not $variablesAlreadyManaged) {
+            Remove-StaleDeployTargetVariables -Environment $Environment
+        }
+    }
+
     $applyCommand = @("terraform", "apply")
     $applyCommand += "$Environment.tfplan"
 
@@ -623,10 +639,9 @@ try {
     if ($Environment -eq "test") {
         Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
     }
-
-    Publish-GitHubEnvironmentVariables -TerraformRoot $terraformRoot -Environment $Environment
 }
 finally {
     Pop-Location
     Remove-Item Env:\ARM_ACCESS_KEY -ErrorAction SilentlyContinue
+    Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue
 }
