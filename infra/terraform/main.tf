@@ -276,6 +276,18 @@ resource "azurerm_function_app_flex_consumption" "functions" {
     # (both apps use a parameterless DefaultAzureCredential that cannot otherwise choose).
     AZURE_CLIENT_ID = azurerm_user_assigned_identity.functions.client_id
 
+    # Identity-based AzureWebJobsStorage (no account key). The functions identity
+    # already holds Storage Blob Data Owner + Storage Queue Data Contributor on this
+    # account (see role assignments below), so the host secrets repository, timer
+    # schedule state and singleton locks authenticate via the user-assigned identity
+    # rather than a shared key. Without these, the platform falls back to a shared-key
+    # connection string whose key goes stale on any storage recreate/rotation and the
+    # host then fails with 403 AuthenticationFailed on the azure-webjobs-secrets
+    # container, which stops all triggers (including the timer) from initializing.
+    AzureWebJobsStorage__accountName = azurerm_storage_account.functions.name
+    AzureWebJobsStorage__credential  = "managedidentity"
+    AzureWebJobsStorage__clientId    = azurerm_user_assigned_identity.functions.client_id
+
     CosmosEndpoint = azurerm_cosmosdb_account.invoice_manager.endpoint
     CosmosDatabase = local.cosmos_database_name
 
