@@ -176,8 +176,15 @@ Use the PowerShell bootstrap script from the repository root:
 Parameter syntax:
 
 ```text
-./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-PublishAdminWebImage]
+./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-SkipGitHubManagement] [-PublishAdminWebImage]
 ```
+
+`-SkipGitHubManagement` runs a **GitHub-less apply**: it passes
+`-var=manage_github=false` and skips every `gh` interaction (the tool check,
+authentication/token, owner/repository/reviewer derivation, and the stale-variable
+cleanup). Use it when an operator can provision Azure but cannot administer
+GitHub; the Terraform-owned CI identity, deploy environment, secrets, and
+variables are then **not** managed (so CI deployment must be wired up separately).
 
 `-PublishAdminWebImage` electively runs the admin website image build (the same
 `src/InvoiceManager.AdminWeb/Dockerfile` CI uses, via
@@ -189,13 +196,16 @@ the ghcr package must be made public once for anonymous pulls.
 
 The script:
 
-1. Checks that Terraform, Azure CLI, and GitHub CLI (`gh`) are installed.
+1. Checks that Terraform, Azure CLI, and GitHub CLI (`gh`) are installed
+   (`gh` is skipped under `-SkipGitHubManagement`).
 2. Prompts for Azure CLI login when needed.
 3. Confirms `gh` is authenticated and sources `GITHUB_TOKEN` from
    `gh auth token` so the `github` Terraform provider can manage the deploy
    environment. It also derives `github_owner` / `github_repository` (from
    `gh repo view`) and `production_reviewer` (from `gh api user`) and passes
-   them to Terraform as `-var`, so no account identity is hardcoded.
+   them to Terraform as `-var`, so no account identity is hardcoded. Under
+   `-SkipGitHubManagement` this whole step is skipped and Terraform runs with
+   `-var=manage_github=false`.
 4. Creates the environment-specific Terraform state resource group, storage
    account, and blob container if missing.
 5. Runs `terraform init`.
@@ -203,7 +213,7 @@ The script:
 7. On the first apply only, deletes any leftover deploy-target GitHub
    Environment variables that the retired publishing step created out-of-band
    (they would otherwise collide with the provider's create); skipped once
-   Terraform owns them.
+   Terraform owns them, and skipped entirely under `-SkipGitHubManagement`.
 8. Runs `terraform apply` when the plan has changes, unless `-PlanOnly` is
    supplied. Terraform provisions the per-environment CI identity, its RBAC, and
    the GitHub deploy environment, secrets, and variables (see the workflow
