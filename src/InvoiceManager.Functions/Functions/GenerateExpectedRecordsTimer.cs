@@ -21,9 +21,10 @@ public sealed class GenerateExpectedRecordsTimer(
 
         var processingResults = await processor.ProcessDueAsync(cancellationToken);
         logger.LogInformation(
-            "Due invoice processing complete: {SavedCount} saved, {NoMatchCount} no match yet, " +
-            "{NotFoundCount} not found, {FailedCount} failed.",
+            "Due invoice processing complete: {SavedCount} saved, {ReconciledCount} reconciled, " +
+            "{NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed.",
             processingResults.Count(r => r is ProcessingSucceeded),
+            processingResults.Count(r => r is ProcessingReconciled),
             processingResults.Count(r => r is ProcessingNoMatch),
             processingResults.Count(r => r is ProcessingNotFound),
             processingResults.Count(r => r is ProcessingFailed));
