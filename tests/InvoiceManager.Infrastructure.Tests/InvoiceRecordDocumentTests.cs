@@ -39,7 +39,9 @@ public sealed class InvoiceRecordDocumentTests
     {
         var record = BuildRecord(new ReconciledFromOneDrive(
             SampleActualDetails,
-            new OneDriveDetails(OneDriveLocation)));
+            new OneDriveDetails(OneDriveLocation),
+            "matched by date and amount",
+            new DateTimeOffset(2025, 7, 6, 8, 30, 0, TimeSpan.Zero)));
 
         var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
 

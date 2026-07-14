@@ -17,4 +17,23 @@ public sealed record InvoiceSearchCriteria(
     DateOnly ExpectedDate,
     int DateToleranceDays,
     Money ExpectedAmount,
-    decimal AmountTolerance);
+    decimal AmountTolerance)
+{
+    /// <summary>
+    /// Whether a candidate with the given actual date and amount satisfies these
+    /// criteria: its date must fall within <see cref="DateToleranceDays"/> of
+    /// <see cref="ExpectedDate"/>, its currency must equal the expected currency,
+    /// and its amount must be within <see cref="AmountTolerance"/> of the expected
+    /// amount.
+    /// </summary>
+    public bool Matches(DateOnly actualDate, Money actualAmount) =>
+        InvoiceMatching.DateAmountAndCurrencyMatch(
+            ExpectedDate, DateToleranceDays, ExpectedAmount, AmountTolerance, actualDate, actualAmount);
+
+    /// <summary>
+    /// The absolute number of days between a candidate's actual date and the
+    /// expected date, used to prefer the closest candidate when several match.
+    /// </summary>
+    public int DateDistanceDays(DateOnly actualDate) =>
+        InvoiceMatching.DateDistanceDays(ExpectedDate, actualDate);
+}

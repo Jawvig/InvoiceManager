@@ -7,6 +7,13 @@ namespace InvoiceManager.Core;
 public sealed record ProcessingSucceeded(InvoiceRecordId RecordId);
 
 /// <summary>
+/// The due invoice was matched to a file already present in OneDrive: the record
+/// was set to <see cref="ReconciledFromOneDrive"/> and the next expected record
+/// created, without calling the source integration or re-uploading.
+/// </summary>
+public sealed record ProcessingReconciled(InvoiceRecordId RecordId);
+
+/// <summary>
 /// No source-system invoice matched the due record, but it is still within its
 /// tolerance window; the record is left <see cref="Expected"/> for a later run to
 /// retry.
@@ -29,6 +36,7 @@ public sealed record ProcessingFailed(InvoiceRecordId RecordId, Exception Except
 /// <summary>The outcome of processing a single due invoice record.</summary>
 public union DueInvoiceProcessingResult(
     ProcessingSucceeded,
+    ProcessingReconciled,
     ProcessingNoMatch,
     ProcessingNotFound,
     ProcessingFailed);

@@ -26,9 +26,15 @@ public sealed record Retrieved(ActualInvoiceDetails ActualDetails);
 
 /// <summary>
 /// The expected invoice was matched to a file already present in OneDrive
-/// before the source integration retrieved a new copy.
+/// before the source integration retrieved a new copy. <see cref="MatchReason"/>
+/// records why the file was accepted and <see cref="ReconciledAt"/> when it
+/// happened, preserving the reconciliation audit trail.
 /// </summary>
-public sealed record ReconciledFromOneDrive(ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails);
+public sealed record ReconciledFromOneDrive(
+    ActualInvoiceDetails ActualDetails,
+    OneDriveDetails OneDriveDetails,
+    string MatchReason,
+    DateTimeOffset ReconciledAt);
 
 /// <summary>
 /// The retrieved invoice file has been saved to its OneDrive destination.

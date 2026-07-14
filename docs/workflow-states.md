@@ -25,12 +25,15 @@ stateDiagram-v2
     %% --- Save path ---
     Retrieved --> SavedToOneDrive : PDF uploaded to OneDrive
 
-    %% --- OneDrive reconciliation (deferred: issue #11) ---
-    Expected --> ReconciledFromOneDrive : existing OneDrive file matches (deferred)
+    %% --- OneDrive reconciliation (checked before the source, for each due record) ---
+    Expected --> ReconciledFromOneDrive : existing OneDrive file matches
+    RetrievalError --> ReconciledFromOneDrive : existing OneDrive file matches (retry)
+    Expected --> RetrievalError : technical failure during reconciliation search
+    RetrievalError --> RetrievalError : reconciliation search fails again
 
     %% --- Terminal states ---
     SavedToOneDrive --> [*] : next expected record created
-    ReconciledFromOneDrive --> [*] : next expected record created (deferred)
+    ReconciledFromOneDrive --> [*] : next expected record created
     NotFound --> [*] : terminal — requires user intervention
 
     note right of NotFound

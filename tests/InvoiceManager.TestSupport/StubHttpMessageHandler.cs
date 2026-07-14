@@ -22,10 +22,14 @@ public sealed class StubHttpMessageHandler(
             : await request.Content.ReadAsStringAsync(cancellationToken);
 
         var index = requests.Count;
-        requests.Add(new RecordedRequest(request.Method, request.RequestUri, body));
+        requests.Add(new RecordedRequest(
+            request.Method,
+            request.RequestUri,
+            body,
+            request.Headers.Authorization?.ToString()));
         return responder(request, index);
     }
 }
 
-/// <summary>A captured request: method, URI, and body text if any.</summary>
-public sealed record RecordedRequest(HttpMethod Method, Uri? RequestUri, string? Body);
+/// <summary>A captured request: method, URI, body text, and Authorization header if any.</summary>
+public sealed record RecordedRequest(HttpMethod Method, Uri? RequestUri, string? Body, string? Authorization = null);

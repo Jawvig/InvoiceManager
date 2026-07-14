@@ -11,13 +11,17 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace InvoiceManager.Infrastructure.OneDrive;
 
 /// <summary>
-/// Uploads invoice PDFs to OneDrive via the Microsoft Graph API, authenticating
-/// with a delegated token from the shared MSAL token cache. Invoices are small,
-/// so a single simple (non-resumable) upload is used.
+/// Uploads invoice PDFs to OneDrive and reconciles against files already present
+/// there, via the Microsoft Graph API and a delegated token from the shared MSAL
+/// token cache. Invoices are small, so a single simple (non-resumable) upload is
+/// used. Transient-fault and throttling (HTTP 429/503, honouring <c>Retry-After</c>)
+/// handling is applied to this client's HTTP pipeline by the standard resilience
+/// handler wired up in <see cref="GraphOneDriveRegistration"/>, not here.
 /// </summary>
 public sealed class GraphOneDriveIntegration(
     HttpClient httpClient,
     IMicrosoftTokenProvider tokenProvider,
+    InvoiceFilename invoiceFilename,
     ILogger<GraphOneDriveIntegration>? logger = null) : IOneDriveIntegration
 {
     private const string GraphBaseUrl = "https://graph.microsoft.com/v1.0";
@@ -71,7 +75,104 @@ public sealed class GraphOneDriveIntegration(
         return new OneDriveDetails(location);
     }
 
+    public async Task<OneDriveSearchResult> SearchAsync(
+        OneDriveSearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        using var activity = Telemetry.ActivitySource.StartActivity("search_onedrive");
+        activity?.SetTag("onedrive.destination", request.DestinationPath);
+        activity?.SetTag("invoice.expected_date", request.Criteria.ExpectedDate.ToString("O"));
+
+        var token = await tokenProvider.AcquireTokenAsync(Scopes, cancellationToken);
+
+        // Graph children listing: GET {folderPath}:/children. The destination path
+        // already ends at the folder, so append ":/children".
+        var next = $"{GraphBaseUrl}{request.DestinationPath}:/children";
+        var candidateCount = 0;
+        DriveChild? best = null;
+        ParsedInvoiceFilename? bestParsed = null;
+
+        while (next is not null)
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Get, next);
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await httpClient.SendAsync(message, cancellationToken);
+            await EnsureSuccessAsync(response, "listing OneDrive files", cancellationToken);
+
+            var page = await response.Content.ReadFromJsonAsync<DriveChildrenResponse>(cancellationToken);
+            foreach (var child in page?.Value ?? [])
+            {
+                if (child.Name is null || !invoiceFilename.TryParse(child.Name, out var parsed) || parsed is null)
+                    continue;
+
+                candidateCount++;
+                if (!request.Criteria.Matches(parsed.InvoiceDate, parsed.Amount, parsed.InvoiceDescription))
+                    continue;
+
+                // Prefer the candidate whose date is closest to the expected date.
+                if (bestParsed is null ||
+                    request.Criteria.DateDistanceDays(parsed.InvoiceDate)
+                        < request.Criteria.DateDistanceDays(bestParsed.InvoiceDate))
+                {
+                    best = child;
+                    bestParsed = parsed;
+                }
+            }
+
+            next = page?.NextLink;
+        }
+
+        activity?.SetTag("onedrive.candidate_count", candidateCount);
+
+        if (best is null || bestParsed is null)
+        {
+            activity?.AddEvent(new ActivityEvent("no_match"));
+            logger.LogInformation(
+                "No OneDrive file matched criteria in {Destination} around {ExpectedDate} " +
+                "({CandidateCount} parseable candidate(s) considered).",
+                request.DestinationPath, request.Criteria.ExpectedDate, candidateCount);
+            return new NoOneDriveMatch();
+        }
+
+        var location = best.WebUrl ?? best.Id
+            ?? throw new InvalidOperationException(
+                $"OneDrive file '{best.Name}' matched but returned no location.");
+        var matchReason =
+            $"Matched OneDrive file '{best.Name}' by description, date {bestParsed.InvoiceDate:O} " +
+            $"(within {request.Criteria.DateToleranceDays}d) and amount {bestParsed.Amount}.";
+
+        activity?.SetTag("onedrive.matched_name", best.Name);
+        activity?.AddEvent(new ActivityEvent("match_selected"));
+        logger.LogInformation("Reconciled record against existing OneDrive file '{FileName}'.", best.Name);
+
+        var details = new ActualInvoiceDetails(
+            bestParsed.InvoiceDate,
+            bestParsed.Amount,
+            new SourceInvoiceId(bestParsed.InvoiceName));
+
+        return new OneDriveMatch(new OneDriveDetails(location), details, matchReason);
+    }
+
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, string action, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new HttpRequestException(
+            $"Microsoft Graph request failed while {action}: {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
+    }
+
     private sealed record DriveItemResponse(
         [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("webUrl")] string? WebUrl);
+
+    private sealed record DriveChildrenResponse(
+        [property: JsonPropertyName("value")] IReadOnlyList<DriveChild>? Value,
+        [property: JsonPropertyName("@odata.nextLink")] string? NextLink);
+
+    private sealed record DriveChild(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("webUrl")] string? WebUrl);
 }

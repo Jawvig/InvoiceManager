@@ -9,11 +9,26 @@ namespace InvoiceManager.Core.Integrations;
 public sealed record OneDriveUploadRequest(string DestinationPath, string FileName, byte[] Content);
 
 /// <summary>
-/// Saves invoice files to OneDrive. Only upload is defined here; searching
-/// OneDrive for existing files (reconciliation) is a separate concern added later.
+/// A request to search OneDrive for a file that already satisfies the expected
+/// invoice criteria (reconciliation).
+/// </summary>
+/// <param name="DestinationPath">The Graph API path of the folder to search (from the invoice configuration).</param>
+/// <param name="Criteria">The date/amount/currency tolerances plus expected description used to match a file.</param>
+public sealed record OneDriveSearchRequest(string DestinationPath, OneDriveSearchCriteria Criteria);
+
+/// <summary>
+/// Saves invoice files to OneDrive and reconciles against files already present
+/// there (manual downloads, previous partial runs). The integration owns matching
+/// against OneDrive contents; the workflow records and acts on the result.
 /// </summary>
 public interface IOneDriveIntegration
 {
     /// <summary>Uploads the PDF to the destination and returns where it now lives.</summary>
     Task<OneDriveDetails> UploadAsync(OneDriveUploadRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches the destination folder for an existing file matching <paramref name="request"/>'s
+    /// criteria, returning either <see cref="NoOneDriveMatch"/> or an accepted <see cref="OneDriveMatch"/>.
+    /// </summary>
+    Task<OneDriveSearchResult> SearchAsync(OneDriveSearchRequest request, CancellationToken cancellationToken = default);
 }
