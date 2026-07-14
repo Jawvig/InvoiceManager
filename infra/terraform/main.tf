@@ -296,6 +296,28 @@ resource "azurerm_function_app_flex_consumption" "functions" {
     MicrosoftAuthorization__KeyVaultUri = azurerm_key_vault.invoice_manager.vault_uri
   }
 
+  # App Service Authentication (Easy Auth). Requires a valid Entra token on every
+  # request and returns 401 otherwise; only bearer-token validation is needed, so no
+  # client secret is configured. /api/health is excluded so the AdminWeb liveness probe
+  # stays anonymous. Authorization to specific principals is enforced by the app role +
+  # assignment_required on azuread_service_principal.functions (see functions_auth.tf).
+  auth_settings_v2 {
+    auth_enabled           = true
+    require_authentication = true
+    unauthenticated_action = "Return401"
+    excluded_paths         = ["/api/health"]
+
+    active_directory_v2 {
+      client_id            = azuread_application.functions.client_id
+      tenant_auth_endpoint = "https://login.microsoftonline.com/${data.azurerm_client_config.current.tenant_id}/v2.0"
+      allowed_audiences    = ["api://${azuread_application.functions.client_id}"]
+    }
+
+    login {
+      token_store_enabled = false
+    }
+  }
+
   depends_on = [
     azurerm_role_assignment.functions_storage_blob_owner,
     azurerm_role_assignment.functions_storage_queue_contributor,
@@ -368,6 +390,13 @@ resource "azurerm_container_app" "adminweb" {
       env {
         name  = "Functions__BaseUrl"
         value = "https://${azurerm_function_app_flex_consumption.functions.default_hostname}"
+      }
+      env {
+        # Audience the AdminWeb managed identity requests a token for when calling the
+        # Easy Auth-protected Functions app. The ".default" scope yields an app-only
+        # token carrying the assigned "Invoke" role.
+        name  = "Functions__Scope"
+        value = "api://${azuread_application.functions.client_id}/.default"
       }
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"

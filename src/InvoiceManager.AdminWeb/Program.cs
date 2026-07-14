@@ -1,3 +1,4 @@
+using Azure.Core;
 using Azure.Identity;
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Infrastructure.CosmosDb;
@@ -59,6 +60,12 @@ builder.Services
 builder.Services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, MicrosoftOpenIdConnectOptionsSetup>();
 
 builder.Services.AddAuthorization();
+
+// Shared credential for outbound service-to-service calls (the container binds it to the
+// AdminWeb user-assigned managed identity via AZURE_CLIENT_ID). Used to mint a token for
+// the Easy Auth-protected Functions app.
+builder.Services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
+
 builder.Services.AddHttpClient<FunctionsHealthCheck>();
 builder.Services.AddHttpClient<IExpectedRecordGenerationTrigger, FunctionsExpectedRecordGenerationTrigger>();
 builder.Services.AddSingleton(_ => CosmosClientFactory.Create(builder.Configuration));
