@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -15,23 +14,20 @@ namespace InvoiceManager.Infrastructure.OneDrive;
 /// Uploads invoice PDFs to OneDrive and reconciles against files already present
 /// there, via the Microsoft Graph API and a delegated token from the shared MSAL
 /// token cache. Invoices are small, so a single simple (non-resumable) upload is
-/// used. Every Graph call honours the <c>Retry-After</c> header on throttling
-/// (HTTP 429/503) responses and retries a bounded number of times.
+/// used. Transient-fault and throttling (HTTP 429/503, honouring <c>Retry-After</c>)
+/// handling is applied to this client's HTTP pipeline by the standard resilience
+/// handler wired up in <see cref="GraphOneDriveRegistration"/>, not here.
 /// </summary>
 public sealed class GraphOneDriveIntegration(
     HttpClient httpClient,
     IMicrosoftTokenProvider tokenProvider,
     InvoiceFilename invoiceFilename,
-    TimeProvider? timeProvider = null,
     ILogger<GraphOneDriveIntegration>? logger = null) : IOneDriveIntegration
 {
     private const string GraphBaseUrl = "https://graph.microsoft.com/v1.0";
-    private const int MaxThrottleAttempts = 5;
 
     private static readonly string[] Scopes = ["https://graph.microsoft.com/Files.ReadWrite.All"];
-    private static readonly TimeSpan DefaultThrottleDelay = TimeSpan.FromSeconds(2);
 
-    private readonly TimeProvider timeProvider = timeProvider ?? TimeProvider.System;
     private readonly ILogger<GraphOneDriveIntegration> logger =
         logger ?? NullLogger<GraphOneDriveIntegration>.Instance;
 
@@ -50,19 +46,12 @@ public sealed class GraphOneDriveIntegration(
         var uploadUrl =
             $"{GraphBaseUrl}{request.DestinationPath}/{Uri.EscapeDataString(request.FileName)}:/content";
 
-        using var response = await SendWithThrottlingRetryAsync(
-            () =>
-            {
-                var message = new HttpRequestMessage(HttpMethod.Put, uploadUrl)
-                {
-                    Content = new ByteArrayContent(request.Content),
-                };
-                message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
-                return message;
-            },
-            token,
-            cancellationToken);
+        using var message = new HttpRequestMessage(HttpMethod.Put, uploadUrl);
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        message.Content = new ByteArrayContent(request.Content);
+        message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
 
+        using var response = await httpClient.SendAsync(message, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -105,9 +94,9 @@ public sealed class GraphOneDriveIntegration(
 
         while (next is not null)
         {
-            var pageUrl = next;
-            using var response = await SendWithThrottlingRetryAsync(
-                () => new HttpRequestMessage(HttpMethod.Get, pageUrl), token, cancellationToken);
+            using var message = new HttpRequestMessage(HttpMethod.Get, next);
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await httpClient.SendAsync(message, cancellationToken);
             await EnsureSuccessAsync(response, "listing OneDrive files", cancellationToken);
 
             var page = await response.Content.ReadFromJsonAsync<DriveChildrenResponse>(cancellationToken);
@@ -117,7 +106,7 @@ public sealed class GraphOneDriveIntegration(
                     continue;
 
                 candidateCount++;
-                if (!request.Criteria.Matches(parsed.InvoiceDate, parsed.Amount))
+                if (!request.Criteria.Matches(parsed.InvoiceDate, parsed.Amount, parsed.InvoiceDescription))
                     continue;
 
                 // Prefer the candidate whose date is closest to the expected date.
@@ -149,7 +138,7 @@ public sealed class GraphOneDriveIntegration(
             ?? throw new InvalidOperationException(
                 $"OneDrive file '{best.Name}' matched but returned no location.");
         var matchReason =
-            $"Matched OneDrive file '{best.Name}' by date {bestParsed.InvoiceDate:O} " +
+            $"Matched OneDrive file '{best.Name}' by description, date {bestParsed.InvoiceDate:O} " +
             $"(within {request.Criteria.DateToleranceDays}d) and amount {bestParsed.Amount}.";
 
         activity?.SetTag("onedrive.matched_name", best.Name);
@@ -162,42 +151,6 @@ public sealed class GraphOneDriveIntegration(
             new SourceInvoiceId(bestParsed.InvoiceName));
 
         return new OneDriveMatch(new OneDriveDetails(location), details, matchReason);
-    }
-
-    /// <summary>
-    /// Sends a freshly-built request, retrying on Graph throttling (HTTP 429/503):
-    /// it waits the response's <c>Retry-After</c> delay (or a short default) and
-    /// retries up to <see cref="MaxThrottleAttempts"/> times. The request is rebuilt
-    /// per attempt because its content cannot be re-sent. Delays go through the
-    /// injected <see cref="TimeProvider"/> so tests do not really sleep.
-    /// </summary>
-    private async Task<HttpResponseMessage> SendWithThrottlingRetryAsync(
-        Func<HttpRequestMessage> requestFactory,
-        string token,
-        CancellationToken cancellationToken)
-    {
-        for (var attempt = 1; ; attempt++)
-        {
-            var message = requestFactory();
-            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            var response = await httpClient.SendAsync(message, cancellationToken);
-
-            if (response.StatusCode is not (HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
-                || attempt >= MaxThrottleAttempts)
-            {
-                return response;
-            }
-
-            var delay = response.Headers.RetryAfter?.Delta ?? DefaultThrottleDelay;
-            response.Dispose();
-
-            Activity.Current?.AddEvent(new ActivityEvent("throttled_retry"));
-            logger.LogWarning(
-                "Graph throttled the request (attempt {Attempt}/{MaxAttempts}); retrying after {Delay}.",
-                attempt, MaxThrottleAttempts, delay);
-
-            await Task.Delay(delay, timeProvider, cancellationToken);
-        }
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, string action, CancellationToken cancellationToken)

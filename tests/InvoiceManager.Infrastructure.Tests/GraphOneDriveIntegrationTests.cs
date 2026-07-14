@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net;
-using System.Net.Http.Headers;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
 using InvoiceManager.Infrastructure.OneDrive;
@@ -113,7 +112,7 @@ public sealed class GraphOneDriveIntegrationTests
     {
         var handler = new StubHttpMessageHandler((_, _) => Json(HttpStatusCode.OK, Children(
             nextLink: null,
-            ("2026-07-10 Some Service INV €11.59 exc.pdf", "id-1", "https://example/id-1"))));
+            ("2026-07-10 Microsoft 365 Business Basic G152207778 €11.59 exc.pdf", "id-1", "https://example/id-1"))));
         using var httpClient = new HttpClient(handler);
         var integration = Build(httpClient);
 
@@ -179,60 +178,20 @@ public sealed class GraphOneDriveIntegrationTests
         Assert.Equal(page2Url, handler.Requests[1].RequestUri!.ToString());
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.TooManyRequests)]
-    [InlineData(HttpStatusCode.ServiceUnavailable)]
-    public async Task SearchAsync_HonoursRetryAfter_ThenSucceeds(HttpStatusCode throttleStatus)
+    [Fact]
+    public async Task SearchAsync_ReturnsNoMatch_WhenDescriptionDiffers()
     {
-        var retryAfter = TimeSpan.FromSeconds(7);
-        var handler = new StubHttpMessageHandler((_, index) => index == 0
-            ? Throttled(throttleStatus, retryAfter)
-            : Json(HttpStatusCode.OK, Children(
-                nextLink: null,
-                ("2026-07-10 Microsoft 365 Business Basic G152207778 £11.59 exc.pdf", "id-1", "https://example/id-1"))));
+        // Same date, amount, and currency, but a different subscription's file sharing
+        // the folder: the description must match, so this is not reconciled.
+        var handler = new StubHttpMessageHandler((_, _) => Json(HttpStatusCode.OK, Children(
+            nextLink: null,
+            ("2026-07-10 Microsoft 365 Copilot G152207778 £11.59 exc.pdf", "id-1", "https://example/id-1"))));
         using var httpClient = new HttpClient(handler);
-        var time = new RecordingTimeProvider();
-        var integration = Build(httpClient, timeProvider: time);
+        var integration = Build(httpClient);
 
         var result = await integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria()));
 
-        AssertMatch(result);
-        Assert.Equal(2, handler.Requests.Count);
-        Assert.Equal(retryAfter, Assert.Single(time.Delays));
-    }
-
-    [Theory]
-    [InlineData(HttpStatusCode.TooManyRequests)]
-    [InlineData(HttpStatusCode.ServiceUnavailable)]
-    public async Task SearchAsync_Throws_WhenThrottledBeyondTheAttemptCap(HttpStatusCode throttleStatus)
-    {
-        var handler = new StubHttpMessageHandler((_, _) => Throttled(throttleStatus, TimeSpan.FromSeconds(1)));
-        using var httpClient = new HttpClient(handler);
-        var time = new RecordingTimeProvider();
-        var integration = Build(httpClient, timeProvider: time);
-
-        await Assert.ThrowsAsync<HttpRequestException>(() =>
-            integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria())));
-
-        Assert.Equal(5, handler.Requests.Count);
-        Assert.Equal(4, time.Delays.Count);
-    }
-
-    [Fact]
-    public async Task UploadAsync_HonoursRetryAfter_ThenSucceeds()
-    {
-        var handler = new StubHttpMessageHandler((_, index) => index == 0
-            ? Throttled(HttpStatusCode.TooManyRequests, TimeSpan.FromSeconds(3))
-            : Json(HttpStatusCode.Created, """{ "id": "1", "webUrl": "https://example/x.pdf" }"""));
-        using var httpClient = new HttpClient(handler);
-        var time = new RecordingTimeProvider();
-        var integration = Build(httpClient, timeProvider: time);
-
-        var result = await integration.UploadAsync(new OneDriveUploadRequest(Folder, "x.pdf", [1]));
-
-        Assert.Equal("https://example/x.pdf", result.OneDriveLocation);
-        Assert.Equal(2, handler.Requests.Count);
-        Assert.Equal(TimeSpan.FromSeconds(3), Assert.Single(time.Delays));
+        Assert.True(result is NoOneDriveMatch, $"Expected NoOneDriveMatch but got {result}.");
     }
 
     private static OneDriveMatch AssertMatch(OneDriveSearchResult result) =>
@@ -242,29 +201,18 @@ public sealed class GraphOneDriveIntegrationTests
 
     private static GraphOneDriveIntegration Build(
         HttpClient httpClient,
-        FakeMicrosoftTokenProvider? tokenProvider = null,
-        TimeProvider? timeProvider = null) =>
-        new(httpClient, tokenProvider ?? new FakeMicrosoftTokenProvider(), Filename, timeProvider);
+        FakeMicrosoftTokenProvider? tokenProvider = null) =>
+        new(httpClient, tokenProvider ?? new FakeMicrosoftTokenProvider(), Filename);
 
-    private static InvoiceSearchCriteria Criteria() => new(
-        BillingAccountId: "acct",
+    private static OneDriveSearchCriteria Criteria() => new(
         ExpectedDate: new DateOnly(2026, 7, 10),
         DateToleranceDays: 3,
         ExpectedAmount: new Money(11.59m, "GBP"),
-        AmountTolerance: 0m);
+        AmountTolerance: 0m,
+        InvoiceDescription: "Microsoft 365 Business Basic");
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
-
-    private static HttpResponseMessage Throttled(HttpStatusCode status, TimeSpan retryAfter)
-    {
-        var response = new HttpResponseMessage(status)
-        {
-            Content = new StringContent("throttled"),
-        };
-        response.Headers.RetryAfter = new RetryConditionHeaderValue(retryAfter);
-        return response;
-    }
 
     private static string Children(string? nextLink, params (string Name, string Id, string WebUrl)[] items)
     {

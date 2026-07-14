@@ -378,6 +378,9 @@ public sealed class DueInvoiceProcessorTests
 
         var searched = Assert.Single(oneDrive.Searches);
         Assert.Equal(config.OneDriveDestination, searched.DestinationPath);
+        // The description is part of the reconciliation criteria so records for
+        // different subscriptions sharing a folder don't match each other's files.
+        Assert.Equal(config.InvoiceDescription, searched.Criteria.InvoiceDescription);
         Assert.Empty(source.Requests);
         Assert.Empty(oneDrive.Uploads);
 

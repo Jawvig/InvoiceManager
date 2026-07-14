@@ -144,11 +144,20 @@ public sealed class DueInvoiceProcessor(
 
         // Reconcile first: a file already in OneDrive (a manual download or an
         // earlier partial run) is used as-is, skipping the source call and upload.
+        // The description is part of the match so records for different subscriptions
+        // sharing one folder do not reconcile against each other's files.
+        var oneDriveCriteria = new OneDriveSearchCriteria(
+            record.ExpectedDate,
+            record.DateToleranceDays,
+            record.ExpectedAmount,
+            record.AmountTolerance,
+            configuration.InvoiceDescription);
+
         OneDriveSearchResult search;
         try
         {
             search = await oneDriveIntegration.SearchAsync(
-                new OneDriveSearchRequest(configuration.OneDriveDestination, criteria), cancellationToken);
+                new OneDriveSearchRequest(configuration.OneDriveDestination, oneDriveCriteria), cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

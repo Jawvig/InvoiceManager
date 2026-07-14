@@ -13,8 +13,8 @@ public sealed record OneDriveUploadRequest(string DestinationPath, string FileNa
 /// invoice criteria (reconciliation).
 /// </summary>
 /// <param name="DestinationPath">The Graph API path of the folder to search (from the invoice configuration).</param>
-/// <param name="Criteria">The provider-independent date/amount/currency criteria, shared with source matching.</param>
-public sealed record OneDriveSearchRequest(string DestinationPath, InvoiceSearchCriteria Criteria);
+/// <param name="Criteria">The date/amount/currency tolerances plus expected description used to match a file.</param>
+public sealed record OneDriveSearchRequest(string DestinationPath, OneDriveSearchCriteria Criteria);
 
 /// <summary>
 /// Saves invoice files to OneDrive and reconciles against files already present
