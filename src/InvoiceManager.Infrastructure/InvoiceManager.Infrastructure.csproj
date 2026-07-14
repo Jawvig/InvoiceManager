@@ -27,6 +27,7 @@
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.61.0" />
     <!-- Standard resilience handler (Polly-based) for the Graph HttpClient: transient-fault
          and 429/503 throttling retry honouring Retry-After, with a bounded total timeout. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.85.2" />
     <!-- Required at runtime by the Cosmos SDK core; not pulled in transitively (see note above). -->
