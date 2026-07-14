@@ -19,7 +19,7 @@ public sealed record ParsedInvoiceFilename(
     string InvoiceDescription,
     string InvoiceName,
     Money Amount,
-    VatMode VatMode);
+    Option<VatMode> VatMode);
 
 /// <summary>
 /// Generates the canonical OneDrive filename for a saved invoice.
@@ -71,15 +71,29 @@ public sealed class InvoiceFilename
         var stem = fileName[..^".pdf".Length];
         var tokens = stem.Split(' ');
 
-        // A canonical name is "date description… sourceId money… vat": at least five
-        // single-space-separated tokens with no empty segments (no double spaces).
-        if (tokens.Length < 5 || Array.Exists(tokens, string.IsNullOrEmpty))
+        // A canonical name is "date description… sourceId money… [vat]": at least four
+        // single-space-separated tokens (the trailing "inc"/"exc" indicator is optional,
+        // so it may be as few as date + one description + sourceId + money) with no empty
+        // segments (no double spaces).
+        if (tokens.Length < 4 || Array.Exists(tokens, string.IsNullOrEmpty))
             return false;
 
-        if (ParseVatMode(tokens[^1]) is not VatMode vatMode)
-            return false;
+        // The VAT indicator is tolerated as missing: when the last token is a recognised
+        // indicator the mode is read from it, otherwise the mode is unknown and the last
+        // token is treated as part of the money.
+        Option<VatMode> vatMode;
+        int moneyEnd;
+        if (ParseVatMode(tokens[^1]) is VatMode parsedVatMode)
+        {
+            vatMode = parsedVatMode;
+            moneyEnd = tokens.Length - 1; // exclusive of the vat token
+        }
+        else
+        {
+            vatMode = Option.None;
+            moneyEnd = tokens.Length;
+        }
 
-        var moneyEnd = tokens.Length - 1; // exclusive of the vat token
         if (!TryTakeMoney(tokens, moneyEnd, out var amount, out var moneyStart))
             return false;
 

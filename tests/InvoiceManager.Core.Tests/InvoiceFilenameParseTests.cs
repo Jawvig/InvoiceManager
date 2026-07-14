@@ -43,7 +43,36 @@ public sealed class InvoiceFilenameParseTests
         Assert.Equal(expectedDescription, result.InvoiceDescription);
         Assert.Equal(expectedName, result.InvoiceName);
         Assert.Equal(new Money((decimal)expectedAmount, expectedCurrency), result.Amount);
-        Assert.Equal(expectedVatMode, result.VatMode);
+        Assert.True(
+            result.VatMode is VatMode actualVat && actualVat == expectedVatMode,
+            $"Expected VAT mode {expectedVatMode} but got {result.VatMode}.");
+    }
+
+    [Theory]
+    // Big-three symbol form with the trailing "inc"/"exc" indicator omitted.
+    [InlineData("2026-07-10 Microsoft 365 Business Basic G152207778 £11.59.pdf",
+        "2026-07-10", "Microsoft 365 Business Basic", "G152207778", 11.59, "GBP")]
+    // ISO-suffixed form (a non-big-three currency) with the VAT indicator omitted.
+    [InlineData("2026-07-10 Some Service INV-003 $12.00 AUD.pdf",
+        "2026-07-10", "Some Service", "INV-003", 12.00, "AUD")]
+    public void TryParse_ToleratesMissingVatIndicator_AndReportsVatModeUnknown(
+        string fileName,
+        string expectedDate,
+        string expectedDescription,
+        string expectedName,
+        double expectedAmount,
+        string expectedCurrency)
+    {
+        var parsed = invoiceFilename.TryParse(fileName, out var result);
+
+        Assert.True(parsed);
+        Assert.NotNull(result);
+        Assert.Equal(DateOnly.ParseExact(expectedDate, "O", CultureInfo.InvariantCulture), result.InvoiceDate);
+        Assert.Equal(expectedDescription, result.InvoiceDescription);
+        Assert.Equal(expectedName, result.InvoiceName);
+        Assert.Equal(new Money((decimal)expectedAmount, expectedCurrency), result.Amount);
+        // A missing indicator is tolerated: the VAT mode is simply unknown, not a failure.
+        Assert.True(result.VatMode is None, $"Expected an unknown VAT mode but got {result.VatMode}.");
     }
 
     [Fact]
@@ -58,7 +87,7 @@ public sealed class InvoiceFilenameParseTests
         Assert.Equal("Microsoft 365 Business Basic", result.InvoiceDescription);
         Assert.Equal("G152207778", result.InvoiceName);
         Assert.Equal(amount, result.Amount);
-        Assert.Equal(VatMode.Exclusive, result.VatMode);
+        Assert.True(result.VatMode is VatMode.Exclusive, $"Expected Exclusive but got {result.VatMode}.");
     }
 
     [Theory]
@@ -69,8 +98,8 @@ public sealed class InvoiceFilenameParseTests
     [InlineData("2026-7-10 Some Service INV-001 £11.59 exc.pdf")]
     [InlineData("10-07-2026 Some Service INV-001 £11.59 exc.pdf")]
     [InlineData("not-a-date Some Service INV-001 £11.59 exc.pdf")]
-    // Missing or unknown VAT token.
-    [InlineData("2026-07-10 Some Service INV-001 £11.59.pdf")]
+    // An unknown VAT token is not the same as an omitted one: "incl"/"vat" are neither a
+    // recognised indicator nor a parseable trailing amount, so the name is still rejected.
     [InlineData("2026-07-10 Some Service INV-001 £11.59 incl.pdf")]
     [InlineData("2026-07-10 Some Service INV-001 £11.59 vat.pdf")]
     // Amount without a currency symbol.

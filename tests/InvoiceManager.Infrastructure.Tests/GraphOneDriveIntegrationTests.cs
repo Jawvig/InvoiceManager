@@ -179,6 +179,24 @@ public sealed class GraphOneDriveIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_ReturnsMatch_WhenFileOmitsTheVatIndicator()
+    {
+        // A manually-saved file may lack the trailing "inc"/"exc" indicator. Matching is on
+        // date, amount, and description, so the file still reconciles.
+        var handler = new StubHttpMessageHandler((_, _) => Json(HttpStatusCode.OK, Children(
+            nextLink: null,
+            ("2026-07-10 Microsoft 365 Business Basic G152207778 £11.59.pdf", "id-1", "https://example/id-1"))));
+        using var httpClient = new HttpClient(handler);
+        var integration = Build(httpClient);
+
+        var result = await integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria()));
+
+        var match = AssertMatch(result);
+        Assert.Equal("https://example/id-1", match.OneDriveDetails.OneDriveLocation);
+        Assert.Equal(new Money(11.59m, "GBP"), match.Details.ActualAmount);
+    }
+
+    [Fact]
     public async Task SearchAsync_ReturnsNoMatch_WhenDescriptionDiffers()
     {
         // Same date, amount, and currency, but a different subscription's file sharing
