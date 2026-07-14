@@ -12,6 +12,13 @@ locals {
   # unsuffixed for production).
   github_actions_app_display_name = "InvoiceManager-GitHubActions${local.environment_suffix}"
 
+  # Entra app registration fronting the Functions app for Easy Auth (the token audience).
+  functions_app_registration_display_name = "InvoiceManager-Functions${local.environment_suffix}"
+
+  # Stable id for the Functions "Invoke" app role (must be a fixed GUID so it is not
+  # churned on every apply).
+  functions_invoke_app_role_id = "b6a7c0e2-3f14-4d5b-9a8c-2e1f7d6c5b40"
+
   log_analytics_name        = "${local.resource_name_prefix}-logs"
   application_insights_name = "${local.resource_name_prefix}-appi"
 

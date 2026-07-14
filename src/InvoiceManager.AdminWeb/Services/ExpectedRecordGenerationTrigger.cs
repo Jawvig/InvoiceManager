@@ -1,3 +1,6 @@
+using System.Net.Http.Headers;
+using Azure.Core;
+
 namespace InvoiceManager.AdminWeb.Services;
 
 /// <summary>
@@ -31,6 +34,7 @@ public union ExpectedRecordGenerationTriggerResult(
 public sealed class FunctionsExpectedRecordGenerationTrigger(
     HttpClient httpClient,
     IConfiguration configuration,
+    TokenCredential credential,
     ILogger<FunctionsExpectedRecordGenerationTrigger> logger)
     : IExpectedRecordGenerationTrigger
 {
@@ -48,7 +52,10 @@ public sealed class FunctionsExpectedRecordGenerationTrigger(
         var triggerUri = new Uri(functionsBaseUrl, TriggerPath);
         try
         {
-            using var response = await httpClient.PostAsync(triggerUri, content: null, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Post, triggerUri);
+            await AuthorizeAsync(request, cancellationToken);
+
+            using var response = await httpClient.SendAsync(request, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 return new ExpectedRecordGenerationTriggered((int)response.StatusCode);
@@ -62,5 +69,21 @@ public sealed class FunctionsExpectedRecordGenerationTrigger(
             logger.LogWarning(ex, "Triggering expected record generation failed.");
             return new ExpectedRecordGenerationFailed("The Functions app is not reachable.");
         }
+    }
+
+    // Deployed environments protect the Functions app with Easy Auth (Entra ID) and set
+    // Functions:Scope to its audience; acquire an app-only token via the AdminWeb managed
+    // identity and send it as a bearer. Locally (Aspire) the scope is unset and the
+    // request is sent unauthenticated against the anonymous local host.
+    private async Task AuthorizeAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var scope = configuration.GetValue<string?>("Functions:Scope");
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            return;
+        }
+
+        var token = await credential.GetTokenAsync(new TokenRequestContext([scope]), cancellationToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
     }
 }
