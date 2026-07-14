@@ -341,6 +341,106 @@ public sealed class DueInvoiceProcessorTests
         Assert.True(records.All.Single(r => r.Id == failingRecord.Id).State is RetrievalError);
     }
 
+    [Fact]
+    public async Task ProcessDueAsync_ReconcilesFromOneDrive_WithoutCallingSourceOrUploading()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+
+        // The source should never be consulted once OneDrive already has the file.
+        var source = new FakeInvoiceSourceIntegration(new NoInvoiceMatch());
+        var oneDrive = new FakeOneDriveIntegration
+        {
+            NextSearchResult = new OneDriveMatch(
+                new OneDriveDetails("/drives/test/root:/Bills/Test/existing.pdf"),
+                Actuals.Build(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), new SourceInvoiceId("G152207778")),
+                "matched by date and amount"),
+        };
+
+        var processor = BuildProcessor(records, source, oneDrive, config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingReconciled reconciled && reconciled.RecordId == dueRecord.Id);
+
+        var stored = records.All.Single(r => r.Id == dueRecord.Id);
+        if (stored.State is not ReconciledFromOneDrive state)
+        {
+            Assert.Fail($"Expected ReconciledFromOneDrive but was {stored.State}.");
+            return;
+        }
+
+        Assert.Equal("/drives/test/root:/Bills/Test/existing.pdf", state.OneDriveDetails.OneDriveLocation);
+        Assert.Equal(new DateOnly(2025, 7, 12), state.ActualDetails.ActualInvoiceDate);
+        Assert.Equal("matched by date and amount", state.MatchReason);
+        Assert.Equal(Today, DateOnly.FromDateTime(state.ReconciledAt.UtcDateTime));
+
+        var searched = Assert.Single(oneDrive.Searches);
+        Assert.Equal(config.OneDriveDestination, searched.DestinationPath);
+        Assert.Empty(source.Requests);
+        Assert.Empty(oneDrive.Uploads);
+
+        // Reconciliation is a success state, so the next expected record is created.
+        var next = records.All.Single(r => r.State is Expected);
+        Assert.Equal(new DateOnly(2025, 8, 12), next.ExpectedDate);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_FallsThroughToSource_WhenNoOneDriveMatch()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+
+        var source = new FakeInvoiceSourceIntegration(
+            BuildMatch(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), "G152207778"));
+        var oneDrive = new FakeOneDriveIntegration(); // default: no OneDrive match
+
+        var processor = BuildProcessor(records, source, oneDrive, config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingSucceeded);
+        Assert.Single(oneDrive.Searches);
+        Assert.Single(source.Requests);
+        Assert.True(records.All.Single(r => r.Id == dueRecord.Id).State is SavedToOneDrive);
+        Assert.Single(oneDrive.Uploads);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_MarksRetrievalError_WhenOneDriveSearchThrows()
+    {
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+
+        var source = new FakeInvoiceSourceIntegration(
+            BuildMatch(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), "G152207778"));
+        var oneDrive = new FakeOneDriveIntegration
+        {
+            SearchException = new InvalidOperationException("Graph is unavailable."),
+        };
+
+        var processor = BuildProcessor(records, source, oneDrive, config);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingFailed);
+        var stored = records.All.Single();
+        if (stored.State is not RetrievalError error)
+        {
+            Assert.Fail($"Expected RetrievalError but was {stored.State}.");
+            return;
+        }
+
+        Assert.Equal("Graph is unavailable.", error.ErrorMessage);
+        // A search failure means we could not tell whether the file exists, so the
+        // source and upload are not attempted.
+        Assert.Empty(source.Requests);
+        Assert.Empty(oneDrive.Uploads);
+    }
+
     private static InvoiceMatch BuildMatch(DateOnly date, Money amount, string sourceInvoiceId) =>
         new([1, 2, 3], Actuals.Build(date, amount, new SourceInvoiceId(sourceInvoiceId)));
 

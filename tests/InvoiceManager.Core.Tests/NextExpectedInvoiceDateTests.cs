@@ -59,7 +59,9 @@ public sealed class NextExpectedInvoiceDateTests
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = Records.Build(config, state: new ReconciledFromOneDrive(
             Actuals.Build(new DateOnly(2026, 6, 10)),
-            new OneDriveDetails(OneDriveLocation)));
+            new OneDriveDetails(OneDriveLocation),
+            "matched by date and amount",
+            new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero)));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 

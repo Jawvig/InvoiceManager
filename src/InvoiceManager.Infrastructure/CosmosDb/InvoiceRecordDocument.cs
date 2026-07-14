@@ -106,6 +106,14 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("lastError")]
     public string? LastError { get; init; }
 
+    // Present only for the ReconciledFromOneDrive state: why the existing file was
+    // accepted and when reconciliation occurred (ISO 8601 round-trip).
+    [JsonPropertyName("matchReason")]
+    public string? MatchReason { get; init; }
+
+    [JsonPropertyName("reconciledAt")]
+    public string? ReconciledAt { get; init; }
+
     public InvoiceRecord ToRecord() =>
         new(
             new InvoiceConfigurationId(ConfigurationId),
@@ -119,7 +127,7 @@ internal sealed class InvoiceRecordDocument
 
     public static InvoiceRecordDocument FromRecord(InvoiceRecord record)
     {
-        var (status, actualDetails, oneDriveDetails, lastError) = StorageFields(record.State);
+        var fields = StorageFields(record.State);
         return new InvoiceRecordDocument
         {
             Id = record.Id.Value,
@@ -131,10 +139,12 @@ internal sealed class InvoiceRecordDocument
             ExpectedCurrency = record.ExpectedAmount.Currency.Code,
             ExpectedAmountTolerance = record.AmountTolerance,
             ExpectedVatMode = record.ExpectedVatMode.ToString(),
-            Status = status,
-            ActualInvoiceDetails = actualDetails,
-            OneDriveDetails = oneDriveDetails,
-            LastError = lastError,
+            Status = fields.Status,
+            ActualInvoiceDetails = fields.ActualDetails,
+            OneDriveDetails = fields.OneDriveDetails,
+            LastError = fields.LastError,
+            MatchReason = fields.MatchReason,
+            ReconciledAt = fields.ReconciledAt,
         };
     }
 
@@ -144,7 +154,11 @@ internal sealed class InvoiceRecordDocument
         nameof(NotFound) => new NotFound(),
         nameof(RetrievalError) => new RetrievalError(LastError ?? string.Empty),
         nameof(Retrieved) => new Retrieved(RequiredActualDetails()),
-        nameof(ReconciledFromOneDrive) => new ReconciledFromOneDrive(RequiredActualDetails(), RequiredOneDriveDetails()),
+        nameof(ReconciledFromOneDrive) => new ReconciledFromOneDrive(
+            RequiredActualDetails(),
+            RequiredOneDriveDetails(),
+            RequiredMatchReason(),
+            RequiredReconciledAt()),
         nameof(SavedToOneDrive) => new SavedToOneDrive(RequiredActualDetails(), RequiredOneDriveDetails()),
         _ => throw new InvalidOperationException(
             $"Invoice record document '{Id}' has unrecognised status '{Status}'."),
@@ -160,26 +174,50 @@ internal sealed class InvoiceRecordDocument
         ?? throw new InvalidOperationException(
             $"Invoice record document '{Id}' has status '{Status}' but is missing 'oneDriveDetails'.");
 
-    private static (string Status, ActualInvoiceDetailsDocument? ActualDetails, OneDriveDetailsDocument? OneDriveDetails, string? LastError)
-        StorageFields(InvoiceWorkflowState state) => state switch
-        {
-            Expected => (nameof(Expected), null, null, null),
-            NotFound => (nameof(NotFound), null, null, null),
-            RetrievalError error => (nameof(RetrievalError), null, null, error.ErrorMessage),
-            Retrieved retrieved => (
-                nameof(Retrieved),
-                ActualInvoiceDetailsDocument.FromDetails(retrieved.ActualDetails),
-                null,
-                null),
-            ReconciledFromOneDrive reconciled => (
-                nameof(ReconciledFromOneDrive),
-                ActualInvoiceDetailsDocument.FromDetails(reconciled.ActualDetails),
-                OneDriveDetailsDocument.FromDetails(reconciled.OneDriveDetails),
-                null),
-            SavedToOneDrive saved => (
-                nameof(SavedToOneDrive),
-                ActualInvoiceDetailsDocument.FromDetails(saved.ActualDetails),
-                OneDriveDetailsDocument.FromDetails(saved.OneDriveDetails),
-                null),
-        };
+    private string RequiredMatchReason() =>
+        MatchReason
+        ?? throw new InvalidOperationException(
+            $"Invoice record document '{Id}' has status '{Status}' but is missing 'matchReason'.");
+
+    private DateTimeOffset RequiredReconciledAt() =>
+        ReconciledAt is { } value
+            ? DateTimeOffset.ParseExact(value, "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+            : throw new InvalidOperationException(
+                $"Invoice record document '{Id}' has status '{Status}' but is missing 'reconciledAt'.");
+
+    private static StorageFieldSet StorageFields(InvoiceWorkflowState state) => state switch
+    {
+        Expected => new(nameof(Expected), null, null, null, null, null),
+        NotFound => new(nameof(NotFound), null, null, null, null, null),
+        RetrievalError error => new(nameof(RetrievalError), null, null, error.ErrorMessage, null, null),
+        Retrieved retrieved => new(
+            nameof(Retrieved),
+            ActualInvoiceDetailsDocument.FromDetails(retrieved.ActualDetails),
+            null,
+            null,
+            null,
+            null),
+        ReconciledFromOneDrive reconciled => new(
+            nameof(ReconciledFromOneDrive),
+            ActualInvoiceDetailsDocument.FromDetails(reconciled.ActualDetails),
+            OneDriveDetailsDocument.FromDetails(reconciled.OneDriveDetails),
+            null,
+            reconciled.MatchReason,
+            reconciled.ReconciledAt.ToString("O", CultureInfo.InvariantCulture)),
+        SavedToOneDrive saved => new(
+            nameof(SavedToOneDrive),
+            ActualInvoiceDetailsDocument.FromDetails(saved.ActualDetails),
+            OneDriveDetailsDocument.FromDetails(saved.OneDriveDetails),
+            null,
+            null,
+            null),
+    };
+
+    private readonly record struct StorageFieldSet(
+        string Status,
+        ActualInvoiceDetailsDocument? ActualDetails,
+        OneDriveDetailsDocument? OneDriveDetails,
+        string? LastError,
+        string? MatchReason,
+        string? ReconciledAt);
 }

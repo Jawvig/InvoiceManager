@@ -17,4 +17,29 @@ public sealed record InvoiceSearchCriteria(
     DateOnly ExpectedDate,
     int DateToleranceDays,
     Money ExpectedAmount,
-    decimal AmountTolerance);
+    decimal AmountTolerance)
+{
+    /// <summary>
+    /// Whether a candidate with the given actual date and amount satisfies these
+    /// criteria: its date must fall within <see cref="DateToleranceDays"/> of
+    /// <see cref="ExpectedDate"/>, its currency must equal the expected currency,
+    /// and its amount must be within <see cref="AmountTolerance"/> of the expected
+    /// amount. Shared by every integration so source and OneDrive matching cannot
+    /// drift apart.
+    /// </summary>
+    public bool Matches(DateOnly actualDate, Money actualAmount)
+    {
+        var dateMatches = DateDistanceDays(actualDate) <= DateToleranceDays;
+        var currencyMatches = string.Equals(
+            actualAmount.Currency.Code, ExpectedAmount.Currency.Code, StringComparison.OrdinalIgnoreCase);
+        var amountMatches = Math.Abs(actualAmount.Amount - ExpectedAmount.Amount) <= AmountTolerance;
+        return dateMatches && currencyMatches && amountMatches;
+    }
+
+    /// <summary>
+    /// The absolute number of days between a candidate's actual date and the
+    /// expected date, used to prefer the closest candidate when several match.
+    /// </summary>
+    public int DateDistanceDays(DateOnly actualDate) =>
+        Math.Abs(actualDate.DayNumber - ExpectedDate.DayNumber);
+}

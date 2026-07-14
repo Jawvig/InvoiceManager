@@ -54,6 +54,22 @@ SavedToOneDrive`). If a run fails after `Retrieved` and before
 `SavedToOneDrive`, the next run treats that record as due again and resumes the
 source retrieval/save path.
 
+OneDrive reconciliation (steps 3–4) is implemented: for each due record the
+processor first asks the OneDrive integration to search the configured
+destination folder before calling the source. `GraphOneDriveIntegration` lists
+the folder's files (paging through `@odata.nextLink`) and matches candidates by
+parsing the canonical filename — the reverse of `InvoiceFilename.Generate` — to
+read each file's date, amount, currency, and source id, then applies the same
+date/amount/currency tolerances as source matching (the shared
+`InvoiceSearchCriteria.Matches`). Names that do not follow the convention are
+skipped. On a match the record is set to `ReconciledFromOneDrive` — carrying the
+match reason and reconciliation timestamp — the source call and upload are
+skipped, and the next expected record is created (reconciliation is a success
+state, `Expected → ReconciledFromOneDrive`). A search that fails technically is
+treated like a retrieval failure (`RetrievalError`, always retryable). Every
+Graph call honours the `Retry-After` header on throttling (HTTP 429/503)
+responses and retries a bounded number of times.
+
 The not-found / retry states are also implemented (step 6). When the source
 returns no match, the record stays `Expected` while today is before its tolerance
 deadline (`expectedDate + dateToleranceDays`) and moves to the terminal `NotFound`
@@ -70,11 +86,10 @@ later clean poll that still finds no match clears it back to `Expected`.
 `ListDueAsync` picks up `Expected`, `RetrievalError`, and `Retrieved` records;
 `RetrievalError` is always retryable with no retry limit. Each run emits
 structured telemetry — a per-record logging scope (record, configuration,
-integration type) plus a run summary with saved / no-match / not-found / failed
-counts — captured by Application Insights.
+integration type) plus a run summary with saved / reconciled / no-match /
+not-found / failed counts — captured by Application Insights.
 
-OneDrive reconciliation (steps 3–4) and FreeAgent attachment (step 9) are
-deferred to later work.
+FreeAgent attachment (step 9) is deferred to later work.
 
 ## Search Criteria
 

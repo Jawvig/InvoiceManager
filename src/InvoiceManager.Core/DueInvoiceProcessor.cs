@@ -115,6 +115,7 @@ public sealed class DueInvoiceProcessor(
     private static string OutcomeName(DueInvoiceProcessingResult result) => result switch
     {
         ProcessingSucceeded => "saved",
+        ProcessingReconciled => "reconciled",
         ProcessingNoMatch => "no_match",
         ProcessingNotFound => "not_found",
         ProcessingFailed => "failed",
@@ -141,6 +142,24 @@ public sealed class DueInvoiceProcessor(
             record.ExpectedAmount,
             record.AmountTolerance);
 
+        // Reconcile first: a file already in OneDrive (a manual download or an
+        // earlier partial run) is used as-is, skipping the source call and upload.
+        OneDriveSearchResult search;
+        try
+        {
+            search = await oneDriveIntegration.SearchAsync(
+                new OneDriveSearchRequest(configuration.OneDriveDestination, criteria), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return await MarkRetrievalErrorAsync(
+                record, ex, recordActivity, "OneDrive reconciliation search", cancellationToken);
+        }
+
+        if (search is OneDriveMatch reconciledMatch)
+            return await ReconcileAsync(record, configuration, reconciledMatch, recordActivity, cancellationToken);
+
+        // No existing file: fall through to the source integration.
         InvoiceSourceResult result;
         try
         {
@@ -150,13 +169,7 @@ public sealed class DueInvoiceProcessor(
         {
             // A technical failure during retrieval: the system cannot tell whether the
             // invoice exists. Record RetrievalError (always retryable) and move on.
-            var errored = record with { State = new RetrievalError(ex.Message) };
-            await recordRepository.ReplaceAsync(errored, cancellationToken);
-            recordActivity?.AddEvent(new ActivityEvent("state_retrieval_error"));
-            recordActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            recordActivity?.AddException(ex);
-            logger.LogError(ex, "Retrieval failed for invoice record {RecordId}; marked RetrievalError.", record.Id);
-            return new ProcessingFailed(record.Id, ex);
+            return await MarkRetrievalErrorAsync(record, ex, recordActivity, "Retrieval", cancellationToken);
         }
 
         if (result is not InvoiceMatch match)
@@ -190,6 +203,58 @@ public sealed class DueInvoiceProcessor(
 
         logger.LogInformation("Saved invoice {FileName} for record {RecordId}.", fileName, record.Id);
         return new ProcessingSucceeded(record.Id);
+    }
+
+    /// <summary>
+    /// Records a match against a file already in OneDrive: sets the record to
+    /// <see cref="ReconciledFromOneDrive"/> (with the match reason and time) and
+    /// creates the next expected record, without calling the source or uploading.
+    /// </summary>
+    private async Task<DueInvoiceProcessingResult> ReconcileAsync(
+        InvoiceRecord record,
+        InvoiceConfiguration configuration,
+        OneDriveMatch match,
+        Activity? recordActivity,
+        CancellationToken cancellationToken)
+    {
+        var reconciled = record with
+        {
+            State = new ReconciledFromOneDrive(
+                match.Details,
+                match.OneDriveDetails,
+                match.MatchReason,
+                timeProvider.GetUtcNow()),
+        };
+        await recordRepository.ReplaceAsync(reconciled, cancellationToken);
+        recordActivity?.AddEvent(new ActivityEvent("state_reconciled_from_onedrive"));
+        logger.LogInformation(
+            "Reconciled record {RecordId} against existing OneDrive file at {Location}; skipping source retrieval.",
+            record.Id, match.OneDriveDetails.OneDriveLocation);
+
+        await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
+        return new ProcessingReconciled(record.Id);
+    }
+
+    /// <summary>
+    /// Marks a record <see cref="RetrievalError"/> (always retryable) after a
+    /// technical failure — a reconciliation search or source call that could not
+    /// determine whether the invoice exists — and reports it without stopping the
+    /// other records.
+    /// </summary>
+    private async Task<DueInvoiceProcessingResult> MarkRetrievalErrorAsync(
+        InvoiceRecord record,
+        Exception ex,
+        Activity? recordActivity,
+        string stage,
+        CancellationToken cancellationToken)
+    {
+        var errored = record with { State = new RetrievalError(ex.Message) };
+        await recordRepository.ReplaceAsync(errored, cancellationToken);
+        recordActivity?.AddEvent(new ActivityEvent("state_retrieval_error"));
+        recordActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+        recordActivity?.AddException(ex);
+        logger.LogError(ex, "{Stage} failed for invoice record {RecordId}; marked RetrievalError.", stage, record.Id);
+        return new ProcessingFailed(record.Id, ex);
     }
 
     /// <summary>
@@ -240,6 +305,7 @@ public sealed class DueInvoiceProcessor(
 
         activity.SetTag("invoice.processed_count", results.Count);
         activity.SetTag("invoice.saved_count", results.Count(r => r is ProcessingSucceeded));
+        activity.SetTag("invoice.reconciled_count", results.Count(r => r is ProcessingReconciled));
         activity.SetTag("invoice.no_match_count", results.Count(r => r is ProcessingNoMatch));
         activity.SetTag("invoice.not_found_count", results.Count(r => r is ProcessingNotFound));
         activity.SetTag("invoice.failed_count", results.Count(r => r is ProcessingFailed));
@@ -249,9 +315,10 @@ public sealed class DueInvoiceProcessor(
     {
         logger.LogInformation(
             "Due invoice processing run complete: {ProcessedCount} processed, {SavedCount} saved, " +
-            "{NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed.",
+            "{ReconciledCount} reconciled, {NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed.",
             results.Count,
             results.Count(r => r is ProcessingSucceeded),
+            results.Count(r => r is ProcessingReconciled),
             results.Count(r => r is ProcessingNoMatch),
             results.Count(r => r is ProcessingNotFound),
             results.Count(r => r is ProcessingFailed));

@@ -102,25 +102,18 @@ public sealed class MicrosoftBillingInvoiceSource(
         return list?.Value ?? [];
     }
 
-    private BillingInvoice? SelectBestMatch(IReadOnlyList<BillingInvoice> invoices, InvoiceSearchCriteria criteria)
-    {
-        var expectedCurrency = criteria.ExpectedAmount.Currency.Code;
-        var expectedAmount = criteria.ExpectedAmount.Amount;
-
-        return invoices
+    private static BillingInvoice? SelectBestMatch(IReadOnlyList<BillingInvoice> invoices, InvoiceSearchCriteria criteria) =>
+        invoices
             .Where(invoice =>
             {
-                var invoiceDate = DateOnly.FromDateTime(invoice.Properties.InvoiceDate.UtcDateTime);
                 var amount = invoice.Properties.TotalAmount;
-                var dateMatches = Math.Abs(invoiceDate.DayNumber - criteria.ExpectedDate.DayNumber) <= criteria.DateToleranceDays;
-                var currencyMatches = string.Equals(amount.Currency, expectedCurrency, StringComparison.OrdinalIgnoreCase);
-                var amountMatches = Math.Abs(amount.Value - expectedAmount) <= criteria.AmountTolerance;
-                return dateMatches && currencyMatches && amountMatches;
+                return criteria.Matches(
+                    DateOnly.FromDateTime(invoice.Properties.InvoiceDate.UtcDateTime),
+                    new Money(amount.Value, amount.Currency));
             })
             .OrderBy(invoice =>
-                Math.Abs(DateOnly.FromDateTime(invoice.Properties.InvoiceDate.UtcDateTime).DayNumber - criteria.ExpectedDate.DayNumber))
+                criteria.DateDistanceDays(DateOnly.FromDateTime(invoice.Properties.InvoiceDate.UtcDateTime)))
             .FirstOrDefault();
-    }
 
     private async Task<string> RequestDownloadUrlAsync(
         string billingAccountId,
