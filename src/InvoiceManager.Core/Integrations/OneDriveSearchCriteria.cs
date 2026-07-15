@@ -11,6 +11,8 @@ namespace InvoiceManager.Core.Integrations;
 /// record against a different subscription's file. The description is part of the
 /// canonical filename (our own artifact, not a provider product label), so
 /// requiring it to match distinguishes them without depending on source metadata.
+/// When <see cref="InvoiceDescription"/> is empty, description matching is skipped,
+/// so the destination folder must uniquely identify the expected invoice.
 /// </summary>
 public sealed record OneDriveSearchCriteria(
     DateOnly ExpectedDate,
@@ -21,7 +23,8 @@ public sealed record OneDriveSearchCriteria(
     /// <summary>
     /// Whether a candidate file with the given actual date, amount, and description
     /// satisfies these criteria: the shared date/amount/currency tolerances must
-    /// hold and the description must match (case-insensitively).
+    /// hold and, when an invoice description is supplied, the description must
+    /// match (case-insensitively).
     /// </summary>
     public bool Matches(DateOnly actualDate, Money actualAmount, string actualDescription) =>
         InvoiceMatching.DateAndOptionalAmountMatch(
