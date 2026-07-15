@@ -113,8 +113,11 @@ public sealed class InvoiceRecordDocumentTests
               "invoiceDescription": "Test Invoice",
               "expectedDate": "2025-07-01",
               "dateToleranceDays": 5,
-              "expectedAmount": 10.00,
-              "expectedCurrency": "GBP",
+              "amountMatchingCriteria": {
+                "amount": 10.00,
+                "currency": "GBP",
+                "amountTolerance": 0.50
+              },
               "expectedVatMode": "Exclusive",
               "status": "Retrieved",
               "actualInvoiceDetails": {}
@@ -131,8 +134,7 @@ public sealed class InvoiceRecordDocumentTests
             "Test Invoice",
             new DateOnly(2025, 7, 1),
             DateToleranceDays: 5,
-            new Money(10.00m, "GBP"),
-            AmountTolerance: 0.50m,
+            new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0.50m),
             VatMode.Exclusive,
             state);
 
@@ -147,8 +149,12 @@ public sealed class InvoiceRecordDocumentTests
             InvoiceDescription = "Test Invoice",
             ExpectedDate = "2025-07-01",
             DateToleranceDays = 5,
-            ExpectedAmount = 10.00m,
-            ExpectedCurrency = "GBP",
+            AmountMatchingCriteria = new()
+            {
+                Amount = 10.00m,
+                Currency = "GBP",
+                AmountTolerance = 0.50m,
+            },
             ExpectedVatMode = "Exclusive",
             Status = status,
             ActualInvoiceDetails = actualDetails,

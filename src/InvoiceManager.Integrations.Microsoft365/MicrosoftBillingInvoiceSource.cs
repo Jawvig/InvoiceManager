@@ -26,7 +26,8 @@ public sealed class MicrosoftBillingInvoiceSource(
     HttpClient httpClient,
     IMicrosoftTokenProvider tokenProvider,
     IOptions<MicrosoftBillingOptions> options,
-    ILogger<MicrosoftBillingInvoiceSource> logger) : IInvoiceSourceIntegration
+    ILogger<MicrosoftBillingInvoiceSource> logger,
+    IntegrationType integrationType) : IInvoiceSourceIntegration
 {
     private const string BillingBaseUrl = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts";
     private const byte ZipMagic0 = 0x50; // 'P'
@@ -34,13 +35,13 @@ public sealed class MicrosoftBillingInvoiceSource(
 
     private readonly MicrosoftBillingOptions settings = options.Value;
 
-    public IntegrationType IntegrationType => IntegrationType.Microsoft365;
+    public IntegrationType IntegrationType => integrationType;
 
     public async Task<InvoiceSourceResult> FindInvoiceAsync(
         InvoiceSearchCriteria criteria,
         CancellationToken cancellationToken = default)
     {
-        using var activity = Telemetry.ActivitySource.StartActivity("find_invoice.microsoft365");
+        using var activity = Telemetry.ActivitySource.StartActivity($"find_invoice.{IntegrationType.ToString().ToLowerInvariant()}");
         activity?.SetTag("invoice.billing_account_id", criteria.BillingAccountId);
         activity?.SetTag("invoice.expected_date", criteria.ExpectedDate.ToString("O"));
         activity?.SetTag("invoice.date_tolerance_days", criteria.DateToleranceDays);
@@ -53,8 +54,9 @@ public sealed class MicrosoftBillingInvoiceSource(
         {
             activity?.AddEvent(new ActivityEvent("no_match"));
             logger.LogInformation(
-                "No Microsoft 365 invoice matched criteria for billing account {BillingAccountId} around {ExpectedDate} " +
+                "No {IntegrationType} invoice matched criteria for billing account {BillingAccountId} around {ExpectedDate} " +
                 "({CandidateCount} candidate(s) considered).",
+                IntegrationType,
                 criteria.BillingAccountId, criteria.ExpectedDate, invoices.Count);
             return new NoInvoiceMatch();
         }
@@ -70,7 +72,8 @@ public sealed class MicrosoftBillingInvoiceSource(
         var payload = await DownloadAsync(downloadUrl, cancellationToken);
         var pdf = ExtractPdf(payload);
         logger.LogInformation(
-            "Retrieved Microsoft 365 invoice {InvoiceName} ({PdfBytes} bytes) for billing account {BillingAccountId}.",
+            "Retrieved {IntegrationType} invoice {InvoiceName} ({PdfBytes} bytes) for billing account {BillingAccountId}.",
+            IntegrationType,
             match.Name, pdf.Length, criteria.BillingAccountId);
 
         var details = new ActualInvoiceDetails(
@@ -86,20 +89,34 @@ public sealed class MicrosoftBillingInvoiceSource(
         string token,
         CancellationToken cancellationToken)
     {
-        var periodStart = criteria.ExpectedDate.AddDays(-criteria.DateToleranceDays);
+        // Azure only supports server-side filtering by invoice billing period; its
+        // generic filter parameter rejects invoiceDate expressions. Fetch 14 months
+        // of billing periods to cover monthly and annual invoices, then apply the
+        // precise invoiceDate tolerance (and optional amount) locally.
+        var periodStart = criteria.ExpectedDate.AddMonths(-14);
         var periodEnd = criteria.ExpectedDate.AddDays(criteria.DateToleranceDays);
 
-        var url =
+        string? url =
             $"{BillingBaseUrl}/{Uri.EscapeDataString(criteria.BillingAccountId)}/invoices" +
             $"?api-version={settings.ApiVersion}" +
             $"&periodStartDate={periodStart:yyyy-MM-dd}" +
             $"&periodEndDate={periodEnd:yyyy-MM-dd}";
 
-        using var response = await SendAuthenticatedAsync(HttpMethod.Get, url, token, content: null, cancellationToken);
-        await EnsureSuccessAsync(response, "listing invoices", cancellationToken);
+        var invoices = new List<BillingInvoice>();
+        while (url is not null)
+        {
+            using var response = await SendAuthenticatedAsync(HttpMethod.Get, url, token, content: null, cancellationToken);
+            await EnsureSuccessAsync(response, "listing invoices", cancellationToken);
 
-        var list = await response.Content.ReadFromJsonAsync<BillingInvoiceListResponse>(cancellationToken);
-        return list?.Value ?? [];
+            var page = await response.Content.ReadFromJsonAsync<BillingInvoiceListResponse>(cancellationToken);
+            if (page is null)
+                break;
+
+            invoices.AddRange(page.Value);
+            url = page.NextLink;
+        }
+
+        return invoices;
     }
 
     private static BillingInvoice? SelectBestMatch(IReadOnlyList<BillingInvoice> invoices, InvoiceSearchCriteria criteria) =>

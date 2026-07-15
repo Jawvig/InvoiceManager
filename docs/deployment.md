@@ -223,8 +223,32 @@ The script:
 
 ### Seeding behavior (`--environment`, `--clear-database`)
 
-The seeder receives `--environment <env>` so it can make the data
-environment-aware, and optionally `--clear-database`:
+The seeder **requires** `--environment <env>` so it can make the data
+environment-aware (it exits non-zero when the flag is absent), and optionally
+`--clear-database`. Locally the Aspire AppHost seeds the emulator with
+`--environment test`, so OneDrive destinations are nested under the root `Test`
+folder described below.
+
+Seed values include `InvoiceManager__Seed__DriveId`,
+`InvoiceManager__Seed__BillingAccountId`, and
+`InvoiceManager__Seed__AzureBillingAccountId`. For local development, sign in to
+the Azure CLI as the user that owns the target OneDrive and has billing-account
+access, then run:
+
+```powershell
+./tools/dev-setup/Set-SeedEnvironment.ps1
+```
+
+The script uses Microsoft Graph PowerShell to discover the signed-in user's
+default OneDrive and installs the `Microsoft.Graph.Authentication` module at
+CurrentUser scope when it is not already available. It uses the Azure Billing
+`billingAccounts` REST endpoint and requires exactly one account of each expected
+type, mapping the `Business` account to
+`InvoiceManager__Seed__BillingAccountId` and the `Individual` account to
+`InvoiceManager__Seed__AzureBillingAccountId`. It sets all three values in the
+current process and persistent User environment. Authentication prompts may
+appear. Restart Visual Studio afterward so its AppHost process inherits the new
+User values.
 
 - **Test folder isolation**: when the environment is `test`, every configuration's
   OneDrive destination is nested under a single root `Test` folder (inserted after

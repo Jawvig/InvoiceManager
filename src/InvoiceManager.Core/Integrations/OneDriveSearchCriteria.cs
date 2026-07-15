@@ -11,23 +11,26 @@ namespace InvoiceManager.Core.Integrations;
 /// record against a different subscription's file. The description is part of the
 /// canonical filename (our own artifact, not a provider product label), so
 /// requiring it to match distinguishes them without depending on source metadata.
+/// When <see cref="InvoiceDescription"/> is empty, description matching is skipped,
+/// so the destination folder must uniquely identify the expected invoice.
 /// </summary>
 public sealed record OneDriveSearchCriteria(
     DateOnly ExpectedDate,
     int DateToleranceDays,
-    Money ExpectedAmount,
-    decimal AmountTolerance,
+    Option<AmountMatchingCriteria> AmountMatchingCriteria,
     string InvoiceDescription)
 {
     /// <summary>
     /// Whether a candidate file with the given actual date, amount, and description
     /// satisfies these criteria: the shared date/amount/currency tolerances must
-    /// hold and the description must match (case-insensitively).
+    /// hold and, when an invoice description is supplied, the description must
+    /// match (case-insensitively).
     /// </summary>
     public bool Matches(DateOnly actualDate, Money actualAmount, string actualDescription) =>
-        InvoiceMatching.DateAmountAndCurrencyMatch(
-            ExpectedDate, DateToleranceDays, ExpectedAmount, AmountTolerance, actualDate, actualAmount)
-        && string.Equals(actualDescription, InvoiceDescription, StringComparison.OrdinalIgnoreCase);
+        InvoiceMatching.DateAndOptionalAmountMatch(
+            ExpectedDate, DateToleranceDays, AmountMatchingCriteria, actualDate, actualAmount)
+        && (string.IsNullOrWhiteSpace(InvoiceDescription) ||
+            string.Equals(actualDescription, InvoiceDescription, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The absolute number of days between a candidate's date and the expected date,

@@ -23,7 +23,9 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithReference(cosmos)
         .WithEnvironment("ConnectionStrings__cosmos", cosmos.Resource.ConnectionStringExpression)
         .WithEnvironment("CosmosDatabase", "invoicemanager")
-        .WithArgs("--ensure-schema", seedFile)
+        // Seed the local emulator as the "test" environment so every OneDrive destination is
+        // nested under a root "Test" folder and local downloads never collide with production.
+        .WithArgs("--ensure-schema", "--environment", "test", seedFile)
         .WaitFor(cosmos);
 
     // Microsoft delegated auth settings shared by the admin website and the Functions app.

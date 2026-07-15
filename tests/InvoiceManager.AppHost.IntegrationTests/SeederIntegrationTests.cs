@@ -10,7 +10,7 @@ public sealed class SeederIntegrationTests
 {
     // The IDs in data/seed/invoice-configurations.json. The seeder must load these into
     // the emulator's invoice-configurations container before the apps start.
-    private static readonly string[] ExpectedConfigurationIds = ["m365-business-basic", "m365-copilot"];
+    private static readonly string[] ExpectedConfigurationIds = ["m365-business-basic", "m365-copilot", "azure-billing"];
 
     [Fact]
     [Trait("Category", "Integration")]

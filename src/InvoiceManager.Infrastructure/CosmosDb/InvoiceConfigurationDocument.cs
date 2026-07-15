@@ -23,11 +23,8 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("frequency")]
     public required string Frequency { get; init; }
 
-    [JsonPropertyName("defaultExpectedAmount")]
-    public required decimal DefaultExpectedAmount { get; init; }
-
-    [JsonPropertyName("defaultExpectedCurrency")]
-    public required string DefaultExpectedCurrency { get; init; }
+    [JsonPropertyName("amountMatchingCriteria")]
+    public AmountMatchingCriteriaDocument? AmountMatchingCriteria { get; init; }
 
     [JsonPropertyName("defaultVatMode")]
     public required string DefaultVatMode { get; init; }
@@ -47,25 +44,24 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("dateToleranceDays")]
     public required int DateToleranceDays { get; init; }
 
-    // Optional for backward compatibility: configurations seeded before amount
-    // tolerance existed deserialise to 0, meaning an exact amount match.
-    [JsonPropertyName("amountTolerance")]
-    public decimal AmountTolerance { get; init; }
-
     public InvoiceConfiguration ToConfiguration() =>
         new(
             new InvoiceConfigurationId(Id),
             Enum.Parse<Core.IntegrationType>(IntegrationType, ignoreCase: true),
             InvoiceDescription,
             Enum.Parse<InvoiceFrequency>(Frequency, ignoreCase: true),
-            new Money(DefaultExpectedAmount, DefaultExpectedCurrency),
+            ToAmountMatchingCriteria(),
             Enum.Parse<VatMode>(DefaultVatMode, ignoreCase: true),
             IsActive,
             OneDriveDestination,
             DateOnly.ParseExact(StartDate, "O", CultureInfo.InvariantCulture),
             BillingAccountId,
-            DateToleranceDays,
-            AmountTolerance);
+            DateToleranceDays);
+
+    private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
+        AmountMatchingCriteria is { } criteria
+            ? criteria.ToCriteria()
+            : Option.None;
 
     public static InvoiceConfigurationDocument FromConfiguration(InvoiceConfiguration config) =>
         new()
@@ -74,14 +70,38 @@ internal sealed class InvoiceConfigurationDocument
             IntegrationType = config.IntegrationType.ToString(),
             InvoiceDescription = config.InvoiceDescription,
             Frequency = config.Frequency.ToString(),
-            DefaultExpectedAmount = config.DefaultExpectedAmount.Amount,
-            DefaultExpectedCurrency = config.DefaultExpectedAmount.Currency.Code,
+            AmountMatchingCriteria = config.AmountMatchingCriteria switch
+            {
+                AmountMatchingCriteria criteria => AmountMatchingCriteriaDocument.FromCriteria(criteria),
+                None => null,
+            },
             DefaultVatMode = config.DefaultVatMode.ToString(),
             IsActive = config.IsActive,
             OneDriveDestination = config.OneDriveDestination,
             StartDate = config.StartDate.ToString("O", CultureInfo.InvariantCulture),
             BillingAccountId = config.BillingAccountId,
             DateToleranceDays = config.DateToleranceDays,
-            AmountTolerance = config.AmountTolerance,
         };
+}
+
+internal sealed class AmountMatchingCriteriaDocument
+{
+    [JsonPropertyName("amount")]
+    public required decimal Amount { get; init; }
+
+    [JsonPropertyName("currency")]
+    public required string Currency { get; init; }
+
+    [JsonPropertyName("amountTolerance")]
+    public required decimal AmountTolerance { get; init; }
+
+    public AmountMatchingCriteria ToCriteria() =>
+        new(new Money(Amount, Currency), AmountTolerance);
+
+    public static AmountMatchingCriteriaDocument FromCriteria(AmountMatchingCriteria criteria) => new()
+    {
+        Amount = criteria.Amount.Amount,
+        Currency = criteria.Amount.Currency.Code,
+        AmountTolerance = criteria.AmountTolerance,
+    };
 }

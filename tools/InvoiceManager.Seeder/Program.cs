@@ -22,9 +22,16 @@ var configuration = new ConfigurationBuilder()
 //   --clear-database  delete every item from the containers (data-plane deletes) before
 //                     seeding, giving a clean slate. Refused against production without --force.
 //   --force           override the production --clear-database guard.
-//   --environment <n> deployment environment. When "test", downloads are nested under a root
-//                     "Test" folder so they never collide with production files.
+//   --environment <n> deployment environment (required). When "test", downloads are nested
+//                     under a root "Test" folder so they never collide with production files.
 var (ensureSchema, clearDatabase, force, environment, positionalArgs) = ParseArgs(args);
+
+if (string.IsNullOrWhiteSpace(environment))
+{
+    await Console.Error.WriteLineAsync(
+        "The --environment option is required, e.g. --environment test or --environment production.");
+    Environment.Exit(5);
+}
 
 var isTest = string.Equals(environment, "test", StringComparison.OrdinalIgnoreCase);
 var isProduction = string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase);
@@ -44,7 +51,7 @@ var seedFilePath = positionalArgs.Length > 0
 
 Console.WriteLine($"Seeder starting.");
 Console.WriteLine($"  Database:       {databaseName}");
-Console.WriteLine($"  Environment:    {environment ?? "(none)"}");
+Console.WriteLine($"  Environment:    {environment}");
 Console.WriteLine($"  Ensure schema:  {ensureSchema}");
 Console.WriteLine($"  Clear database: {clearDatabase}");
 Console.WriteLine($"  Seed file:      {Path.GetFullPath(seedFilePath)}");
@@ -68,14 +75,15 @@ var configurations = records.Select(r => new InvoiceConfiguration(
     Enum.Parse<IntegrationType>(r.IntegrationType, ignoreCase: true),
     r.InvoiceDescription,
     Enum.Parse<InvoiceFrequency>(r.Frequency, ignoreCase: true),
-    new Money(r.DefaultExpectedAmount, r.DefaultExpectedCurrency),
+    r.AmountMatchingCriteria is { } amountCriteria
+        ? new AmountMatchingCriteria(new Money(amountCriteria.Amount, amountCriteria.Currency), amountCriteria.AmountTolerance)
+        : Option.None,
     Enum.Parse<VatMode>(r.DefaultVatMode, ignoreCase: true),
     r.IsActive,
     InjectEnvironmentFolder(r.OneDriveDestination, isTest),
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
     r.BillingAccountId,
-    r.DateToleranceDays,
-    r.AmountTolerance)).ToList();
+    r.DateToleranceDays)).ToList();
 
 var cosmosClient = CosmosClientFactory.Create(configuration);
 
@@ -112,6 +120,7 @@ static string ReplaceSeedTokens(string json, IConfiguration configuration)
     {
         ("REPLACE_WITH_DRIVE_ID", "InvoiceManager:Seed:DriveId", "InvoiceManager__Seed__DriveId"),
         ("REPLACE_WITH_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:BillingAccountId", "InvoiceManager__Seed__BillingAccountId"),
+        ("REPLACE_WITH_AZURE_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:AzureBillingAccountId", "InvoiceManager__Seed__AzureBillingAccountId"),
     };
 
     var missing = new List<string>();
@@ -144,7 +153,7 @@ static string ReplaceSeedTokens(string json, IConfiguration configuration)
             Console.Error.WriteLine($"  {envVar}");
         }
         Console.Error.WriteLine(
-            "See tools/dev-setup/Set-SeedEnvironment.ps1.example for a setup script.");
+            "Run tools/dev-setup/Set-SeedEnvironment.ps1 to discover and set the required values.");
         Environment.Exit(3);
     }
 

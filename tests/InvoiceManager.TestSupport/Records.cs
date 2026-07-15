@@ -15,8 +15,7 @@ public static class Records
             resolvedConfig.InvoiceDescription,
             expectedDate ?? resolvedConfig.StartDate,
             resolvedConfig.DateToleranceDays,
-            resolvedConfig.DefaultExpectedAmount,
-            resolvedConfig.AmountTolerance,
+            resolvedConfig.AmountMatchingCriteria,
             resolvedConfig.DefaultVatMode,
             state ?? new Expected());
     }

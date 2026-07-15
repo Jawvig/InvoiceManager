@@ -17,12 +17,11 @@ public static class Configurations
             IntegrationType.Microsoft365,
             invoiceDescription,
             frequency,
-            new Money(10.00m, "GBP"),
+            new AmountMatchingCriteria(new Money(10.00m, "GBP"), amountTolerance),
             VatMode.Exclusive,
             IsActive: isActive,
             OneDriveDestination: "/drives/test/root:/Bills/Test",
             StartDate: startDate ?? new DateOnly(2025, 1, 1),
             BillingAccountId: "test:billing:account",
-            DateToleranceDays: 5,
-            AmountTolerance: amountTolerance);
+            DateToleranceDays: 5);
 }

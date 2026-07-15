@@ -76,6 +76,20 @@ public sealed class InvoiceFilenameParseTests
     }
 
     [Fact]
+    public void TryParse_ReadsDescriptionFreeAzureNameWithoutVatIndicator()
+    {
+        Assert.True(invoiceFilename.TryParse(
+            "2026-05-09 G157021982 £40.62.pdf", out var result));
+
+        Assert.NotNull(result);
+        Assert.Equal(new DateOnly(2026, 5, 9), result.InvoiceDate);
+        Assert.Equal("", result.InvoiceDescription);
+        Assert.Equal("G157021982", result.InvoiceName);
+        Assert.Equal(new Money(40.62m, "GBP"), result.Amount);
+        Assert.True(result.VatMode is None);
+    }
+
+    [Fact]
     public void TryParse_RoundTripsEveryGeneratedName()
     {
         var date = new DateOnly(2026, 7, 10);

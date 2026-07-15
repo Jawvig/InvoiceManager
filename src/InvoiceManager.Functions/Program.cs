@@ -88,9 +88,26 @@ var host = new HostBuilder()
         services.AddSingleton(new InvoiceFilenameSettings { Culture = CultureInfo.GetCultureInfo("en-GB") });
         services.AddSingleton<InvoiceFilename>();
 
-        // Typed HttpClients so handler lifetimes rotate; auth is applied per request.
-        services.AddHttpClient<MicrosoftBillingInvoiceSource>();
-        services.AddTransient<IInvoiceSourceIntegration>(sp => sp.GetRequiredService<MicrosoftBillingInvoiceSource>());
+        // Named HttpClient so handler lifetimes rotate; auth is applied per request.
+        services.AddHttpClient(nameof(MicrosoftBillingInvoiceSource));
+        services.AddTransient<IInvoiceSourceIntegration>(sp =>
+            CreateMicrosoftBillingInvoiceSource(sp, IntegrationType.Microsoft365));
+        services.AddTransient<IInvoiceSourceIntegration>(sp =>
+            CreateMicrosoftBillingInvoiceSource(sp, IntegrationType.Azure));
+
+        static MicrosoftBillingInvoiceSource CreateMicrosoftBillingInvoiceSource(
+            IServiceProvider serviceProvider,
+            IntegrationType integrationType)
+        {
+            var factory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+            return new MicrosoftBillingInvoiceSource(
+                factory.CreateClient(nameof(MicrosoftBillingInvoiceSource)),
+                serviceProvider.GetRequiredService<IMicrosoftTokenProvider>(),
+                serviceProvider.GetRequiredService<IOptions<MicrosoftBillingOptions>>(),
+                serviceProvider.GetRequiredService<ILogger<MicrosoftBillingInvoiceSource>>(),
+                integrationType);
+        }
+
         // Graph client gets the standard resilience handler (429/503 + Retry-After, timeouts).
         services.AddGraphOneDriveIntegration();
 

@@ -21,7 +21,7 @@ public sealed class ExpectedRecordGeneratorTests
         Assert.Equal(new DateOnly(2025, 7, 1), record.ExpectedDate);
         Assert.True(record.State is Expected);
         Assert.Equal(config.InvoiceDescription, record.InvoiceDescription);
-        Assert.Equal(config.DefaultExpectedAmount, record.ExpectedAmount);
+        Assert.Equal(config.AmountMatchingCriteria, record.AmountMatchingCriteria);
         Assert.Equal(config.DefaultVatMode, record.ExpectedVatMode);
         Assert.Equal(config.DateToleranceDays, record.DateToleranceDays);
     }

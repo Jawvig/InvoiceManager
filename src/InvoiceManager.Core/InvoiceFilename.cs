@@ -47,8 +47,9 @@ public sealed class InvoiceFilename
         var date = invoiceDate.ToString("O", CultureInfo.InvariantCulture);
         var money = FormatMoney(amount, settings.Culture);
         var vat = vatMode == VatMode.Inclusive ? "inc" : "exc";
+        var description = string.IsNullOrWhiteSpace(invoiceDescription) ? string.Empty : $"{invoiceDescription} ";
 
-        return $"{date} {invoiceDescription} {invoiceName} {money} {vat}.pdf";
+        return $"{date} {description}{invoiceName} {money} {vat}.pdf";
     }
 
     /// <summary>
@@ -75,7 +76,7 @@ public sealed class InvoiceFilename
         // single-space-separated tokens (the trailing "inc"/"exc" indicator is optional,
         // so it may be as few as date + one description + sourceId + money) with no empty
         // segments (no double spaces).
-        if (tokens.Length < 4 || Array.Exists(tokens, string.IsNullOrEmpty))
+        if (tokens.Length < 3 || Array.Exists(tokens, string.IsNullOrEmpty))
             return false;
 
         // The VAT indicator is tolerated as missing: when the last token is a recognised
@@ -97,9 +98,9 @@ public sealed class InvoiceFilename
         if (!TryTakeMoney(tokens, moneyEnd, out var amount, out var moneyStart))
             return false;
 
-        // What remains before the money is "date description… sourceId": date, at
-        // least one description token, and the source id.
-        if (moneyStart < 3)
+        // What remains before the money is "date [description…] sourceId": date
+        // and the source id are required; the description is optional for Azure.
+        if (moneyStart < 2)
             return false;
 
         if (!DateOnly.TryParseExact(tokens[0], "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))

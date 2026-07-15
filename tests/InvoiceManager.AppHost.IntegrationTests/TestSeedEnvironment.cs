@@ -16,6 +16,7 @@ internal static class TestSeedEnvironment
     {
         SetIfMissing("InvoiceManager__Seed__DriveId", "integration-test-drive-id");
         SetIfMissing("InvoiceManager__Seed__BillingAccountId", "integration-test-billing-account");
+        SetIfMissing("InvoiceManager__Seed__AzureBillingAccountId", "integration-test-azure-billing-account");
     }
 
     private static void SetIfMissing(string name, string value)

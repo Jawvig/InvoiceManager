@@ -12,9 +12,6 @@
 # dotenv files
 .env
 
-# Local dev secrets setup (real values live in a private repo)
-tools/dev-setup/Set-SeedEnvironment.ps1
-
 # User-specific files
 *.rsuser
 *.suo
@@ -495,3 +492,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local MCP server configuration
+.mcp.json
