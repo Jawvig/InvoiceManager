@@ -85,8 +85,6 @@ Candidate fields:
 - `integrationType`
 - `expectedDate`
 - `expectedDateToleranceDays`
-- `expectedAmount`
-- `expectedCurrency`
 - `amountMatchingCriteria` — snapshot of the optional configuration criteria
   at record creation, used as matching criteria
 - `expectedVatMode`

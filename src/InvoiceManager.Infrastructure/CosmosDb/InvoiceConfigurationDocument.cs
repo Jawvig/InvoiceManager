@@ -26,16 +26,6 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("amountMatchingCriteria")]
     public AmountMatchingCriteriaDocument? AmountMatchingCriteria { get; init; }
 
-    // Read legacy documents written before amount criteria became optional.
-    [JsonPropertyName("defaultExpectedAmount")]
-    public decimal? LegacyExpectedAmount { get; init; }
-
-    [JsonPropertyName("defaultExpectedCurrency")]
-    public string? LegacyExpectedCurrency { get; init; }
-
-    [JsonPropertyName("amountTolerance")]
-    public decimal? LegacyAmountTolerance { get; init; }
-
     [JsonPropertyName("defaultVatMode")]
     public required string DefaultVatMode { get; init; }
 
@@ -71,9 +61,7 @@ internal sealed class InvoiceConfigurationDocument
     private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
         AmountMatchingCriteria is { } criteria
             ? criteria.ToCriteria()
-            : LegacyExpectedAmount is { } amount && LegacyExpectedCurrency is { } currency
-                ? new AmountMatchingCriteria(new Money(amount, currency), LegacyAmountTolerance ?? 0m)
-                : Option.None;
+            : Option.None;
 
     public static InvoiceConfigurationDocument FromConfiguration(InvoiceConfiguration config) =>
         new()

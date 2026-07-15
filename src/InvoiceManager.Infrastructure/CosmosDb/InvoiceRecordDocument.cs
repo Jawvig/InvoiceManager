@@ -82,15 +82,6 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("amountMatchingCriteria")]
     public AmountMatchingCriteriaDocument? AmountMatchingCriteria { get; init; }
 
-    [JsonPropertyName("expectedAmount")]
-    public decimal? LegacyExpectedAmount { get; init; }
-
-    [JsonPropertyName("expectedCurrency")]
-    public string? LegacyExpectedCurrency { get; init; }
-
-    [JsonPropertyName("expectedAmountTolerance")]
-    public decimal? LegacyExpectedAmountTolerance { get; init; }
-
     [JsonPropertyName("expectedVatMode")]
     public required string ExpectedVatMode { get; init; }
 
@@ -153,9 +144,7 @@ internal sealed class InvoiceRecordDocument
     private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
         AmountMatchingCriteria is { } criteria
             ? criteria.ToCriteria()
-            : LegacyExpectedAmount is { } amount && LegacyExpectedCurrency is { } currency
-                ? new AmountMatchingCriteria(new Money(amount, currency), LegacyExpectedAmountTolerance ?? 0m)
-                : Option.None;
+            : Option.None;
 
     private InvoiceWorkflowState ToState() => Status switch
     {

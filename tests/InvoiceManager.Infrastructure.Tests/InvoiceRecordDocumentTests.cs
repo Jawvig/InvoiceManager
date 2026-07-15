@@ -113,8 +113,11 @@ public sealed class InvoiceRecordDocumentTests
               "invoiceDescription": "Test Invoice",
               "expectedDate": "2025-07-01",
               "dateToleranceDays": 5,
-              "expectedAmount": 10.00,
-              "expectedCurrency": "GBP",
+              "amountMatchingCriteria": {
+                "amount": 10.00,
+                "currency": "GBP",
+                "amountTolerance": 0.50
+              },
               "expectedVatMode": "Exclusive",
               "status": "Retrieved",
               "actualInvoiceDetails": {}
