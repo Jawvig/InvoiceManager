@@ -22,9 +22,16 @@ var configuration = new ConfigurationBuilder()
 //   --clear-database  delete every item from the containers (data-plane deletes) before
 //                     seeding, giving a clean slate. Refused against production without --force.
 //   --force           override the production --clear-database guard.
-//   --environment <n> deployment environment. When "test", downloads are nested under a root
-//                     "Test" folder so they never collide with production files.
+//   --environment <n> deployment environment (required). When "test", downloads are nested
+//                     under a root "Test" folder so they never collide with production files.
 var (ensureSchema, clearDatabase, force, environment, positionalArgs) = ParseArgs(args);
+
+if (string.IsNullOrWhiteSpace(environment))
+{
+    await Console.Error.WriteLineAsync(
+        "The --environment option is required, e.g. --environment test or --environment production.");
+    Environment.Exit(5);
+}
 
 var isTest = string.Equals(environment, "test", StringComparison.OrdinalIgnoreCase);
 var isProduction = string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase);
@@ -44,7 +51,7 @@ var seedFilePath = positionalArgs.Length > 0
 
 Console.WriteLine($"Seeder starting.");
 Console.WriteLine($"  Database:       {databaseName}");
-Console.WriteLine($"  Environment:    {environment ?? "(none)"}");
+Console.WriteLine($"  Environment:    {environment}");
 Console.WriteLine($"  Ensure schema:  {ensureSchema}");
 Console.WriteLine($"  Clear database: {clearDatabase}");
 Console.WriteLine($"  Seed file:      {Path.GetFullPath(seedFilePath)}");
