@@ -79,16 +79,17 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("dateToleranceDays")]
     public required int DateToleranceDays { get; init; }
 
+    [JsonPropertyName("amountMatchingCriteria")]
+    public AmountMatchingCriteriaDocument? AmountMatchingCriteria { get; init; }
+
     [JsonPropertyName("expectedAmount")]
-    public required decimal ExpectedAmount { get; init; }
+    public decimal? LegacyExpectedAmount { get; init; }
 
     [JsonPropertyName("expectedCurrency")]
-    public required string ExpectedCurrency { get; init; }
+    public string? LegacyExpectedCurrency { get; init; }
 
-    // Optional for backward compatibility: records written before amount tolerance
-    // existed deserialise to 0, meaning an exact amount match.
     [JsonPropertyName("expectedAmountTolerance")]
-    public decimal ExpectedAmountTolerance { get; init; }
+    public decimal? LegacyExpectedAmountTolerance { get; init; }
 
     [JsonPropertyName("expectedVatMode")]
     public required string ExpectedVatMode { get; init; }
@@ -120,8 +121,7 @@ internal sealed class InvoiceRecordDocument
             InvoiceDescription,
             DateOnly.ParseExact(ExpectedDate, "O", CultureInfo.InvariantCulture),
             DateToleranceDays,
-            new Money(ExpectedAmount, ExpectedCurrency),
-            ExpectedAmountTolerance,
+            ToAmountMatchingCriteria(),
             Enum.Parse<VatMode>(ExpectedVatMode, ignoreCase: true),
             ToState());
 
@@ -135,9 +135,11 @@ internal sealed class InvoiceRecordDocument
             InvoiceDescription = record.InvoiceDescription,
             ExpectedDate = record.ExpectedDate.ToString("O", CultureInfo.InvariantCulture),
             DateToleranceDays = record.DateToleranceDays,
-            ExpectedAmount = record.ExpectedAmount.Amount,
-            ExpectedCurrency = record.ExpectedAmount.Currency.Code,
-            ExpectedAmountTolerance = record.AmountTolerance,
+            AmountMatchingCriteria = record.AmountMatchingCriteria switch
+            {
+                AmountMatchingCriteria criteria => AmountMatchingCriteriaDocument.FromCriteria(criteria),
+                None => null,
+            },
             ExpectedVatMode = record.ExpectedVatMode.ToString(),
             Status = fields.Status,
             ActualInvoiceDetails = fields.ActualDetails,
@@ -147,6 +149,13 @@ internal sealed class InvoiceRecordDocument
             ReconciledAt = fields.ReconciledAt,
         };
     }
+
+    private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
+        AmountMatchingCriteria is { } criteria
+            ? criteria.ToCriteria()
+            : LegacyExpectedAmount is { } amount && LegacyExpectedCurrency is { } currency
+                ? new AmountMatchingCriteria(new Money(amount, currency), LegacyExpectedAmountTolerance ?? 0m)
+                : Option.None;
 
     private InvoiceWorkflowState ToState() => Status switch
     {

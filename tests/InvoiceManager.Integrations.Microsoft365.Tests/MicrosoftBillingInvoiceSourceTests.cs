@@ -14,6 +14,7 @@ namespace InvoiceManager.Integrations.Microsoft365.Tests;
 public sealed class MicrosoftBillingInvoiceSourceTests
 {
     private const string PollUrl = "https://management.azure.com/operationResults/op-1?api-version=2024-04-01";
+    private const string NextPageUrl = "https://management.azure.com/providers/Microsoft.Billing/invoices-page-2";
     private const string SasUrl = "https://billing.blob.core.windows.net/downloads/G152207778.zip?sig=abc";
 
     private static readonly byte[] PdfBytes = "%PDF-1.7 fake invoice"u8.ToArray();
@@ -22,8 +23,7 @@ public sealed class MicrosoftBillingInvoiceSourceTests
         BillingAccountId: "account:2019-05-31",
         ExpectedDate: new DateOnly(2025, 7, 10),
         DateToleranceDays: 5,
-        ExpectedAmount: new Money(11.59m, "GBP"),
-        AmountTolerance: amountTolerance);
+        AmountMatchingCriteria: new AmountMatchingCriteria(new Money(11.59m, "GBP"), amountTolerance));
 
     [Fact]
     public async Task FindInvoiceAsync_ReturnsMatchWithExtractedPdf_ForZippedDownload()
@@ -91,6 +91,17 @@ public sealed class MicrosoftBillingInvoiceSourceTests
     }
 
     [Fact]
+    public async Task FindInvoiceAsync_MatchesByDateOnly_WhenAmountCriteriaAreAbsent()
+    {
+        var handler = new StubHttpMessageHandler(Script(PdfBytes, invoiceAmount: 999.99m));
+        var source = BuildSource(handler, IntegrationType.Azure);
+
+        var result = await source.FindInvoiceAsync(CriteriaWithoutAmount());
+
+        Assert.True(result is InvoiceMatch, $"Expected InvoiceMatch but got {result}.");
+    }
+
+    [Fact]
     public async Task FindInvoiceAsync_MatchesWithinAmountTolerance()
     {
         var handler = new StubHttpMessageHandler(Script(PdfBytes, invoiceAmount: 11.50m));
@@ -119,7 +130,7 @@ public sealed class MicrosoftBillingInvoiceSourceTests
     }
 
     [Fact]
-    public async Task FindInvoiceAsync_RequestsInvoicesWithinToleranceWindow()
+    public async Task FindInvoiceAsync_RequestsFourteenMonthsOfBillingPeriods()
     {
         var handler = new StubHttpMessageHandler(Script(PdfBytes));
         var source = BuildSource(handler);
@@ -127,11 +138,24 @@ public sealed class MicrosoftBillingInvoiceSourceTests
         await source.FindInvoiceAsync(Criteria());
 
         var listRequest = handler.Requests.Single(r => r.RequestUri!.AbsoluteUri.Contains("/invoices"));
-        Assert.Contains("periodStartDate=2025-07-05", listRequest.RequestUri!.Query);
+        Assert.Contains("periodStartDate=2024-05-10", listRequest.RequestUri!.Query);
         Assert.Contains("periodEndDate=2025-07-15", listRequest.RequestUri!.Query);
     }
 
-    private static MicrosoftBillingInvoiceSource BuildSource(StubHttpMessageHandler handler)
+    [Fact]
+    public async Task FindInvoiceAsync_FollowsInvoiceListPagination()
+    {
+        var handler = new StubHttpMessageHandler(Script(PdfBytes, paginateInvoiceList: true));
+        var source = BuildSource(handler);
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        Assert.True(result is InvoiceMatch, $"Expected InvoiceMatch but got {result}.");
+        Assert.Contains(handler.Requests, request => request.RequestUri!.ToString() == NextPageUrl);
+    }
+
+    private static MicrosoftBillingInvoiceSource BuildSource(
+        StubHttpMessageHandler handler, IntegrationType integrationType = IntegrationType.Microsoft365)
     {
         var httpClient = new HttpClient(handler);
         var options = Options.Create(new MicrosoftBillingOptions { PollInterval = TimeSpan.Zero });
@@ -139,8 +163,15 @@ public sealed class MicrosoftBillingInvoiceSourceTests
             httpClient,
             new FakeMicrosoftTokenProvider(),
             options,
-            NullLogger<MicrosoftBillingInvoiceSource>.Instance);
+            NullLogger<MicrosoftBillingInvoiceSource>.Instance,
+            integrationType);
     }
+
+    private static InvoiceSearchCriteria CriteriaWithoutAmount() => new(
+        BillingAccountId: "azure-account",
+        ExpectedDate: new DateOnly(2025, 7, 10),
+        DateToleranceDays: 5,
+        AmountMatchingCriteria: Option.None);
 
     /// <summary>
     /// Builds a responder that walks the whole flow: list invoices, downloadDocuments
@@ -150,9 +181,11 @@ public sealed class MicrosoftBillingInvoiceSourceTests
     private static Func<HttpRequestMessage, int, HttpResponseMessage> Script(
         byte[] downloadBytes,
         int pollsBeforeReady = 0,
-        decimal invoiceAmount = 11.59m)
+        decimal invoiceAmount = 11.59m,
+        bool paginateInvoiceList = false)
     {
         var polls = 0;
+        var invoiceListRequests = 0;
         return (request, _) =>
         {
             var uri = request.RequestUri!.ToString();
@@ -166,8 +199,17 @@ public sealed class MicrosoftBillingInvoiceSourceTests
             if (uri.Contains("/downloadDocuments"))
                 return Accepted();
 
-            if (uri.Contains("/invoices"))
+            if (uri.Contains("/invoices") || uri == NextPageUrl)
+            {
+                if (paginateInvoiceList && invoiceListRequests++ == 0)
+                {
+                    return Json(
+                        HttpStatusCode.OK,
+                        $$"""{ "value": [], "nextLink": "{{NextPageUrl}}" }""");
+                }
+
                 return Json(HttpStatusCode.OK, InvoiceListJson(invoiceAmount));
+            }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         };

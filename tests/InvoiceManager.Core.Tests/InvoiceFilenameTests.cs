@@ -45,6 +45,15 @@ public sealed class InvoiceFilenameTests
     }
 
     [Fact]
+    public void Generate_OmitsDescription_ForAzureStyleName()
+    {
+        var filename = invoiceFilename.Generate(
+            new DateOnly(2026, 6, 9), "", "G157021982", new Money(40.62m, "GBP"), VatMode.Inclusive);
+
+        Assert.Equal("2026-06-09 G157021982 £40.62 inc.pdf", filename);
+    }
+
+    [Fact]
     public void Generate_UsesEuroSymbolWithoutIsoSuffix_ForEur()
     {
         var filename = invoiceFilename.Generate(

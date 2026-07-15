@@ -82,12 +82,11 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
             IntegrationType.Microsoft365,
             invoiceDescription,
             InvoiceFrequency.Monthly,
-            new Money(10.00m, "GBP"),
+            new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0m),
             VatMode.Exclusive,
             IsActive: isActive,
             OneDriveDestination: "/drives/test/root:/Bills/Test",
             StartDate: new DateOnly(2025, 1, 1),
             BillingAccountId: "test:billing:account",
-            DateToleranceDays: 5,
-            AmountTolerance: 0m);
+            DateToleranceDays: 5);
 }

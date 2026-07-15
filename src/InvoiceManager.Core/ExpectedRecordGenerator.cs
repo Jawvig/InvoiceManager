@@ -76,8 +76,7 @@ public sealed class ExpectedRecordGenerator(
             configuration.InvoiceDescription,
             nextExpectedDate.Date,
             configuration.DateToleranceDays,
-            configuration.DefaultExpectedAmount,
-            configuration.AmountTolerance,
+            configuration.AmountMatchingCriteria,
             configuration.DefaultVatMode,
             new Expected());
 

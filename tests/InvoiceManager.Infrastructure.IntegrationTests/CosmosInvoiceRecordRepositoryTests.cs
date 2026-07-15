@@ -199,8 +199,7 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
             invoiceDescription,
             expectedDate,
             DateToleranceDays: 5,
-            new Money(10.00m, "GBP"),
-            AmountTolerance: 0.50m,
+            new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0.50m),
             VatMode.Exclusive,
             state ?? new Expected());
 
@@ -226,8 +225,7 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
         Assert.Equal(expected.InvoiceDescription, actual.InvoiceDescription);
         Assert.Equal(expected.ExpectedDate, actual.ExpectedDate);
         Assert.Equal(expected.DateToleranceDays, actual.DateToleranceDays);
-        Assert.Equal(expected.ExpectedAmount, actual.ExpectedAmount);
-        Assert.Equal(expected.AmountTolerance, actual.AmountTolerance);
+        Assert.Equal(expected.AmountMatchingCriteria, actual.AmountMatchingCriteria);
         Assert.Equal(expected.ExpectedVatMode, actual.ExpectedVatMode);
     }
 }

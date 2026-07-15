@@ -90,7 +90,16 @@ var host = new HostBuilder()
 
         // Typed HttpClients so handler lifetimes rotate; auth is applied per request.
         services.AddHttpClient<MicrosoftBillingInvoiceSource>();
-        services.AddTransient<IInvoiceSourceIntegration>(sp => sp.GetRequiredService<MicrosoftBillingInvoiceSource>());
+        services.AddTransient<IInvoiceSourceIntegration>(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            return new MicrosoftBillingInvoiceSource(factory.CreateClient(nameof(MicrosoftBillingInvoiceSource)), sp.GetRequiredService<IMicrosoftTokenProvider>(), sp.GetRequiredService<IOptions<MicrosoftBillingOptions>>(), sp.GetRequiredService<ILogger<MicrosoftBillingInvoiceSource>>(), IntegrationType.Microsoft365);
+        });
+        services.AddTransient<IInvoiceSourceIntegration>(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            return new MicrosoftBillingInvoiceSource(factory.CreateClient(nameof(MicrosoftBillingInvoiceSource)), sp.GetRequiredService<IMicrosoftTokenProvider>(), sp.GetRequiredService<IOptions<MicrosoftBillingOptions>>(), sp.GetRequiredService<ILogger<MicrosoftBillingInvoiceSource>>(), IntegrationType.Azure);
+        });
         // Graph client gets the standard resilience handler (429/503 + Retry-After, timeouts).
         services.AddGraphOneDriveIntegration();
 

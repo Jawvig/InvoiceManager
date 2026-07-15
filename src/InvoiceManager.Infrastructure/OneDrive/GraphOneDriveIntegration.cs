@@ -138,8 +138,11 @@ public sealed class GraphOneDriveIntegration(
             ?? throw new InvalidOperationException(
                 $"OneDrive file '{best.Name}' matched but returned no location.");
         var matchReason =
-            $"Matched OneDrive file '{best.Name}' by description, date {bestParsed.InvoiceDate:O} " +
-            $"(within {request.Criteria.DateToleranceDays}d) and amount {bestParsed.Amount}.";
+            $"Matched OneDrive file '{best.Name}' by date {bestParsed.InvoiceDate:O} " +
+            $"(within {request.Criteria.DateToleranceDays}d)" +
+            (request.Criteria.AmountMatchingCriteria is AmountMatchingCriteria
+                ? $" and amount {bestParsed.Amount}."
+                : ".");
 
         activity?.SetTag("onedrive.matched_name", best.Name);
         activity?.AddEvent(new ActivityEvent("match_selected"));

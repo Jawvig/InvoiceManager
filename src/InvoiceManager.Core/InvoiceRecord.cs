@@ -1,5 +1,3 @@
-using NodaMoney;
-
 namespace InvoiceManager.Core;
 
 /// <summary>
@@ -11,8 +9,7 @@ public sealed record InvoiceRecord(
     string InvoiceDescription,
     DateOnly ExpectedDate,
     int DateToleranceDays,
-    Money ExpectedAmount,
-    decimal AmountTolerance,
+    Option<AmountMatchingCriteria> AmountMatchingCriteria,
     VatMode ExpectedVatMode,
     InvoiceWorkflowState State)
 {

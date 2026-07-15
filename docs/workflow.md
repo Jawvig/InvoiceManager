@@ -126,6 +126,16 @@ for expected invoice identity, generated filenames, logs, and reporting.
 Currency must be part of every amount comparison. For example, OpenAI invoices
 may be in USD while most other invoices are expected to be in GBP.
 
+Amount matching is optional. When `amountMatchingCriteria` is absent, matching
+still enforces the expected date window but does not compare amount or currency.
+Azure Billing uses this mode because monthly usage can vary unpredictably.
+
+The Azure Billing invoice-list API filters only by invoice billing period; it
+does not support filtering by `invoiceDate`. The integration therefore requests
+the preceding 14 months of billing periods, follows all response pages, and then
+applies the configured `invoiceDate` tolerance and optional amount criteria
+locally. The lookback covers annual as well as monthly invoice periods.
+
 ## OneDrive Reconciliation
 
 Before calling a source integration, the workflow should ask the OneDrive

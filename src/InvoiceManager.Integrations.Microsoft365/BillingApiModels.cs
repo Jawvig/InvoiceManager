@@ -4,7 +4,8 @@ namespace InvoiceManager.Integrations.Microsoft365;
 
 /// <summary>The Azure Billing "list invoices" response envelope.</summary>
 internal sealed record BillingInvoiceListResponse(
-    [property: JsonPropertyName("value")] IReadOnlyList<BillingInvoice> Value);
+    [property: JsonPropertyName("value")] IReadOnlyList<BillingInvoice> Value,
+    [property: JsonPropertyName("nextLink")] string? NextLink = null);
 
 /// <summary>A single invoice. <c>Name</c> is the source invoice id (for example <c>G152207778</c>).</summary>
 internal sealed record BillingInvoice(

@@ -9,4 +9,5 @@ namespace InvoiceManager.Core;
 public enum IntegrationType
 {
     Microsoft365,
+    Azure,
 }

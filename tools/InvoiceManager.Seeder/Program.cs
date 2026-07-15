@@ -68,14 +68,15 @@ var configurations = records.Select(r => new InvoiceConfiguration(
     Enum.Parse<IntegrationType>(r.IntegrationType, ignoreCase: true),
     r.InvoiceDescription,
     Enum.Parse<InvoiceFrequency>(r.Frequency, ignoreCase: true),
-    new Money(r.DefaultExpectedAmount, r.DefaultExpectedCurrency),
+    r.AmountMatchingCriteria is { } amountCriteria
+        ? new AmountMatchingCriteria(new Money(amountCriteria.Amount, amountCriteria.Currency), amountCriteria.AmountTolerance)
+        : Option.None,
     Enum.Parse<VatMode>(r.DefaultVatMode, ignoreCase: true),
     r.IsActive,
     InjectEnvironmentFolder(r.OneDriveDestination, isTest),
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
     r.BillingAccountId,
-    r.DateToleranceDays,
-    r.AmountTolerance)).ToList();
+    r.DateToleranceDays)).ToList();
 
 var cosmosClient = CosmosClientFactory.Create(configuration);
 
@@ -112,6 +113,7 @@ static string ReplaceSeedTokens(string json, IConfiguration configuration)
     {
         ("REPLACE_WITH_DRIVE_ID", "InvoiceManager:Seed:DriveId", "InvoiceManager__Seed__DriveId"),
         ("REPLACE_WITH_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:BillingAccountId", "InvoiceManager__Seed__BillingAccountId"),
+        ("REPLACE_WITH_AZURE_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:AzureBillingAccountId", "InvoiceManager__Seed__AzureBillingAccountId"),
     };
 
     var missing = new List<string>();
@@ -144,7 +146,7 @@ static string ReplaceSeedTokens(string json, IConfiguration configuration)
             Console.Error.WriteLine($"  {envVar}");
         }
         Console.Error.WriteLine(
-            "See tools/dev-setup/Set-SeedEnvironment.ps1.example for a setup script.");
+            "Run tools/dev-setup/Set-SeedEnvironment.ps1 to discover and set the required values.");
         Environment.Exit(3);
     }
 

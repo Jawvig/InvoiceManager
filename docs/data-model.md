@@ -39,15 +39,13 @@ Candidate fields:
 - `integrationType`
 - `invoiceName`
 - `expectedFrequency`
-- `defaultExpectedAmount`
-- `defaultExpectedCurrency`
+- `amountMatchingCriteria` — optional object containing `amount`, `currency`,
+  and `amountTolerance`; absent when the provider's amount is unpredictable
 - `defaultVatMode`
 - `isActive`
 - `oneDriveDestination`
 - `billingAccountId`
 - `dateToleranceDays`
-- `amountTolerance` — permitted absolute difference from `defaultExpectedAmount`
-  when matching a source invoice (0 means an exact amount match)
 - `freeAgentMatching`
 - `createdAt`
 - `updatedAt`
@@ -89,7 +87,7 @@ Candidate fields:
 - `expectedDateToleranceDays`
 - `expectedAmount`
 - `expectedCurrency`
-- `expectedAmountTolerance` — snapshot of the configuration's `amountTolerance`
+- `amountMatchingCriteria` — snapshot of the optional configuration criteria
   at record creation, used as matching criteria
 - `expectedVatMode`
 - `status`

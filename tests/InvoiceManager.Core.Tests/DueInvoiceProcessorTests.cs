@@ -150,8 +150,7 @@ public sealed class DueInvoiceProcessorTests
         Assert.Equal(config.BillingAccountId, criteria.BillingAccountId);
         Assert.Equal(new DateOnly(2025, 7, 10), criteria.ExpectedDate);
         Assert.Equal(config.DateToleranceDays, criteria.DateToleranceDays);
-        Assert.Equal(config.DefaultExpectedAmount, criteria.ExpectedAmount);
-        Assert.Equal(0.50m, criteria.AmountTolerance);
+        Assert.Equal(config.AmountMatchingCriteria, criteria.AmountMatchingCriteria);
     }
 
     [Fact]

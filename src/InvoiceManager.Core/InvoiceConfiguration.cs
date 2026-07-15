@@ -1,5 +1,3 @@
-using NodaMoney;
-
 namespace InvoiceManager.Core;
 
 /// <summary>
@@ -11,11 +9,10 @@ public sealed record InvoiceConfiguration(
     IntegrationType IntegrationType,
     string InvoiceDescription,
     InvoiceFrequency Frequency,
-    Money DefaultExpectedAmount,
+    Option<AmountMatchingCriteria> AmountMatchingCriteria,
     VatMode DefaultVatMode,
     bool IsActive,
     string OneDriveDestination,
     DateOnly StartDate,
     string BillingAccountId,
-    int DateToleranceDays,
-    decimal AmountTolerance);
+    int DateToleranceDays);

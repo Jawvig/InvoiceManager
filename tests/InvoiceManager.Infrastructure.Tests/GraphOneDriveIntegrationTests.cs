@@ -197,6 +197,23 @@ public sealed class GraphOneDriveIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_MatchesDescriptionFreeFileByDateOnly_WhenAmountCriteriaAreAbsent()
+    {
+        var handler = new StubHttpMessageHandler((_, _) => Json(HttpStatusCode.OK, Children(
+            nextLink: null,
+            ("2026-07-10 G152207778 £999.99.pdf", "id-1", "https://example/id-1"))));
+        using var httpClient = new HttpClient(handler);
+        var integration = Build(httpClient);
+
+        var criteria = new OneDriveSearchCriteria(
+            new DateOnly(2026, 7, 10), 3, Option.None, "");
+        var result = await integration.SearchAsync(new OneDriveSearchRequest(Folder, criteria));
+
+        var match = AssertMatch(result);
+        Assert.Equal("G152207778", match.Details.SourceInvoiceId.Value);
+    }
+
+    [Fact]
     public async Task SearchAsync_ReturnsNoMatch_WhenDescriptionDiffers()
     {
         // Same date, amount, and currency, but a different subscription's file sharing
@@ -225,8 +242,7 @@ public sealed class GraphOneDriveIntegrationTests
     private static OneDriveSearchCriteria Criteria() => new(
         ExpectedDate: new DateOnly(2026, 7, 10),
         DateToleranceDays: 3,
-        ExpectedAmount: new Money(11.59m, "GBP"),
-        AmountTolerance: 0m,
+        AmountMatchingCriteria: new AmountMatchingCriteria(new Money(11.59m, "GBP"), 0m),
         InvoiceDescription: "Microsoft 365 Business Basic");
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>

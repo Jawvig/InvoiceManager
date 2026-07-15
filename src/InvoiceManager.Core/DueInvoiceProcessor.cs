@@ -139,8 +139,7 @@ public sealed class DueInvoiceProcessor(
             configuration.BillingAccountId,
             record.ExpectedDate,
             record.DateToleranceDays,
-            record.ExpectedAmount,
-            record.AmountTolerance);
+            record.AmountMatchingCriteria);
 
         // Reconcile first: a file already in OneDrive (a manual download or an
         // earlier partial run) is used as-is, skipping the source call and upload.
@@ -149,8 +148,7 @@ public sealed class DueInvoiceProcessor(
         var oneDriveCriteria = new OneDriveSearchCriteria(
             record.ExpectedDate,
             record.DateToleranceDays,
-            record.ExpectedAmount,
-            record.AmountTolerance,
+            record.AmountMatchingCriteria,
             configuration.InvoiceDescription);
 
         OneDriveSearchResult search;

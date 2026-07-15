@@ -15,19 +15,25 @@ internal static class InvoiceMatching
     /// the expected date, its currency equals the expected currency, and its amount
     /// is within <paramref name="amountTolerance"/> of the expected amount.
     /// </summary>
-    public static bool DateAmountAndCurrencyMatch(
+    public static bool DateAndOptionalAmountMatch(
         DateOnly expectedDate,
         int dateToleranceDays,
-        Money expectedAmount,
-        decimal amountTolerance,
+        Option<AmountMatchingCriteria> amountCriteria,
         DateOnly actualDate,
         Money actualAmount)
     {
         var dateMatches = DateDistanceDays(expectedDate, actualDate) <= dateToleranceDays;
-        var currencyMatches = string.Equals(
-            actualAmount.Currency.Code, expectedAmount.Currency.Code, StringComparison.OrdinalIgnoreCase);
-        var amountMatches = Math.Abs(actualAmount.Amount - expectedAmount.Amount) <= amountTolerance;
-        return dateMatches && currencyMatches && amountMatches;
+        if (!dateMatches)
+            return false;
+
+        return amountCriteria switch
+        {
+            AmountMatchingCriteria criteria =>
+                string.Equals(actualAmount.Currency.Code, criteria.Amount.Currency.Code, StringComparison.OrdinalIgnoreCase)
+                && Math.Abs(actualAmount.Amount - criteria.Amount.Amount) <= criteria.AmountTolerance,
+            None => true,
+            _ => false,
+        };
     }
 
     /// <summary>The absolute number of days between a candidate's date and the expected date.</summary>

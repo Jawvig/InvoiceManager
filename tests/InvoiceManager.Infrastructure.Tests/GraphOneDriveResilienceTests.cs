@@ -57,8 +57,7 @@ public sealed class GraphOneDriveResilienceTests
     private static OneDriveSearchCriteria Criteria() => new(
         ExpectedDate: new DateOnly(2026, 7, 10),
         DateToleranceDays: 3,
-        ExpectedAmount: new Money(11.59m, "GBP"),
-        AmountTolerance: 0m,
+        AmountMatchingCriteria: new AmountMatchingCriteria(new Money(11.59m, "GBP"), 0m),
         InvoiceDescription: "Microsoft 365 Business Basic");
 
     private static HttpResponseMessage Throttled(HttpStatusCode status)

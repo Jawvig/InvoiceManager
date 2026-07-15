@@ -15,8 +15,7 @@ namespace InvoiceManager.Core.Integrations;
 public sealed record OneDriveSearchCriteria(
     DateOnly ExpectedDate,
     int DateToleranceDays,
-    Money ExpectedAmount,
-    decimal AmountTolerance,
+    Option<AmountMatchingCriteria> AmountMatchingCriteria,
     string InvoiceDescription)
 {
     /// <summary>
@@ -25,9 +24,10 @@ public sealed record OneDriveSearchCriteria(
     /// hold and the description must match (case-insensitively).
     /// </summary>
     public bool Matches(DateOnly actualDate, Money actualAmount, string actualDescription) =>
-        InvoiceMatching.DateAmountAndCurrencyMatch(
-            ExpectedDate, DateToleranceDays, ExpectedAmount, AmountTolerance, actualDate, actualAmount)
-        && string.Equals(actualDescription, InvoiceDescription, StringComparison.OrdinalIgnoreCase);
+        InvoiceMatching.DateAndOptionalAmountMatch(
+            ExpectedDate, DateToleranceDays, AmountMatchingCriteria, actualDate, actualAmount)
+        && (string.IsNullOrWhiteSpace(InvoiceDescription) ||
+            string.Equals(actualDescription, InvoiceDescription, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The absolute number of days between a candidate's date and the expected date,
