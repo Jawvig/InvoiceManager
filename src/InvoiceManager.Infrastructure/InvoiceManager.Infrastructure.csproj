@@ -29,7 +29,7 @@
          and 429/503 throttling retry honouring Retry-After, with a bounded total timeout. -->
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
-    <PackageReference Include="Microsoft.Identity.Client" Version="4.85.2" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.86.0" />
     <!-- Required at runtime by the Cosmos SDK core; not pulled in transitively (see note above). -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
