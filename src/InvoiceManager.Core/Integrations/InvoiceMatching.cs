@@ -12,8 +12,8 @@ internal static class InvoiceMatching
 {
     /// <summary>
     /// Whether a candidate's date is within <paramref name="dateToleranceDays"/> of
-    /// the expected date, its currency equals the expected currency, and its amount
-    /// is within <paramref name="amountTolerance"/> of the expected amount.
+    /// the expected date and, when <paramref name="amountCriteria"/> is present, its
+    /// currency and amount satisfy those criteria.
     /// </summary>
     public static bool DateAndOptionalAmountMatch(
         DateOnly expectedDate,
