@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -97,6 +98,22 @@ public sealed class GraphOneDriveIntegration(
             using var message = new HttpRequestMessage(HttpMethod.Get, next);
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await httpClient.SendAsync(message, cancellationToken);
+
+            // A missing destination folder (Graph returns 404 itemNotFound) means no invoice
+            // has ever been written there. The upload path silently creates the folder on the
+            // first save, so a folder that doesn't exist yet is simply "nothing to reconcile
+            // against" — a warning and a no-match, not a retrieval failure that would strand
+            // the record in RetrievalError.
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                activity?.AddEvent(new ActivityEvent("destination_not_found"));
+                logger.LogWarning(
+                    "OneDrive destination folder {Destination} does not exist yet; treating as no match. " +
+                    "It will be created when an invoice is first saved there.",
+                    request.DestinationPath);
+                return new NoOneDriveMatch();
+            }
+
             await EnsureSuccessAsync(response, "listing OneDrive files", cancellationToken);
 
             var page = await response.Content.ReadFromJsonAsync<DriveChildrenResponse>(cancellationToken);
