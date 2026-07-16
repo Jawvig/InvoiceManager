@@ -218,8 +218,29 @@ The script:
    supplied. Terraform provisions the per-environment CI identity, its RBAC, and
    the GitHub deploy environment, secrets, and variables (see the workflow
    section below).
-9. Seeds the invoice configurations, passing `--environment <env>` (and
-   `--clear-database` when `-ClearDatabase` is supplied — see below).
+9. Removes the provider-injected empty-key Function App storage connection
+   strings (see below).
+10. Seeds the invoice configurations, passing `--environment <env>` (and
+    `--clear-database` when `-ClearDatabase` is supplied — see below).
+
+### Function App storage connection string cleanup
+
+The `azurerm` provider's `azurerm_function_app_flex_consumption` resource
+silently re-injects empty-key `AzureWebJobsStorage` and
+`DEPLOYMENT_STORAGE_CONNECTION_STRING` app settings on every create/update, even
+though neither is in our Terraform `app_settings` and neither appears in the plan
+(hashicorp/terraform-provider-azurerm
+[#29149](https://github.com/hashicorp/terraform-provider-azurerm/issues/29149),
+[#29993](https://github.com/hashicorp/terraform-provider-azurerm/issues/29993) —
+both open as of azurerm 4.80.0). The blank-key `AzureWebJobsStorage` scalar
+shadows the identity-based `AzureWebJobsStorage__*` settings, so the host falls
+back to shared-key auth with an empty key and fails with `403 AuthenticationFailed`
+on the `azure-webjobs-secrets` container — which stops the timer listener from
+starting. After `terraform apply`, `Deploy-Infra.ps1` deletes these settings so
+the host restarts onto managed-identity storage. The step is idempotent and runs
+every deploy, so it converges regardless of the provider bug. Remove it once the
+upstream provider issues are fixed and the pinned `azurerm` version includes the
+fix.
 
 ### Seeding behavior (`--environment`, `--clear-database`)
 
