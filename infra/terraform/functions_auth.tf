@@ -26,6 +26,17 @@ resource "azuread_application" "functions" {
     id                   = local.functions_invoke_app_role_id
     value                = "Invoke"
   }
+
+  lifecycle {
+    # The identifier URI is owned by the standalone azuread_application_identifier_uri
+    # resource below. Without this, the application resource treats identifier_uris as an
+    # empty-by-default managed attribute and strips the URI the standalone resource added
+    # on the next apply — then the standalone resource re-adds it on the apply after,
+    # flip-flopping the api://<clientid> audience on every run (and intermittently breaking
+    # token acquisition for callers). Ignoring it here hands sole ownership to the
+    # standalone resource, the provider-recommended pattern.
+    ignore_changes = [identifier_uris]
+  }
 }
 
 # api://<client-id> as the identifier URI / token audience. A separate resource
