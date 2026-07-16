@@ -229,6 +229,36 @@ public sealed class GraphOneDriveIntegrationTests
         Assert.True(result is NoOneDriveMatch, $"Expected NoOneDriveMatch but got {result}.");
     }
 
+    [Fact]
+    public async Task SearchAsync_ReturnsNoMatch_WhenDestinationFolderDoesNotExist()
+    {
+        // Graph returns 404 itemNotFound when the folder has never been created. The upload
+        // path creates missing folders on demand, so a missing folder is "nothing to
+        // reconcile against yet", not a retrieval failure.
+        var handler = new StubHttpMessageHandler((_, _) => Json(
+            HttpStatusCode.NotFound,
+            """{ "error": { "code": "itemNotFound", "message": "The resource could not be found." } }"""));
+        using var httpClient = new HttpClient(handler);
+        var integration = Build(httpClient);
+
+        var result = await integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria()));
+
+        Assert.True(result is NoOneDriveMatch, $"Expected NoOneDriveMatch but got {result}.");
+    }
+
+    [Fact]
+    public async Task SearchAsync_Throws_WhenGraphReturnsAGenuineError()
+    {
+        // A non-404 failure (e.g. 403 Forbidden) is a real fault the caller must surface
+        // as a retrieval error, not swallow as "no match".
+        var handler = new StubHttpMessageHandler((_, _) => Json(HttpStatusCode.Forbidden, "denied"));
+        using var httpClient = new HttpClient(handler);
+        var integration = Build(httpClient);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria())));
+    }
+
     private static OneDriveMatch AssertMatch(OneDriveSearchResult result) =>
         result is OneDriveMatch match
             ? match
