@@ -402,6 +402,60 @@ function Invoke-ConfigurationSeeder {
     }
 }
 
+function Remove-InjectedFunctionStorageConnectionString {
+    param(
+        [string] $TerraformRoot
+    )
+
+    Write-Section "Removing provider-injected Function App storage connection strings"
+
+    # The azurerm provider's azurerm_function_app_flex_consumption resource silently
+    # re-injects empty-key AzureWebJobsStorage and DEPLOYMENT_STORAGE_CONNECTION_STRING
+    # app settings on every create/update, even though neither is in our Terraform
+    # app_settings and neither appears in the plan (hashicorp/terraform-provider-azurerm
+    # #29149, #29993 — both open as of azurerm 4.80.0). The blank-key AzureWebJobsStorage
+    # scalar shadows the identity-based AzureWebJobsStorage__* settings, so the host falls
+    # back to shared-key auth with an empty key and fails with 403 AuthenticationFailed on
+    # the azure-webjobs-secrets container, which stops the timer listener from starting.
+    # Deleting them restarts the host onto the managed-identity settings. Idempotent: runs
+    # every deploy and converges regardless of the provider bug. Remove once the upstream
+    # issues are fixed (see docs/deployment.md).
+    Push-Location $TerraformRoot
+    try {
+        $outputs = Invoke-JsonCommand -Command @("terraform", "output", "-json")
+    }
+    finally {
+        Pop-Location
+    }
+
+    $functionAppName = $outputs.functions_app_name.value
+    $resourceGroup = $outputs.resource_group_name.value
+    $injectedSettings = @("AzureWebJobsStorage", "DEPLOYMENT_STORAGE_CONNECTION_STRING")
+
+    $present = Invoke-JsonCommand -Command @(
+        "az", "functionapp", "config", "appsettings", "list",
+        "--name", $functionAppName,
+        "--resource-group", $resourceGroup,
+        "--query", "[?name=='AzureWebJobsStorage' || name=='DEPLOYMENT_STORAGE_CONNECTION_STRING'].name",
+        "-o", "json")
+
+    if (-not $present -or @($present).Count -eq 0) {
+        Write-Host "No injected storage connection strings present on '$functionAppName'; nothing to remove."
+        return
+    }
+
+    Write-Host "Removing injected setting(s) on '$functionAppName': $(@($present) -join ', ')"
+    $deleteCommand = @(
+        "az", "functionapp", "config", "appsettings", "delete",
+        "--name", $functionAppName,
+        "--resource-group", $resourceGroup,
+        "--setting-names"
+    ) + $injectedSettings + @("-o", "none")
+    Invoke-CheckedCommand -Command $deleteCommand
+
+    Write-Host "Removed injected storage connection string(s); the host will restart onto identity-based storage."
+}
+
 # The five deploy-target Environment variables Terraform now owns
 # (github_actions_environment_variable in github.tf).
 $script:DeployTargetVariableNames = @(
@@ -608,6 +662,7 @@ try {
     if ($planExitCode -eq 0) {
         Write-Host "Terraform plan completed with no changes."
         if (-not $PlanOnly) {
+            Remove-InjectedFunctionStorageConnectionString -TerraformRoot $terraformRoot
             Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
             if ($Environment -eq "test") {
                 Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
@@ -651,6 +706,8 @@ try {
     $applyCommand += "$Environment.tfplan"
 
     Invoke-CheckedCommand -Command $applyCommand
+
+    Remove-InjectedFunctionStorageConnectionString -TerraformRoot $terraformRoot
 
     Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
 
