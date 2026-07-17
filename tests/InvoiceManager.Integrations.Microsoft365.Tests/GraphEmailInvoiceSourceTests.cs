@@ -1,0 +1,205 @@
+using System.Net;
+using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations;
+using InvoiceManager.TestSupport;
+using Microsoft.Extensions.Logging.Abstractions;
+using NodaMoney;
+
+namespace InvoiceManager.Integrations.Microsoft365.Tests;
+
+public sealed class GraphEmailInvoiceSourceTests
+{
+    private static readonly byte[] SinglePdfBytes = "%PDF-1.7 single"u8.ToArray();
+    private static readonly byte[] SecondPdfBytes = "%PDF-1.7 second"u8.ToArray();
+
+    private static InvoiceSearchCriteria Criteria(string bodyPattern = "") => new(
+        BillingAccountId: "",
+        ExpectedDate: new DateOnly(2025, 7, 10),
+        DateToleranceDays: 5,
+        AmountMatchingCriteria: Option.None,
+        SenderEmailAddress: "billing@contoso.com",
+        BodyPattern: bodyPattern);
+
+    [Fact]
+    public async Task FindInvoiceAsync_ReturnsMatch_ForSinglePdfAttachment()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(("msg-1", "2025-07-12", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes))));
+        var extractor = new FakePdfExtractor(_ => new PdfExtractionSucceeded(new DateOnly(2025, 7, 12), new Money(11.59m, "GBP")));
+        var source = Build(handler, extractor);
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        if (result is not InvoiceMatch match)
+        {
+            Assert.Fail($"Expected InvoiceMatch but got {result}.");
+            return;
+        }
+
+        Assert.Equal(SinglePdfBytes, match.PdfContent);
+        Assert.Equal(new DateOnly(2025, 7, 12), match.Details.ActualInvoiceDate);
+        Assert.Equal(new Money(11.59m, "GBP"), match.Details.ActualAmount);
+        Assert.Equal(new SourceInvoiceId("msg-1"), match.Details.SourceInvoiceId);
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_ReturnsNoMatch_WhenNoCandidateEmails()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/messages")
+                ? Json(HttpStatusCode.OK, """{ "value": [] }""")
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var source = Build(handler, new FakePdfExtractor(_ => throw new InvalidOperationException("should not extract")));
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        Assert.True(result is NoInvoiceMatch, $"Expected NoInvoiceMatch but got {result}.");
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_SkipsMessage_WhenBodyDoesNotMatchPattern()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/messages")
+                ? Json(HttpStatusCode.OK, Messages(("msg-1", "2025-07-12", "Unrelated newsletter content.")))
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var source = Build(handler, new FakePdfExtractor(_ => throw new InvalidOperationException("should not extract")));
+
+        var result = await source.FindInvoiceAsync(Criteria(bodyPattern: "Invoice \\d+"));
+
+        Assert.True(result is NoInvoiceMatch, $"Expected NoInvoiceMatch but got {result}.");
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_ReturnsNoMatch_WhenMatchedMessageHasNoPdfAttachment()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(("msg-1", "2025-07-12", "Your invoice is attached.")),
+            ("msg-1", """{ "value": [] }"""));
+        var source = Build(handler, new FakePdfExtractor(_ => throw new InvalidOperationException("should not extract")));
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        Assert.True(result is NoInvoiceMatch, $"Expected NoInvoiceMatch but got {result}.");
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_TriesEachPdf_AndAcceptsTheOneThatExtracts()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(("msg-1", "2025-07-12", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes), ("att-2", SecondPdfBytes))));
+        var extractor = new FakePdfExtractor(content =>
+            content.SequenceEqual(SecondPdfBytes)
+                ? new PdfExtractionSucceeded(new DateOnly(2025, 7, 12), new Money(20m, "GBP"))
+                : new PdfExtractionFailed("not an invoice"));
+        var source = Build(handler, extractor);
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        if (result is not InvoiceMatch match)
+        {
+            Assert.Fail($"Expected InvoiceMatch but got {result}.");
+            return;
+        }
+
+        Assert.Equal(SecondPdfBytes, match.PdfContent);
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_Throws_WhenAllPdfAttachmentsFailExtraction()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(("msg-1", "2025-07-12", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes))));
+        var source = Build(handler, new FakePdfExtractor(_ => new PdfExtractionFailed("garbled")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => source.FindInvoiceAsync(Criteria()));
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_SendsBearerToken_ForMailReadScope()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/messages")
+                ? Json(HttpStatusCode.OK, """{ "value": [] }""")
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var tokenProvider = new FakeMicrosoftTokenProvider("graph-token");
+        var source = Build(handler, new FakePdfExtractor(_ => throw new InvalidOperationException()), tokenProvider);
+
+        await source.FindInvoiceAsync(Criteria());
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("Bearer graph-token", request.Authorization);
+        var scopes = Assert.Single(tokenProvider.RequestedScopes);
+        Assert.Contains("https://graph.microsoft.com/Mail.Read", scopes);
+    }
+
+    private static GraphEmailInvoiceSource Build(
+        StubHttpMessageHandler handler, FakePdfExtractor extractor, FakeMicrosoftTokenProvider? tokenProvider = null)
+    {
+        var httpClient = new HttpClient(handler);
+        return new GraphEmailInvoiceSource(
+            httpClient, tokenProvider ?? new FakeMicrosoftTokenProvider(), extractor,
+            NullLogger<GraphEmailInvoiceSource>.Instance);
+    }
+
+    /// <summary>Routes "/messages" list calls to <paramref name="messagesJson"/> and attachment calls per message id.</summary>
+    private static StubHttpMessageHandler MessagesThenAttachments(
+        string messagesJson, params (string MessageId, string AttachmentsJson)[] attachmentsByMessage)
+    {
+        var byMessage = attachmentsByMessage.ToDictionary(x => x.MessageId, x => x.AttachmentsJson);
+        return new StubHttpMessageHandler((request, _) =>
+        {
+            var uri = request.RequestUri!.ToString();
+
+            if (uri.Contains("/messages?"))
+                return Json(HttpStatusCode.OK, messagesJson);
+
+            foreach (var (messageId, attachmentsJson) in attachmentsByMessage)
+            {
+                if (uri.Contains($"/messages/{messageId}/attachments"))
+                    return Json(HttpStatusCode.OK, attachmentsJson);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+    }
+
+    private static string Messages(params (string Id, string ReceivedDate, string Body)[] messages)
+    {
+        var items = messages.Select(m => $$"""
+            {
+              "id": "{{m.Id}}",
+              "receivedDateTime": "{{m.ReceivedDate}}T09:00:00Z",
+              "body": { "content": "{{m.Body}}" }
+            }
+            """);
+        return $$"""{ "value": [{{string.Join(",", items)}}] }""";
+    }
+
+    private static string Attachments(params (string Id, byte[] Content)[] attachments)
+    {
+        var items = attachments.Select(a => $$"""
+            {
+              "id": "{{a.Id}}",
+              "name": "{{a.Id}}.pdf",
+              "contentType": "application/pdf",
+              "contentBytes": "{{Convert.ToBase64String(a.Content)}}",
+              "isInline": false
+            }
+            """);
+        return $$"""{ "value": [{{string.Join(",", items)}}] }""";
+    }
+
+    private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
+        new(status) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
+
+    /// <summary>An <see cref="IInvoicePdfExtractor"/> test double driven by content.</summary>
+    private sealed class FakePdfExtractor(Func<byte[], PdfExtractionResult> resultFor) : IInvoicePdfExtractor
+    {
+        public Task<PdfExtractionResult> ExtractAsync(byte[] pdfContent, CancellationToken cancellationToken = default) =>
+            Task.FromResult(resultFor(pdfContent));
+    }
+}

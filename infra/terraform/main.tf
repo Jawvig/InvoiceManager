@@ -45,6 +45,11 @@ resource "azuread_application" "invoice_manager" {
       id   = local.api_permissions.microsoft_graph.scopes.user_read
       type = "Scope"
     }
+
+    resource_access {
+      id   = local.api_permissions.microsoft_graph.scopes.mail_read
+      type = "Scope"
+    }
   }
 }
 
@@ -213,6 +218,22 @@ resource "azurerm_application_insights" "main" {
 }
 
 # ---------------------------------------------------------------------------
+# Document Intelligence (PDF invoice field extraction for the
+# Microsoft365Email source — see docs/workflow.md#source-matching)
+# ---------------------------------------------------------------------------
+
+resource "azurerm_cognitive_account" "document_intelligence" {
+  name                = local.document_intelligence_name
+  location            = azurerm_resource_group.invoice_manager.location
+  resource_group_name = azurerm_resource_group.invoice_manager.name
+  kind                = "FormRecognizer"
+  sku_name            = "S0"
+
+  # RBAC-only data-plane access (see role assignment below); no key-based auth needed.
+  local_auth_enabled = false
+}
+
+# ---------------------------------------------------------------------------
 # Functions app (Flex Consumption) + host storage
 # ---------------------------------------------------------------------------
 
@@ -294,6 +315,8 @@ resource "azurerm_function_app_flex_consumption" "functions" {
     MicrosoftAuthorization__TenantId    = data.azurerm_client_config.current.tenant_id
     MicrosoftAuthorization__ClientId    = azuread_application.invoice_manager.client_id
     MicrosoftAuthorization__KeyVaultUri = azurerm_key_vault.invoice_manager.vault_uri
+
+    DocumentIntelligence__Endpoint = azurerm_cognitive_account.document_intelligence.endpoint
   }
 
   # App Service Authentication (Easy Auth). Requires a valid Entra token on every
@@ -479,5 +502,15 @@ resource "azurerm_role_assignment" "functions_storage_blob_owner" {
 resource "azurerm_role_assignment" "functions_storage_queue_contributor" {
   scope                = azurerm_storage_account.functions.id
   role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.functions.principal_id
+}
+
+# ---------------------------------------------------------------------------
+# RBAC: Document Intelligence (data plane)
+# ---------------------------------------------------------------------------
+
+resource "azurerm_role_assignment" "functions_document_intelligence_user" {
+  scope                = azurerm_cognitive_account.document_intelligence.id
+  role_definition_name = "Cognitive Services User"
   principal_id         = azurerm_user_assigned_identity.functions.principal_id
 }

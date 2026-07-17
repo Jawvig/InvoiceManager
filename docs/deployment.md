@@ -84,6 +84,12 @@ Terraform manages all Azure infrastructure including:
 - **Microsoft Identity Setup**: Entra app registration, service principal, and
   redirect URIs (local admin plus the deployed Container Apps callback) used for
   delegated authorization capture.
+- **Document Intelligence**: An `azurerm_cognitive_account` (kind
+  `FormRecognizer`) used by the `Microsoft365Email` invoice source to read
+  invoice date/total out of PDF attachments via the prebuilt `invoice` model.
+  RBAC-only (`local_auth_enabled = false`); the Functions managed identity
+  holds `Cognitive Services User` on it, and its endpoint is passed to the
+  Functions app as `DocumentIntelligence__Endpoint`.
 
 ### Terraform Structure
 
@@ -109,7 +115,9 @@ The initial Terraform configuration creates the Microsoft identity foundation:
 - An Entra app registration.
 - The tenant-local service principal / Enterprise Application.
 - Required delegated API permissions for Azure Resource Manager
-  `user_impersonation` and Microsoft Graph `User.Read`.
+  `user_impersonation` and Microsoft Graph `User.Read` and `Mail.Read` (the
+  latter used by the `Microsoft365Email` invoice source to search the same
+  delegated mailbox already used for OneDrive uploads).
 - An environment Key Vault used by the admin website to store its client secret
   and captured Microsoft authorization token-cache material.
 - Azure RBAC assignments for Key Vault data-plane access. Terraform grants the

@@ -44,6 +44,14 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("dateToleranceDays")]
     public required int DateToleranceDays { get; init; }
 
+    /// <summary>For <c>Microsoft365Email</c>, the sender a candidate email must come from. Empty for other types.</summary>
+    [JsonPropertyName("senderEmailAddress")]
+    public string SenderEmailAddress { get; init; } = "";
+
+    /// <summary>For <c>Microsoft365Email</c>, a regex a candidate email's plain-text body must match. Empty for other types.</summary>
+    [JsonPropertyName("bodyPattern")]
+    public string BodyPattern { get; init; } = "";
+
     public InvoiceConfiguration ToConfiguration() =>
         new(
             new InvoiceConfigurationId(Id),
@@ -56,7 +64,9 @@ internal sealed class InvoiceConfigurationDocument
             OneDriveDestination,
             DateOnly.ParseExact(StartDate, "O", CultureInfo.InvariantCulture),
             BillingAccountId,
-            DateToleranceDays);
+            DateToleranceDays,
+            SenderEmailAddress,
+            BodyPattern);
 
     private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
         AmountMatchingCriteria is { } criteria
@@ -81,6 +91,8 @@ internal sealed class InvoiceConfigurationDocument
             StartDate = config.StartDate.ToString("O", CultureInfo.InvariantCulture),
             BillingAccountId = config.BillingAccountId,
             DateToleranceDays = config.DateToleranceDays,
+            SenderEmailAddress = config.SenderEmailAddress,
+            BodyPattern = config.BodyPattern,
         };
 }
 

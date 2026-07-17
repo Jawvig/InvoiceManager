@@ -17,7 +17,9 @@ internal sealed record SeedInvoiceConfigurationRecord(
     [property: JsonRequired] string OneDriveDestination,
     [property: JsonRequired] string StartDate,
     [property: JsonRequired] string BillingAccountId,
-    [property: JsonRequired] int DateToleranceDays);
+    [property: JsonRequired] int DateToleranceDays,
+    string SenderEmailAddress = "",
+    string BodyPattern = "");
 
 internal sealed record SeedAmountMatchingCriteria(
     [property: JsonRequired] decimal Amount,

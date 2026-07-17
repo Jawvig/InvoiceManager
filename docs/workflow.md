@@ -136,6 +136,37 @@ the preceding 14 months of billing periods, follows all response pages, and then
 applies the configured `invoiceDate` tolerance and optional amount criteria
 locally. The lookback covers annual as well as monthly invoice periods.
 
+### Microsoft 365 Email Source Matching
+
+`GraphEmailInvoiceSource` finds invoices carried as PDF attachments on
+recurring emails, in the same delegated mailbox already used for OneDrive
+uploads (an expanded `Mail.Read` scope on the same Entra app registration).
+Neither the sender, the date, nor the body reveal the invoice's actual date,
+total, or VAT mode, so matching happens in two stages:
+
+1. **Find the candidate email.** Candidates are messages from the configured
+   `senderEmailAddress`, with `receivedDateTime` within `dateToleranceDays` of
+   the expected date, and (when configured) whose plain-text body matches the
+   `bodyPattern` regex — requested via Graph's `Prefer:
+   outlook.body-content-type="text"` rather than the truncated `bodyPreview`,
+   so patterns match clean text. When more than one candidate matches, the one
+   closest to the expected date is tried first.
+2. **Extract invoice fields from the PDF.** A matched email with no PDF
+   attachment logs a warning and is treated as no match (left for a later run,
+   the same as an unmatched invoice). With exactly one PDF attachment, its
+   fields are read via `IInvoicePdfExtractor`; with more than one, each is
+   tried and the first that extracts successfully is used. A PDF that fails
+   extraction — and, with several PDFs, a message where none of them extract —
+   is thrown as a failure, which the caller maps to `RetrievalError` (always
+   retryable), the same as any other technical retrieval failure.
+
+The extracted invoice date and total become `ActualInvoiceDetails`, and the
+Graph message id becomes `SourceInvoiceId` — no mailbox mutation (no
+move/flag/mark-as-read) is used for deduplication. `actualVatMode` is not
+derived from the PDF: like every other source, VAT mode always comes from
+configuration. See
+[domain-model.md#pdf-field-extraction](domain-model.md#pdf-field-extraction).
+
 ## OneDrive Reconciliation
 
 Before calling a source integration, the workflow should ask the OneDrive

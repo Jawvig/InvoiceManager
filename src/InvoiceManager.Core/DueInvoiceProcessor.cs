@@ -139,7 +139,9 @@ public sealed class DueInvoiceProcessor(
             configuration.BillingAccountId,
             record.ExpectedDate,
             record.DateToleranceDays,
-            record.AmountMatchingCriteria);
+            record.AmountMatchingCriteria,
+            configuration.SenderEmailAddress,
+            configuration.BodyPattern);
 
         // Reconcile first: a file already in OneDrive (a manual download or an
         // earlier partial run) is used as-is, skipping the source call and upload.

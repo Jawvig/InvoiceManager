@@ -83,7 +83,9 @@ var configurations = records.Select(r => new InvoiceConfiguration(
     InjectEnvironmentFolder(r.OneDriveDestination, isTest),
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
     r.BillingAccountId,
-    r.DateToleranceDays)).ToList();
+    r.DateToleranceDays,
+    r.SenderEmailAddress,
+    r.BodyPattern)).ToList();
 
 var cosmosClient = CosmosClientFactory.Create(configuration);
 

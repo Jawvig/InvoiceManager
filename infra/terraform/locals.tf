@@ -30,6 +30,9 @@ locals {
   # Storage account names allow only lowercase letters/digits, max 24 chars.
   functions_storage_name = substr(replace("${local.resource_name_prefix}fnstg", "-", ""), 0, 24)
 
+  # Cognitive Services account names allow only letters/digits/hyphens, max 64 chars.
+  document_intelligence_name = "${local.resource_name_prefix}-docintel"
+
   container_app_environment_name = "${local.resource_name_prefix}-cae"
   # A stable app name lets us precompute the ingress FQDN for the OIDC redirect URI
   # from the environment default domain, avoiding a dependency cycle with the app
@@ -56,6 +59,9 @@ locals {
       application_id = "00000003-0000-0000-c000-000000000000"
       scopes = {
         user_read = "e1fe6dd8-ba31-4d61-89e7-88639da4683d"
+        # Delegated Mail.Read: lets the Functions app search the signed-in admin's
+        # mailbox for the Microsoft365Email invoice source (see docs/workflow.md).
+        mail_read = "570282fd-fa5c-430d-a7fd-fc8dc98a9dca"
       }
     }
   }
