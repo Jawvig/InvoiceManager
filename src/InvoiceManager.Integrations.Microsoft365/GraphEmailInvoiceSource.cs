@@ -208,16 +208,23 @@ public sealed class GraphEmailInvoiceSource(
     private async Task<IReadOnlyList<GraphAttachment>> ListPdfAttachmentsAsync(
         string messageId, string token, CancellationToken cancellationToken)
     {
-        var url = $"{GraphBaseUrl}/me/messages/{messageId}/attachments" +
+        string? url = $"{GraphBaseUrl}/me/messages/{messageId}/attachments" +
             "?$select=id,name,contentType,contentBytes,isInline";
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-        await EnsureSuccessAsync(response, "listing message attachments", cancellationToken);
+        var attachments = new List<GraphAttachment>();
+        while (url is not null)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            await EnsureSuccessAsync(response, "listing message attachments", cancellationToken);
 
-        var page = await response.Content.ReadFromJsonAsync<GraphAttachmentListResponse>(cancellationToken);
-        return (page?.Value ?? [])
+            var page = await response.Content.ReadFromJsonAsync<GraphAttachmentListResponse>(cancellationToken);
+            attachments.AddRange(page?.Value ?? []);
+            url = page?.NextLink;
+        }
+
+        return attachments
             .Where(a => !a.IsInline && string.Equals(a.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
@@ -273,7 +280,8 @@ public sealed class GraphEmailInvoiceSource(
         [property: JsonPropertyName("content")] string? Content);
 
     private sealed record GraphAttachmentListResponse(
-        [property: JsonPropertyName("value")] IReadOnlyList<GraphAttachment>? Value);
+        [property: JsonPropertyName("value")] IReadOnlyList<GraphAttachment>? Value,
+        [property: JsonPropertyName("@odata.nextLink")] string? NextLink);
 
     private sealed record GraphAttachment(
         [property: JsonPropertyName("id")] string Id,

@@ -204,6 +204,43 @@ public sealed class GraphEmailInvoiceSourceTests
     }
 
     [Fact]
+    public async Task FindInvoiceAsync_FollowsAttachmentListPagination_ToFindPdfOnASecondPage()
+    {
+        const string nextPageUrl = "https://graph.microsoft.com/v1.0/me/messages/msg-1/attachments-page-2";
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            var uri = request.RequestUri!.ToString();
+
+            if (uri.Contains("/messages?"))
+                return Json(HttpStatusCode.OK, Messages(("msg-1", "2025-07-12", "Your invoice is attached.")));
+
+            if (uri == nextPageUrl)
+                return Json(HttpStatusCode.OK, Attachments(("att-2", SinglePdfBytes)));
+
+            if (uri.Contains("/messages/msg-1/attachments"))
+            {
+                return Json(HttpStatusCode.OK, $$"""
+                    { "value": [], "@odata.nextLink": "{{nextPageUrl}}" }
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var extractor = new FakePdfExtractor(_ => new PdfExtractionSucceeded(new DateOnly(2025, 7, 12), new Money(11.59m, "GBP")));
+        var source = Build(handler, extractor);
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        if (result is not InvoiceMatch match)
+        {
+            Assert.Fail($"Expected InvoiceMatch but got {result}.");
+            return;
+        }
+
+        Assert.Equal(SinglePdfBytes, match.PdfContent);
+    }
+
+    [Fact]
     public async Task FindInvoiceAsync_SendsBearerToken_ForMailReadScope()
     {
         var handler = new StubHttpMessageHandler((request, _) =>
