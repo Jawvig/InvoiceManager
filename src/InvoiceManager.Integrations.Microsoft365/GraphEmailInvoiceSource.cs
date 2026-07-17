@@ -44,6 +44,12 @@ public sealed class GraphEmailInvoiceSource(
         var candidates = await ListCandidateMessagesAsync(criteria, token, cancellationToken);
         activity?.SetTag("invoice.candidate_count", candidates.Count);
 
+        // A technical inability to read a PDF is only escalated to a failure (mapped
+        // by the caller to RetrievalError) once every candidate has been tried — a
+        // failure on the closest candidate must not prevent a further-but-still-in-window
+        // candidate from being tried.
+        var extractionFailures = new List<string>();
+
         // Closest to the expected date first, mirroring the closest-match preference
         // used by the other source/OneDrive matchers.
         foreach (var message in candidates.OrderBy(m => criteria.DateDistanceDays(DateOnly.FromDateTime(m.ReceivedDateTime.UtcDateTime))))
@@ -58,22 +64,36 @@ public sealed class GraphEmailInvoiceSource(
                 continue;
             }
 
-            var extracted = await ExtractInvoiceAsync(message, attachments, token, cancellationToken);
-            if (extracted is null)
+            var outcome = await TryExtractMatchingInvoiceAsync(message, attachments, criteria, token, cancellationToken);
+
+            if (outcome is EmailInvoiceExtractionFailed extractionFailed)
+            {
+                extractionFailures.Add($"message {message.Id}: {extractionFailed.Reason}");
+                continue;
+            }
+
+            if (outcome is not EmailInvoiceFound found)
                 continue;
 
             activity?.SetTag("invoice.matched_message_id", message.Id);
             activity?.AddEvent(new ActivityEvent("match_selected"));
             logger.LogInformation(
                 "Retrieved Microsoft365Email invoice from message {MessageId} ({PdfBytes} bytes).",
-                message.Id, extracted.Value.PdfContent.Length);
+                message.Id, found.PdfContent.Length);
 
             var details = new ActualInvoiceDetails(
-                extracted.Value.Extraction.InvoiceDate,
-                extracted.Value.Extraction.Total,
+                found.Extraction.InvoiceDate,
+                found.Extraction.Total,
                 new SourceInvoiceId(message.Id));
 
-            return new InvoiceMatch(extracted.Value.PdfContent, details);
+            return new InvoiceMatch(found.PdfContent, details);
+        }
+
+        if (extractionFailures.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"{extractionFailures.Count} candidate email(s) had PDF attachment(s) that could not be read as " +
+                $"an invoice: {string.Join("; ", extractionFailures)}.");
         }
 
         activity?.AddEvent(new ActivityEvent("no_match"));
@@ -84,20 +104,21 @@ public sealed class GraphEmailInvoiceSource(
     }
 
     /// <summary>
-    /// Extracts invoice fields from the message's PDF attachment(s). A single PDF
-    /// must extract successfully or the failure is thrown (mapped by the caller's
-    /// caller to <c>RetrievalError</c>). With more than one PDF, each is attempted
-    /// and the first that extracts successfully wins; if none do, that is also
-    /// thrown as a failure rather than silently treated as no match, since the
-    /// email itself already satisfied the match criteria.
+    /// Tries every PDF attachment on the message, accepting the first one that both
+    /// extracts successfully and satisfies <paramref name="criteria"/>'s date/amount
+    /// tolerances. An attachment that extracts but doesn't satisfy criteria is not a
+    /// technical failure — it is simply the wrong invoice, so other messages should
+    /// still be tried without raising an error. Only a PDF that cannot be read at all
+    /// is a technical failure.
     /// </summary>
-    private async Task<(byte[] PdfContent, PdfExtractionSucceeded Extraction)?> ExtractInvoiceAsync(
+    private async Task<EmailInvoiceOutcome> TryExtractMatchingInvoiceAsync(
         GraphMessage message,
         IReadOnlyList<GraphAttachment> pdfAttachments,
+        InvoiceSearchCriteria criteria,
         string token,
         CancellationToken cancellationToken)
     {
-        var failures = new List<string>();
+        var readFailures = new List<string>();
 
         foreach (var attachment in pdfAttachments)
         {
@@ -105,15 +126,21 @@ public sealed class GraphEmailInvoiceSource(
             var result = await pdfExtractor.ExtractAsync(content, cancellationToken);
 
             if (result is PdfExtractionSucceeded succeeded)
-                return (content, succeeded);
+            {
+                if (criteria.Matches(succeeded.InvoiceDate, succeeded.Total))
+                    return new EmailInvoiceFound(content, succeeded);
+
+                continue;
+            }
 
             var reason = result is PdfExtractionFailed failed ? failed.Reason : "unknown extraction failure";
-            failures.Add($"{attachment.Name}: {reason}");
+            readFailures.Add($"{attachment.Name}: {reason}");
         }
 
-        throw new InvalidOperationException(
-            $"Message {message.Id} has {pdfAttachments.Count} PDF attachment(s) but none could be read as an " +
-            $"invoice: {string.Join("; ", failures)}.");
+        return readFailures.Count > 0
+            ? new EmailInvoiceExtractionFailed(
+                $"{readFailures.Count} of {pdfAttachments.Count} PDF attachment(s) could not be read: {string.Join("; ", readFailures)}")
+            : new EmailInvoiceCriteriaMismatch();
     }
 
     private async Task<IReadOnlyList<GraphMessage>> ListCandidateMessagesAsync(
@@ -220,6 +247,18 @@ public sealed class GraphEmailInvoiceSource(
         throw new HttpRequestException(
             $"Microsoft Graph request failed while {action}: {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
     }
+
+    /// <summary>A PDF attachment extracted successfully and satisfied the search criteria.</summary>
+    private sealed record EmailInvoiceFound(byte[] PdfContent, PdfExtractionSucceeded Extraction);
+
+    /// <summary>Every PDF attachment extracted fine but none satisfied the date/amount criteria — the wrong invoice, not an error.</summary>
+    private sealed record EmailInvoiceCriteriaMismatch;
+
+    /// <summary>At least one PDF attachment could not be read at all — a technical failure.</summary>
+    private sealed record EmailInvoiceExtractionFailed(string Reason);
+
+    /// <summary>The outcome of trying every PDF attachment on one candidate message.</summary>
+    private union EmailInvoiceOutcome(EmailInvoiceFound, EmailInvoiceCriteriaMismatch, EmailInvoiceExtractionFailed);
 
     private sealed record GraphMessageListResponse(
         [property: JsonPropertyName("value")] IReadOnlyList<GraphMessage>? Value,

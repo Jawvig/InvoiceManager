@@ -12,11 +12,12 @@ public sealed class GraphEmailInvoiceSourceTests
     private static readonly byte[] SinglePdfBytes = "%PDF-1.7 single"u8.ToArray();
     private static readonly byte[] SecondPdfBytes = "%PDF-1.7 second"u8.ToArray();
 
-    private static InvoiceSearchCriteria Criteria(string bodyPattern = "") => new(
+    private static InvoiceSearchCriteria Criteria(
+        string bodyPattern = "", AmountMatchingCriteria? amountMatchingCriteria = null) => new(
         BillingAccountId: "",
         ExpectedDate: new DateOnly(2025, 7, 10),
         DateToleranceDays: 5,
-        AmountMatchingCriteria: Option.None,
+        AmountMatchingCriteria: amountMatchingCriteria is { } criteria ? criteria : Option.None,
         SenderEmailAddress: "billing@contoso.com",
         BodyPattern: bodyPattern);
 
@@ -116,6 +117,90 @@ public sealed class GraphEmailInvoiceSourceTests
         var source = Build(handler, new FakePdfExtractor(_ => new PdfExtractionFailed("garbled")));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => source.FindInvoiceAsync(Criteria()));
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_ReturnsNoMatch_WhenExtractedAmountFailsAmountMatchingCriteria()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(("msg-1", "2025-07-12", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes))));
+        var extractor = new FakePdfExtractor(_ => new PdfExtractionSucceeded(new DateOnly(2025, 7, 12), new Money(99.99m, "GBP")));
+        var source = Build(handler, extractor);
+
+        var result = await source.FindInvoiceAsync(Criteria(
+            amountMatchingCriteria: new AmountMatchingCriteria(new Money(11.59m, "GBP"), 0m)));
+
+        Assert.True(result is NoInvoiceMatch, $"Expected NoInvoiceMatch but got {result}.");
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_SkipsCandidateWithWrongAmount_AndAcceptsAFurtherCandidateThatMatches()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(
+                ("msg-1", "2025-07-10", "Your invoice is attached."),
+                ("msg-2", "2025-07-13", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes))),
+            ("msg-2", Attachments(("att-2", SecondPdfBytes))));
+        var extractor = new FakePdfExtractor(content =>
+            content.SequenceEqual(SinglePdfBytes)
+                ? new PdfExtractionSucceeded(new DateOnly(2025, 7, 10), new Money(99.99m, "GBP"))
+                : new PdfExtractionSucceeded(new DateOnly(2025, 7, 13), new Money(11.59m, "GBP")));
+        var source = Build(handler, extractor);
+
+        var result = await source.FindInvoiceAsync(Criteria(
+            amountMatchingCriteria: new AmountMatchingCriteria(new Money(11.59m, "GBP"), 0m)));
+
+        if (result is not InvoiceMatch match)
+        {
+            Assert.Fail($"Expected InvoiceMatch but got {result}.");
+            return;
+        }
+
+        Assert.Equal(new SourceInvoiceId("msg-2"), match.Details.SourceInvoiceId);
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_TriesFurtherCandidate_WhenClosestCandidatesPdfCannotBeRead()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(
+                ("msg-1", "2025-07-10", "Your invoice is attached."),
+                ("msg-2", "2025-07-13", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes))),
+            ("msg-2", Attachments(("att-2", SecondPdfBytes))));
+        var extractor = new FakePdfExtractor(content =>
+            content.SequenceEqual(SinglePdfBytes)
+                ? new PdfExtractionFailed("garbled")
+                : new PdfExtractionSucceeded(new DateOnly(2025, 7, 13), new Money(11.59m, "GBP")));
+        var source = Build(handler, extractor);
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        if (result is not InvoiceMatch match)
+        {
+            Assert.Fail($"Expected InvoiceMatch but got {result}.");
+            return;
+        }
+
+        Assert.Equal(new SourceInvoiceId("msg-2"), match.Details.SourceInvoiceId);
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_Throws_WhenEveryCandidatesPdfCannotBeRead()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(
+                ("msg-1", "2025-07-10", "Your invoice is attached."),
+                ("msg-2", "2025-07-13", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes))),
+            ("msg-2", Attachments(("att-2", SecondPdfBytes))));
+        var source = Build(handler, new FakePdfExtractor(_ => new PdfExtractionFailed("garbled")));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => source.FindInvoiceAsync(Criteria()));
+        Assert.Contains("msg-1", exception.Message);
+        Assert.Contains("msg-2", exception.Message);
     }
 
     [Fact]

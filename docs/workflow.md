@@ -155,10 +155,17 @@ total, or VAT mode, so matching happens in two stages:
    attachment logs a warning and is treated as no match (left for a later run,
    the same as an unmatched invoice). With exactly one PDF attachment, its
    fields are read via `IInvoicePdfExtractor`; with more than one, each is
-   tried and the first that extracts successfully is used. A PDF that fails
-   extraction — and, with several PDFs, a message where none of them extract —
-   is thrown as a failure, which the caller maps to `RetrievalError` (always
-   retryable), the same as any other technical retrieval failure.
+   tried and the first that both extracts successfully and satisfies the
+   configured date/amount tolerances (the same `InvoiceSearchCriteria.Matches`
+   check every other source applies) is used. An attachment that extracts but
+   doesn't satisfy those tolerances is not a failure — it's simply the wrong
+   invoice, so the search moves on to the next candidate email without raising
+   an error. Only a PDF that cannot be read at all is a technical failure, and
+   even then the search keeps trying every remaining candidate before giving
+   up: only once no candidate produces an accepted match is the search
+   reported as a failure (mapped by the caller to `RetrievalError`, always
+   retryable), so one candidate's unreadable PDF never blocks a further
+   candidate's valid invoice from being found.
 
 The extracted invoice date and total become `ActualInvoiceDetails`, and the
 Graph message id becomes `SourceInvoiceId` — no mailbox mutation (no
