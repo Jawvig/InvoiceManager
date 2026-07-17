@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
+using InvoiceManager.Infrastructure.Http;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -114,7 +115,7 @@ public sealed class GraphOneDriveIntegration(
                 return new NoOneDriveMatch();
             }
 
-            await EnsureSuccessAsync(response, "listing OneDrive files", cancellationToken);
+            await response.EnsureSuccessAsync("Microsoft Graph", "listing OneDrive files", cancellationToken);
 
             var page = await response.Content.ReadFromJsonAsync<DriveChildrenResponse>(cancellationToken);
             foreach (var child in page?.Value ?? [])
@@ -171,16 +172,6 @@ public sealed class GraphOneDriveIntegration(
             new SourceInvoiceId(bestParsed.InvoiceName));
 
         return new OneDriveMatch(new OneDriveDetails(location), details, matchReason);
-    }
-
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response, string action, CancellationToken cancellationToken)
-    {
-        if (response.IsSuccessStatusCode)
-            return;
-
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new HttpRequestException(
-            $"Microsoft Graph request failed while {action}: {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
     }
 
     private sealed record DriveItemResponse(

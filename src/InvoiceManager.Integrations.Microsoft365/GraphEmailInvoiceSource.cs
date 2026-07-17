@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
+using InvoiceManager.Infrastructure.Http;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.Extensions.Logging;
 
@@ -173,7 +174,7 @@ public sealed class GraphEmailInvoiceSource(
             request.Headers.Add("Prefer", "outlook.body-content-type=\"text\"");
 
             using var response = await httpClient.SendAsync(request, cancellationToken);
-            await EnsureSuccessAsync(response, "listing candidate emails", cancellationToken);
+            await response.EnsureSuccessAsync("Microsoft Graph", "listing candidate emails", cancellationToken);
 
             var page = await response.Content.ReadFromJsonAsync<GraphMessageListResponse>(cancellationToken);
             foreach (var message in page?.Value ?? [])
@@ -224,7 +225,7 @@ public sealed class GraphEmailInvoiceSource(
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await httpClient.SendAsync(request, cancellationToken);
-            await EnsureSuccessAsync(response, "listing message attachments", cancellationToken);
+            await response.EnsureSuccessAsync("Microsoft Graph", "listing message attachments", cancellationToken);
 
             var page = await response.Content.ReadFromJsonAsync<GraphAttachmentListResponse>(cancellationToken);
             attachments.AddRange(page?.Value ?? []);
@@ -248,18 +249,8 @@ public sealed class GraphEmailInvoiceSource(
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var response = await httpClient.SendAsync(request, cancellationToken);
-        await EnsureSuccessAsync(response, "downloading attachment content", cancellationToken);
+        await response.EnsureSuccessAsync("Microsoft Graph", "downloading attachment content", cancellationToken);
         return await response.Content.ReadAsByteArrayAsync(cancellationToken);
-    }
-
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response, string action, CancellationToken cancellationToken)
-    {
-        if (response.IsSuccessStatusCode)
-            return;
-
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new HttpRequestException(
-            $"Microsoft Graph request failed while {action}: {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
     }
 
     /// <summary>A PDF attachment extracted successfully and satisfied the search criteria.</summary>
