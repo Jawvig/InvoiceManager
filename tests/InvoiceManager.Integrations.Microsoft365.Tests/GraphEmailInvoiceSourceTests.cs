@@ -241,6 +241,30 @@ public sealed class GraphEmailInvoiceSourceTests
     }
 
     [Fact]
+    public async Task FindInvoiceAsync_EscapesEmbeddedSingleQuote_InSenderEmailAddressFilter()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/messages")
+                ? Json(HttpStatusCode.OK, """{ "value": [] }""")
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var source = Build(handler, new FakePdfExtractor(_ => throw new InvalidOperationException("should not extract")));
+
+        var criteria = new InvoiceSearchCriteria(
+            BillingAccountId: "",
+            ExpectedDate: new DateOnly(2025, 7, 10),
+            DateToleranceDays: 5,
+            AmountMatchingCriteria: Option.None,
+            SenderEmailAddress: "o'brien@contoso.com",
+            BodyPattern: "");
+
+        await source.FindInvoiceAsync(criteria);
+
+        var request = Assert.Single(handler.Requests);
+        var decodedFilter = Uri.UnescapeDataString(request.RequestUri!.Query);
+        Assert.Contains("address eq 'o''brien@contoso.com'", decodedFilter);
+    }
+
+    [Fact]
     public async Task FindInvoiceAsync_SendsBearerToken_ForMailReadScope()
     {
         var handler = new StubHttpMessageHandler((request, _) =>

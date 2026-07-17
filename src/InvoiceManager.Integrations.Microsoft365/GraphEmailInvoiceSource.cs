@@ -154,7 +154,7 @@ public sealed class GraphEmailInvoiceSource(
         var filter =
             $"receivedDateTime ge {windowStart:yyyy-MM-ddTHH:mm:ssZ} " +
             $"and receivedDateTime le {windowEnd:yyyy-MM-ddTHH:mm:ssZ} " +
-            $"and from/emailAddress/address eq '{criteria.SenderEmailAddress}' " +
+            $"and from/emailAddress/address eq '{EscapeODataStringLiteral(criteria.SenderEmailAddress)}' " +
             $"and hasAttachments eq true";
 
         string? url =
@@ -187,6 +187,13 @@ public sealed class GraphEmailInvoiceSource(
 
         return messages;
     }
+
+    /// <summary>
+    /// Escapes a value for use inside a single-quoted OData string literal by doubling
+    /// embedded single quotes (OData's own escaping rule) — <see cref="Uri.EscapeDataString"/>
+    /// only percent-encodes for URL transport and does not do this.
+    /// </summary>
+    private static string EscapeODataStringLiteral(string value) => value.Replace("'", "''");
 
     private bool MatchesBodyPattern(GraphMessage message, string bodyPattern)
     {
