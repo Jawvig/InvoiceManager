@@ -120,8 +120,11 @@ var host = new HostBuilder()
             .Bind(context.Configuration.GetSection(DocumentIntelligenceOptions.SectionName))
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<DocumentIntelligenceOptions>, DocumentIntelligenceOptionsValidator>();
+        // Transient (not Singleton), matching the other HttpClientFactory-backed
+        // integrations below: CreateClient must be called fresh per resolution so the
+        // factory's handler-rotation (DNS staleness mitigation) actually takes effect.
         services.AddHttpClient(nameof(DocumentIntelligencePdfExtractor));
-        services.AddSingleton<IInvoicePdfExtractor>(sp =>
+        services.AddTransient<IInvoicePdfExtractor>(sp =>
         {
             var factory = sp.GetRequiredService<IHttpClientFactory>();
             return new DocumentIntelligencePdfExtractor(
