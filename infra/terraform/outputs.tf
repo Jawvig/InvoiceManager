@@ -73,6 +73,11 @@ output "adminweb_signin_redirect_uri" {
   value       = local.adminweb_signin_redirect_uri
 }
 
+output "adminweb_admin_group_object_id" {
+  description = "Object ID of the per-environment Entra group authorized for AdminWeb."
+  value       = azuread_group.adminweb_administrators.object_id
+}
+
 output "functions_identity_client_id" {
   description = "Client ID of the Functions app user-assigned identity."
   value       = azurerm_user_assigned_identity.functions.client_id

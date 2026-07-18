@@ -28,6 +28,9 @@ public interface IInvoiceRecordRepository
     /// </summary>
     Task<IReadOnlyList<InvoiceRecord>> ListDueAsync(DateOnly asOf, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<InvoiceRecord>> ListRetryableForMigrationAsync(
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Overwrites an existing invoice record with an updated state. Used to advance a record
     /// through its workflow (for example from <see cref="Expected"/> to <see cref="Retrieved"/>).

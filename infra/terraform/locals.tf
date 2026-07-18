@@ -2,6 +2,7 @@ locals {
   environment_suffix = var.environment == "production" ? "" : "-${var.environment}"
 
   application_display_name = "${var.display_name}${local.environment_suffix}"
+  admin_group_display_name = "InvoiceManager-Administrators${local.environment_suffix}"
   resource_name_prefix     = "${var.application_name}${local.environment_suffix}"
   resource_group_name      = "rg-${local.resource_name_prefix}"
   key_vault_name           = "${local.resource_name_prefix}-kv"
@@ -40,8 +41,10 @@ locals {
   adminweb_container_app_name = "adminweb"
   # Precomputed from the environment default domain (not the app resource) to avoid a
   # dependency cycle with the app registration that consumes it as a redirect URI.
-  adminweb_fqdn                = "${local.adminweb_container_app_name}.${azurerm_container_app_environment.main.default_domain}"
-  adminweb_signin_redirect_uri = "https://${local.adminweb_fqdn}/signin-oidc"
+  adminweb_fqdn                  = "${local.adminweb_container_app_name}.${azurerm_container_app_environment.main.default_domain}"
+  adminweb_signin_redirect_uri   = "https://${local.adminweb_fqdn}/signin-oidc"
+  adminweb_workflow_redirect_uri = "https://${local.adminweb_fqdn}/workflow-signin-oidc"
+  workflow_redirect_uris         = [for uri in var.redirect_uris : replace(uri, "/signin-oidc", "/workflow-signin-oidc")]
 
   # Built-in Cosmos DB SQL data-plane role definition ids (fixed GUIDs on every account).
   cosmos_data_reader_role_id      = "00000000-0000-0000-0000-000000000001"
@@ -61,7 +64,8 @@ locals {
         user_read = "e1fe6dd8-ba31-4d61-89e7-88639da4683d"
         # Delegated Mail.Read: lets the Functions app search the signed-in admin's
         # mailbox for the Microsoft365Email invoice source (see docs/workflow.md).
-        mail_read = "570282fd-fa5c-430d-a7fd-fc8dc98a9dca"
+        mail_read           = "570282fd-fa5c-430d-a7fd-fc8dc98a9dca"
+        files_readwrite_all = "863451e7-0667-486c-a5d6-d135439485f0"
       }
     }
   }

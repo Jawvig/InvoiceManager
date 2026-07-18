@@ -1,6 +1,8 @@
 using Azure.Core;
 using Azure.Identity;
 using InvoiceManager.AdminWeb.Services;
+using InvoiceManager.Core;
+using InvoiceManager.Core.Repositories;
 using InvoiceManager.Infrastructure.CosmosDb;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.Azure.Cosmos;
@@ -38,6 +40,10 @@ builder.Services
     .Bind(builder.Configuration.GetSection(MicrosoftAuthorizationOptions.SectionName))
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<MicrosoftAuthorizationOptions>, MicrosoftAuthorizationOptionsValidator>();
+builder.Services.AddOptions<AdminAuthorizationOptions>()
+    .Bind(builder.Configuration.GetSection(AdminAuthorizationOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 builder.Services.AddSingleton<IMicrosoftAuthorizationStore>(serviceProvider =>
 {
@@ -56,10 +62,18 @@ builder.Services
         options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
     })
     .AddCookie()
-    .AddOpenIdConnect();
+    .AddOpenIdConnect()
+    .AddOpenIdConnect(MicrosoftOpenIdConnectOptionsSetup.WorkflowAuthorizationScheme, _ => { });
 builder.Services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, MicrosoftOpenIdConnectOptionsSetup>();
 
-builder.Services.AddAuthorization();
+var adminGroupPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+    .RequireAuthenticatedUser()
+    .AddRequirements(new AdminGroupRequirement())
+    .Build();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminGroupAuthorizationHandler>();
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("AdminGroup", adminGroupPolicy)
+    .SetFallbackPolicy(adminGroupPolicy);
 
 // Shared credential for outbound service-to-service calls (the container binds it to the
 // AdminWeb user-assigned managed identity via AZURE_CLIENT_ID). Used to mint a token for
@@ -69,6 +83,22 @@ builder.Services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
 builder.Services.AddHttpClient<FunctionsHealthCheck>();
 builder.Services.AddHttpClient<IExpectedRecordGenerationTrigger, FunctionsExpectedRecordGenerationTrigger>();
 builder.Services.AddSingleton(_ => CosmosClientFactory.Create(builder.Configuration));
+builder.Services.AddSingleton<IInvoiceConfigurationRepository>(sp =>
+    new CosmosInvoiceConfigurationRepository(
+        sp.GetRequiredService<CosmosClient>(),
+        builder.Configuration["CosmosDatabase"] ?? "invoicemanager"));
+builder.Services.AddSingleton<IInvoiceRecordRepository>(sp =>
+    new CosmosInvoiceRecordRepository(
+        sp.GetRequiredService<CosmosClient>(),
+        builder.Configuration["CosmosDatabase"] ?? "invoicemanager",
+        sp.GetRequiredService<ILogger<CosmosInvoiceRecordRepository>>()));
+builder.Services.AddSingleton<InvoiceConfigurationService>();
+builder.Services.AddSingleton<LegacyInvoiceRecordMigration>();
+builder.Services.AddSingleton<IMicrosoftTokenProvider, MicrosoftTokenProvider>();
+builder.Services.AddOptions<MicrosoftResourceDiscoveryOptions>()
+    .Bind(builder.Configuration.GetSection(MicrosoftResourceDiscoveryOptions.SectionName));
+builder.Services.AddHttpClient<IMicrosoftResourceDiscovery, MicrosoftResourceDiscovery>()
+    .AddStandardResilienceHandler();
 builder.Services
     .AddHealthChecks()
     .AddCheck<CosmosHealthCheck>("cosmos")
@@ -94,7 +124,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health").AllowAnonymous();
 app.MapRazorPages()
    .WithStaticAssets();
 
@@ -104,9 +134,26 @@ public partial class Program
 {
 }
 
+internal sealed class AdminGroupRequirement : Microsoft.AspNetCore.Authorization.IAuthorizationRequirement;
+
+internal sealed class AdminGroupAuthorizationHandler(IOptions<AdminAuthorizationOptions> options)
+    : Microsoft.AspNetCore.Authorization.AuthorizationHandler<AdminGroupRequirement>
+{
+    protected override Task HandleRequirementAsync(
+        Microsoft.AspNetCore.Authorization.AuthorizationHandlerContext context,
+        AdminGroupRequirement requirement)
+    {
+        if (context.User.Identity?.IsAuthenticated == true &&
+            context.User.FindAll("groups").Any(claim => claim.Value == options.Value.GroupObjectId))
+            context.Succeed(requirement);
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class MicrosoftOpenIdConnectOptionsSetup
     : IConfigureNamedOptions<OpenIdConnectOptions>
 {
+    public const string WorkflowAuthorizationScheme = "WorkflowAuthorization";
     // The auth-code redemption may only request scopes for a SINGLE resource; the
     // Entra v2 token endpoint rejects a mixed-resource scope set with AADSTS28000.
     // We redeem for Microsoft Graph alone, whose only job here is to seed the MSAL
@@ -130,7 +177,7 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
 
     public void Configure(string? name, OpenIdConnectOptions options)
     {
-        if (name != OpenIdConnectDefaults.AuthenticationScheme)
+        if (name is not (OpenIdConnectDefaults.AuthenticationScheme or WorkflowAuthorizationScheme))
         {
             return;
         }
@@ -139,21 +186,25 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
         options.Authority = authOptions.Authority;
         options.ClientId = authOptions.ClientId;
         options.ClientSecret = authOptions.ClientSecret;
-        options.CallbackPath = "/signin-oidc";
+        var isWorkflowAuthorization = name == WorkflowAuthorizationScheme;
+        options.CallbackPath = isWorkflowAuthorization ? "/workflow-signin-oidc" : "/signin-oidc";
         options.ResponseType = OpenIdConnectResponseType.Code;
         options.SaveTokens = false;
         options.UsePkce = true;
         options.Scope.Clear();
         options.Scope.Add("openid");
         options.Scope.Add("profile");
-        options.Scope.Add("offline_access");
-        options.Scope.Add("User.Read");
-        options.Scope.Add("https://management.azure.com/user_impersonation");
-        options.Scope.Add("https://graph.microsoft.com/Files.ReadWrite.All");
-        options.Scope.Add("https://graph.microsoft.com/Mail.Read");
+        if (isWorkflowAuthorization)
+        {
+            options.Scope.Add("offline_access");
+            options.Scope.Add("User.Read");
+            options.Scope.Add("https://management.azure.com/user_impersonation");
+            options.Scope.Add("https://graph.microsoft.com/Files.ReadWrite.All");
+            options.Scope.Add("https://graph.microsoft.com/Mail.Read");
+        }
         options.TokenValidationParameters.NameClaimType = "name";
-
-        options.Events.OnAuthorizationCodeReceived = async context =>
+        if (isWorkflowAuthorization)
+            options.Events.OnAuthorizationCodeReceived = async context =>
         {
             var currentAuthOptions = context.HttpContext.RequestServices
                 .GetRequiredService<IOptions<MicrosoftAuthorizationOptions>>()

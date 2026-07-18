@@ -11,7 +11,8 @@ public sealed record InvoiceRecord(
     int DateToleranceDays,
     Option<AmountMatchingCriteria> AmountMatchingCriteria,
     VatMode ExpectedVatMode,
-    InvoiceWorkflowState State)
+    InvoiceWorkflowState State,
+    InvoiceProcessingSnapshot? ProcessingSnapshot = null)
 {
     public InvoiceRecordId Id { get; } = InvoiceRecordId.NewId(ExpectedDate, ConfigurationId);
 }

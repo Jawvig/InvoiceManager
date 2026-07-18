@@ -74,7 +74,8 @@ public sealed class DueInvoiceProcessor(
             using var recordActivity = Telemetry.ActivitySource.StartActivity("process_invoice_record");
             recordActivity?.SetTag("invoice.record_id", record.Id.Value);
             recordActivity?.SetTag("invoice.configuration_id", record.ConfigurationId.Value);
-            recordActivity?.SetTag("invoice.integration_type", configuration.IntegrationType.ToString());
+            var snapshot = record.ProcessingSnapshot ?? InvoiceProcessingSnapshot.FromConfiguration(configuration);
+            recordActivity?.SetTag("invoice.integration_type", snapshot.IntegrationType.ToString());
             recordActivity?.SetTag("invoice.description", record.InvoiceDescription);
             recordActivity?.SetTag("invoice.expected_date", record.ExpectedDate.ToString("O"));
 
@@ -82,14 +83,14 @@ public sealed class DueInvoiceProcessor(
             {
                 ["RecordId"] = record.Id.Value,
                 ["ConfigurationId"] = record.ConfigurationId.Value,
-                ["IntegrationType"] = configuration.IntegrationType.ToString(),
+                ["IntegrationType"] = snapshot.IntegrationType.ToString(),
                 ["InvoiceDescription"] = record.InvoiceDescription,
                 ["ExpectedDate"] = record.ExpectedDate,
             });
 
             try
             {
-                var result = await ProcessAsync(record, configuration, asOf, recordActivity, cancellationToken);
+                var result = await ProcessAsync(record, configuration, snapshot, asOf, recordActivity, cancellationToken);
                 recordActivity?.SetTag("invoice.outcome", OutcomeName(result));
                 results.Add(result);
             }
@@ -125,23 +126,24 @@ public sealed class DueInvoiceProcessor(
     private async Task<DueInvoiceProcessingResult> ProcessAsync(
         InvoiceRecord record,
         InvoiceConfiguration configuration,
+        InvoiceProcessingSnapshot snapshot,
         DateOnly asOf,
         Activity? recordActivity,
         CancellationToken cancellationToken)
     {
-        if (!sourcesByType.TryGetValue(configuration.IntegrationType, out var source))
+        if (!sourcesByType.TryGetValue(snapshot.IntegrationType, out var source))
         {
             throw new InvalidOperationException(
-                $"No invoice source integration is registered for integration type '{configuration.IntegrationType}'.");
+                $"No invoice source integration is registered for integration type '{snapshot.IntegrationType}'.");
         }
 
         var criteria = new InvoiceSearchCriteria(
-            configuration.BillingAccountId,
+            snapshot.BillingAccountId,
             record.ExpectedDate,
             record.DateToleranceDays,
             record.AmountMatchingCriteria,
-            configuration.SenderEmailAddress,
-            configuration.BodyPattern);
+            snapshot.SenderEmailAddress,
+            snapshot.BodyPattern);
 
         // Reconcile first: a file already in OneDrive (a manual download or an
         // earlier partial run) is used as-is, skipping the source call and upload.
@@ -151,13 +153,13 @@ public sealed class DueInvoiceProcessor(
             record.ExpectedDate,
             record.DateToleranceDays,
             record.AmountMatchingCriteria,
-            configuration.InvoiceDescription);
+            snapshot.InvoiceDescription);
 
         OneDriveSearchResult search;
         try
         {
             search = await oneDriveIntegration.SearchAsync(
-                new OneDriveSearchRequest(configuration.OneDriveDestination, oneDriveCriteria), cancellationToken);
+                new OneDriveSearchRequest(snapshot.OneDriveDestination, oneDriveCriteria), cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -194,13 +196,13 @@ public sealed class DueInvoiceProcessor(
 
         var fileName = invoiceFilename.Generate(
             match.Details.ActualInvoiceDate,
-            configuration.InvoiceDescription,
+            snapshot.InvoiceDescription,
             match.Details.SourceInvoiceId.Value,
             match.Details.ActualAmount,
-            configuration.DefaultVatMode);
+            snapshot.VatMode);
 
         var oneDriveDetails = await oneDriveIntegration.UploadAsync(
-            new OneDriveUploadRequest(configuration.OneDriveDestination, fileName, match.PdfContent),
+            new OneDriveUploadRequest(snapshot.OneDriveDestination, fileName, match.PdfContent),
             cancellationToken);
 
         // Saved to OneDrive: persist before creating the next expected record.

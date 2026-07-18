@@ -20,6 +20,21 @@ Expected fields include:
   `Microsoft365Email` configurations to find the candidate email (empty and
   unused for other integration types).
 
+The configuration ID and integration type are immutable after creation. New
+configurations are inactive drafts; activation changes state only and never runs
+invoice processing. Deactivation preserves configuration and invoice history and
+causes outstanding records to be skipped until reactivation.
+
+OneDrive destinations normally contain a stable drive ID, folder item ID, and a
+human-readable display path. Legacy path-only destinations remain supported and
+are upgraded to stable IDs on first edit. Configuration mutations append complete,
+immutable audit revisions. Restoring a revision restores editable business fields
+but retains identity, integration type, and the current activation state.
+
+Edits are future-only. Every newly generated expected invoice snapshots all values
+needed for matching and routing, so existing records never partially combine old
+criteria with newly edited live configuration.
+
 ## Integration
 
 A provider-specific component that interacts with an external system.

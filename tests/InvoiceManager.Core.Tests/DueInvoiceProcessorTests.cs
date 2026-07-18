@@ -13,6 +13,29 @@ public sealed class DueInvoiceProcessorTests
     private static readonly DateOnly Today = new(2025, 7, 15);
 
     [Fact]
+    public async Task ProcessDueAsync_UsesRecordSnapshot_WhenLiveConfigurationWasEdited()
+    {
+        var original = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
+        var record = Records.Build(original, expectedDate: new DateOnly(2025, 7, 10));
+        var edited = original with
+        {
+            InvoiceDescription = "Changed Later",
+            BillingAccountId = "changed-account",
+            OneDriveDestination = new OneDriveDestination("/Changed", "new-drive", "new-folder"),
+        };
+        var records = new InMemoryInvoiceRecordRepository(record);
+        var source = new FakeInvoiceSourceIntegration(
+            BuildMatch(new DateOnly(2025, 7, 12), new Money(10m, "GBP"), "snapshot-source"));
+        var oneDrive = new FakeOneDriveIntegration();
+
+        await BuildProcessor(records, source, oneDrive, edited).ProcessDueAsync();
+
+        Assert.Equal("test:billing:account", Assert.Single(source.Requests).BillingAccountId);
+        Assert.Equal("/drives/test/root:/Bills/Test", Assert.Single(oneDrive.Uploads).Destination.DisplayPath);
+        Assert.Contains("Test Invoice", Assert.Single(oneDrive.Uploads).FileName);
+    }
+
+    [Fact]
     public async Task ProcessDueAsync_DrivesRecordThroughRetrievedThenSavedToOneDrive_OnMatch()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));

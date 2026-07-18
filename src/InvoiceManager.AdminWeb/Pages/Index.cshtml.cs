@@ -33,18 +33,15 @@ public class IndexModel : PageModel
 
     public bool CanAuthorize { get; private set; }
 
-    public bool ShowAuthorizeButton => CanAuthorize && (!IsSignedIn || !IsAuthorizationCaptured);
+    public bool ShowAuthorizeButton => CanAuthorize;
 
     public string AuthorizeButtonCaption
     {
         get
         {
-            if (IsSignedIn)
-            {
-                return "Authorize";
-            }
-
-            return IsAuthorizationCaptured ? "Sign in" : "Sign in and authorize";
+            return IsAuthorizationCaptured
+                ? "Replace workflow authorization"
+                : "Capture workflow authorization";
         }
     }
 
@@ -57,8 +54,14 @@ public class IndexModel : PageModel
         await LoadPageStateAsync(status);
     }
 
-    public IActionResult OnPostAuthorize()
+    public IActionResult OnPostAuthorize(bool confirmed)
     {
+        if (!confirmed)
+        {
+            TempData["StatusMessage"] = "Confirm that you intend to replace the unattended workflow account.";
+            return RedirectToPage();
+        }
+
         var configurationMessages = GetConfigurationMessages();
         if (configurationMessages.Count > 0)
         {
@@ -70,7 +73,7 @@ public class IndexModel : PageModel
             ?? "/";
         return Challenge(
             new AuthenticationProperties { RedirectUri = redirectUri },
-            OpenIdConnectDefaults.AuthenticationScheme);
+            MicrosoftOpenIdConnectOptionsSetup.WorkflowAuthorizationScheme);
     }
 
     public async Task<IActionResult> OnPostResetAsync()

@@ -21,6 +21,11 @@ more containers.
 
 Stores recurring invoice expectations and provider configuration references.
 
+Live configurations and immutable audit revisions share this container and the
+same `/integrationType` partition. `documentType` is `invoiceConfiguration` or
+`invoiceConfigurationRevision`; legacy live documents without a discriminator
+remain readable. Every live query excludes revisions.
+
 Purpose:
 
 - List active invoice configurations.
@@ -54,6 +59,14 @@ Candidate fields:
 - `freeAgentMatching`
 - `createdAt`
 - `updatedAt`
+
+`oneDriveDestination` is either the backward-compatible legacy path string or an
+object containing `driveId`, `folderItemId`, and `displayPath`. Live documents
+carry the Cosmos `_etag` through edit/restore forms. Mutations use `If-Match` and
+a same-partition transactional batch to replace the live document and append the
+revision atomically. Revisions have no TTL and contain a unique ID, action,
+timestamp, actor object ID/display name, and the complete resulting snapshot. The
+first mutation of legacy unaudited data also appends a pre-audit baseline.
 
 Notes:
 
@@ -93,6 +106,9 @@ Candidate fields:
 - `amountMatchingCriteria` — snapshot of the optional configuration criteria
   at record creation, used as matching criteria
 - `expectedVatMode`
+- `processingSnapshot` — integration type, billing account ID, OneDrive
+  destination, invoice description, date/amount criteria, VAT mode, and any
+  provider-neutral source selection fields needed to process this record
 - `status`
 - `actualInvoiceDetails` — nested sub-object, present when the state carries
   actual values: `actualInvoiceDate`, `actualAmount`, `actualCurrency`,
@@ -136,6 +152,8 @@ Notes:
   manual override or migration tooling without requiring an admin UI now.
 - The service should avoid creating duplicate records for the same expected
   invoice period.
+- Retryable legacy records without `processingSnapshot` are backfilled only by
+  the explicit, idempotent AdminWeb migration. Terminal history is not changed.
 
 ## processing-runs
 

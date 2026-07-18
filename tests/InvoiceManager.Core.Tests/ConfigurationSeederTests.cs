@@ -66,10 +66,51 @@ public sealed class ConfigurationSeederTests
             Task.FromResult<IReadOnlyList<InvoiceConfiguration>>(
                 store.Values.Where(c => c.IsActive).ToList());
 
+        public Task<IReadOnlyList<StoredInvoiceConfiguration>> ListAllAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<StoredInvoiceConfiguration>>(
+                store.Values.Select(c => new StoredInvoiceConfiguration(c, "etag")).ToList());
+
+        public Task<Option<StoredInvoiceConfiguration>> GetAsync(
+            InvoiceConfigurationId id,
+            IntegrationType integrationType,
+            CancellationToken cancellationToken = default)
+        {
+            Option<StoredInvoiceConfiguration> result = store.TryGetValue(id, out var configuration)
+                ? new StoredInvoiceConfiguration(configuration, "etag")
+                : Option.None;
+            return Task.FromResult(result);
+        }
+
         public Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default)
         {
             store.TryAdd(configuration.Id, configuration);
             return Task.CompletedTask;
         }
+
+        public Task<StoredInvoiceConfiguration> CreateAsync(
+            InvoiceConfiguration configuration,
+            InvoiceConfigurationActor actor,
+            CancellationToken cancellationToken = default)
+        {
+            store.Add(configuration.Id, configuration);
+            return Task.FromResult(new StoredInvoiceConfiguration(configuration, "etag"));
+        }
+
+        public Task<StoredInvoiceConfiguration> ReplaceAsync(
+            InvoiceConfiguration configuration,
+            string etag,
+            InvoiceConfigurationRevisionAction action,
+            InvoiceConfigurationActor actor,
+            CancellationToken cancellationToken = default)
+        {
+            store[configuration.Id] = configuration;
+            return Task.FromResult(new StoredInvoiceConfiguration(configuration, "etag-next"));
+        }
+
+        public Task<IReadOnlyList<InvoiceConfigurationRevision>> ListRevisionsAsync(
+            InvoiceConfigurationId id,
+            IntegrationType integrationType,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<InvoiceConfigurationRevision>>([]);
     }
 }

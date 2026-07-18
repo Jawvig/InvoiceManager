@@ -32,7 +32,7 @@
         <section class="status-panel">
             <h2>Signed-in operator</h2>
             <p class="status-value">@Model.DisplayName</p>
-            <p class="status-label">Tenant-restricted Microsoft sign-in is used for local authorization setup.</p>
+            <p class="status-label">This administrator session does not alter the unattended workflow account.</p>
         </section>
 
         <section class="status-panel">
@@ -45,6 +45,10 @@
     <form method="post" class="actions">
         @if (Model.ShowAuthorizeButton)
         {
+            <label>
+                <input type="checkbox" name="confirmed" value="true" />
+                I understand this will replace the delegated account used by the unattended workflow.
+            </label>
             <button asp-page-handler="Authorize" class="primary-action">
                 @Model.AuthorizeButtonCaption
             </button>

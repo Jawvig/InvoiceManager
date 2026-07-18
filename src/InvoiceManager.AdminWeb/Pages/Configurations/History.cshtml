@@ -1,0 +1,26 @@
+@page
+@model InvoiceManager.AdminWeb.Pages.Configurations.HistoryModel
+@{ ViewData["Title"] = "Configuration history"; }
+<section class="admin-shell">
+    <div class="page-heading"><h1>Configuration history</h1><p class="summary">Immutable audit snapshots for @Model.Current?.Configuration.Id.</p></div>
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="notice">@Model.StatusMessage</div> }
+    <p><a asp-page="Index">Back to configurations</a></p>
+    @foreach (var item in Model.Revisions) {
+        <section class="status-panel">
+            <h2>@item.Revision.Action</h2>
+            <p>@item.Revision.Timestamp.ToString("u") · @item.Revision.ActorDisplayName</p>
+            <p>@item.Diff</p>
+            <details><summary>Complete stored snapshot</summary><pre>@item.SnapshotJson</pre></details>
+            @if (Model.CanRestore) {
+                <form method="post">
+                    <input type="hidden" name="id" value="@Model.Current!.Configuration.Id.Value" />
+                    <input type="hidden" name="integrationType" value="@Model.Current.Configuration.IntegrationType" />
+                    <input type="hidden" name="revisionId" value="@item.Revision.RevisionId" />
+                    <input type="hidden" name="etag" value="@Model.Current.ETag" />
+                    <label><input type="checkbox" name="confirmed" value="true" /> Confirm restore</label>
+                    <button asp-page-handler="Restore" class="secondary-action">Restore editable fields</button>
+                </form>
+            }
+        </section>
+    }
+</section>

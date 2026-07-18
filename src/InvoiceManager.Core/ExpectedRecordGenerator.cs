@@ -78,7 +78,8 @@ public sealed class ExpectedRecordGenerator(
             configuration.DateToleranceDays,
             configuration.AmountMatchingCriteria,
             configuration.DefaultVatMode,
-            new Expected());
+            new Expected(),
+            InvoiceProcessingSnapshot.FromConfiguration(configuration));
 
         await repository.CreateIfNotExistsAsync(record, cancellationToken);
     }

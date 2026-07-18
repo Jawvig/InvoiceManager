@@ -1,0 +1,5 @@
+@page
+@model InvoiceManager.AdminWeb.Pages.Configurations.CreateModel
+@{ ViewData["Title"] = "Create invoice configuration"; }
+<section class="admin-shell"><div class="page-heading"><h1>Create invoice configuration</h1><p class="summary">New configurations are saved as inactive drafts.</p></div>
+<form method="post">@await Html.PartialAsync("_ConfigurationForm", Model)</form></section>

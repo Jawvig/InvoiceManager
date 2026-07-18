@@ -319,6 +319,7 @@ function Set-TestAdminWebLocalConfiguration {
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:TenantId" -Value $outputs.tenant_id.value
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:KeyVaultUri" -Value $outputs.key_vault_uri.value
+        Set-ProjectUserSecret -ProjectPath $project -Key "AdminAuthorization:GroupObjectId" -Value $outputs.adminweb_admin_group_object_id.value
     }
 
     # Only the AppHost forwards this to the Functions project (see AppHost/Program.cs); the

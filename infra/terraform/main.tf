@@ -17,8 +17,9 @@ resource "azurerm_resource_group" "invoice_manager" {
 }
 
 resource "azuread_application" "invoice_manager" {
-  display_name     = local.application_display_name
-  sign_in_audience = "AzureADMyOrg"
+  display_name            = local.application_display_name
+  sign_in_audience        = "AzureADMyOrg"
+  group_membership_claims = ["SecurityGroup"]
 
   web {
     # Append the deployed admin website callback to any caller-supplied URIs (e.g. the
@@ -26,7 +27,11 @@ resource "azuread_application" "invoice_manager" {
     # environment default domain plus the fixed app name, NOT from the container app
     # resource itself: the container app depends on this app registration (for ClientId),
     # so referencing it here would create a cycle. The environment has no such dependency.
-    redirect_uris = concat(var.redirect_uris, [local.adminweb_signin_redirect_uri])
+    redirect_uris = concat(
+      var.redirect_uris,
+      local.workflow_redirect_uris,
+      [local.adminweb_signin_redirect_uri, local.adminweb_workflow_redirect_uri]
+    )
   }
 
   required_resource_access {
@@ -50,7 +55,26 @@ resource "azuread_application" "invoice_manager" {
       id   = local.api_permissions.microsoft_graph.scopes.mail_read
       type = "Scope"
     }
+
+    resource_access {
+      id   = local.api_permissions.microsoft_graph.scopes.files_readwrite_all
+      type = "Scope"
+    }
   }
+}
+
+resource "azuread_group" "adminweb_administrators" {
+  display_name     = local.admin_group_display_name
+  security_enabled = true
+}
+
+# Manage only the deploying operator's direct membership. Additional direct
+# members added in Entra remain untouched by Terraform.
+resource "azuread_group_member" "deploying_operator_admin" {
+  count = var.function_invoker_user_object_id == "" ? 0 : 1
+
+  group_object_id  = azuread_group.adminweb_administrators.object_id
+  member_object_id = var.function_invoker_user_object_id
 }
 
 resource "azuread_service_principal" "invoice_manager" {
@@ -411,6 +435,10 @@ resource "azurerm_container_app" "adminweb" {
         value = azurerm_key_vault.invoice_manager.vault_uri
       }
       env {
+        name  = "AdminAuthorization__GroupObjectId"
+        value = azuread_group.adminweb_administrators.object_id
+      }
+      env {
         name  = "Functions__BaseUrl"
         value = "https://${azurerm_function_app_flex_consumption.functions.default_hostname}"
       }
@@ -470,7 +498,7 @@ resource "azurerm_role_assignment" "adminweb_key_vault_secrets_officer" {
 # RBAC: Cosmos DB (data plane)
 #
 # Functions reads/writes invoice records -> Data Contributor.
-# AdminWeb only calls ReadAccountAsync for its health check -> Data Reader.
+# AdminWeb administers configurations, revisions, and record snapshots -> Data Contributor.
 # ---------------------------------------------------------------------------
 
 resource "azurerm_cosmosdb_sql_role_assignment" "functions_data_contributor" {
@@ -481,12 +509,17 @@ resource "azurerm_cosmosdb_sql_role_assignment" "functions_data_contributor" {
   scope               = azurerm_cosmosdb_account.invoice_manager.id
 }
 
-resource "azurerm_cosmosdb_sql_role_assignment" "adminweb_data_reader" {
+resource "azurerm_cosmosdb_sql_role_assignment" "adminweb_data_contributor" {
   resource_group_name = azurerm_resource_group.invoice_manager.name
   account_name        = azurerm_cosmosdb_account.invoice_manager.name
-  role_definition_id  = "${azurerm_cosmosdb_account.invoice_manager.id}/sqlRoleDefinitions/${local.cosmos_data_reader_role_id}"
+  role_definition_id  = "${azurerm_cosmosdb_account.invoice_manager.id}/sqlRoleDefinitions/${local.cosmos_data_contributor_role_id}"
   principal_id        = azurerm_user_assigned_identity.adminweb.principal_id
   scope               = azurerm_cosmosdb_account.invoice_manager.id
+}
+
+moved {
+  from = azurerm_cosmosdb_sql_role_assignment.adminweb_data_reader
+  to   = azurerm_cosmosdb_sql_role_assignment.adminweb_data_contributor
 }
 
 # ---------------------------------------------------------------------------

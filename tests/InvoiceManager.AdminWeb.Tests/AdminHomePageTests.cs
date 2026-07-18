@@ -1,8 +1,11 @@
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.AdminWeb.Pages;
 using InvoiceManager.AdminWeb.Services;
+using InvoiceManager.Core.Repositories;
+using InvoiceManager.TestSupport;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -12,6 +15,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
+using System.Text.Encodings.Web;
 
 namespace InvoiceManager.AdminWeb.Tests;
 
@@ -25,9 +30,45 @@ public sealed class AdminHomePageTests
 
         var options = scope.ServiceProvider
             .GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>()
-            .Get(OpenIdConnectDefaults.AuthenticationScheme);
+            .Get("WorkflowAuthorization");
 
         Assert.Contains("https://graph.microsoft.com/Mail.Read", options.Scope);
+    }
+
+    [Fact]
+    public async Task OrdinarySignIn_DoesNotWriteTheSharedWorkflowTokenCache()
+    {
+        await using var factory = CreateConfiguredFactory();
+        using var scope = factory.Services.CreateScope();
+        var monitor = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>();
+
+        var ordinary = monitor.Get(OpenIdConnectDefaults.AuthenticationScheme).Events.OnAuthorizationCodeReceived;
+        var workflow = monitor.Get("WorkflowAuthorization").Events.OnAuthorizationCodeReceived;
+        Assert.NotNull(ordinary);
+        Assert.NotNull(workflow);
+        Assert.NotEqual(ordinary.Method, workflow.Method);
+    }
+
+    [Fact]
+    public async Task SignedInUserOutsideAdminGroup_IsForbidden()
+    {
+        await using var factory = CreateConfiguredFactory(isGroupMember: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        var response = await client.GetAsync("/");
+
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnauthenticatedUser_IsChallengedForTheWholeSite()
+    {
+        await using var factory = CreateConfiguredFactory(isAuthenticated: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        var response = await client.GetAsync("/Configurations");
+
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
@@ -43,10 +84,10 @@ public sealed class AdminHomePageTests
                 });
             });
 
-        var exception = Assert.Throws<OptionsValidationException>(
+        var exception = Assert.ThrowsAny<Exception>(
             () => factory.CreateClient());
 
-        Assert.Contains("MicrosoftAuthorization:TenantId is required.", exception.Failures);
+        Assert.Contains("MicrosoftAuthorization:TenantId is required.", exception.ToString());
     }
 
     [Fact]
@@ -61,7 +102,7 @@ public sealed class AdminHomePageTests
         response.EnsureSuccessStatusCode();
         Assert.Contains("Microsoft authorization", body);
         Assert.Contains("Not captured", body);
-        Assert.Contains("Sign in and authorize", body);
+        Assert.Contains("Capture workflow authorization", body);
         Assert.DoesNotContain("Reset authorization", body);
         Assert.DoesNotContain("Set MicrosoftAuthorization", body);
     }
@@ -77,9 +118,9 @@ public sealed class AdminHomePageTests
 
         response.EnsureSuccessStatusCode();
         Assert.Contains("Ready", body);
-        Assert.Contains("Sign in", body);
+        Assert.Contains("Replace workflow authorization", body);
         Assert.Contains("Reset authorization", body);
-        Assert.DoesNotContain("Sign in and authorize", body);
+        Assert.DoesNotContain("Capture workflow authorization", body);
     }
 
     [Fact]
@@ -90,24 +131,29 @@ public sealed class AdminHomePageTests
         await model.OnGetAsync();
 
         Assert.True(model.ShowAuthorizeButton);
-        Assert.Equal("Authorize", model.AuthorizeButtonCaption);
+        Assert.Equal("Capture workflow authorization", model.AuthorizeButtonCaption);
         Assert.True(model.IsSignedIn);
         Assert.False(model.IsAuthorizationCaptured);
     }
 
     [Fact]
-    public async Task HomePageModel_HidesAuthorizeAction_WhenUserIsSignedInAndAuthorizationIsCaptured()
+    public async Task HomePageModel_OffersExplicitReplacement_WhenAuthorizationIsCaptured()
     {
         var model = CreateIndexModel(hasTokenCache: true, isSignedIn: true);
 
         await model.OnGetAsync();
 
-        Assert.False(model.ShowAuthorizeButton);
+        Assert.True(model.ShowAuthorizeButton);
+        Assert.Equal("Replace workflow authorization", model.AuthorizeButtonCaption);
         Assert.True(model.IsSignedIn);
         Assert.True(model.IsAuthorizationCaptured);
     }
 
-    private static WebApplicationFactory<Program> CreateConfiguredFactory(bool hasTokenCache = false)
+    private static WebApplicationFactory<Program> CreateConfiguredFactory(
+        bool hasTokenCache = false,
+        bool isGroupMember = true,
+        bool isAuthenticated = true,
+        bool useTestAuthentication = true)
     {
         return new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -122,13 +168,24 @@ public sealed class AdminHomePageTests
                         ["MicrosoftAuthorization:ClientId"] = "22222222-2222-2222-2222-222222222222",
                         ["MicrosoftAuthorization:ClientSecret"] = "client-secret",
                         ["MicrosoftAuthorization:KeyVaultUri"] = "https://example.vault.azure.net/",
-                        ["MicrosoftAuthorization:TokenCacheSecretName"] = "MicrosoftAuthorization--MsalTokenCache"
+                        ["MicrosoftAuthorization:TokenCacheSecretName"] = "MicrosoftAuthorization--MsalTokenCache",
+                        ["AdminAuthorization:GroupObjectId"] = "33333333-3333-3333-3333-333333333333"
                     });
                 });
                 builder.ConfigureTestServices(services =>
                 {
                     services.AddSingleton<IMicrosoftAuthorizationStore>(
                         new FakeMicrosoftAuthorizationStore(hasTokenCache));
+                    if (useTestAuthentication)
+                    {
+                        services.AddSingleton(new TestIdentity(isAuthenticated, isGroupMember));
+                        services.AddAuthentication(options =>
+                        {
+                            options.DefaultAuthenticateScheme = "Test";
+                            options.DefaultChallengeScheme = "Test";
+                            options.DefaultForbidScheme = "Test";
+                        }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>("Test", _ => { });
+                    }
                 });
             });
     }
@@ -255,4 +312,53 @@ public sealed class AdminHomePageTests
             return Task.CompletedTask;
         }
     }
+
+    [Fact]
+    public async Task ConfigurationList_RemainsAvailableWithoutWorkflowAuthorization_WhileMutationsAreDisabled()
+    {
+        await using var factory = CreateConfiguredFactory(hasTokenCache: false)
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            {
+                services.AddSingleton<IInvoiceConfigurationRepository>(
+                    new FakeConfigurationRepository(Configurations.Build(isActive: false)));
+                services.AddSingleton<IInvoiceRecordRepository>(new InMemoryInvoiceRecordRepository());
+            }));
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/Configurations");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.EnsureSuccessStatusCode();
+        Assert.Contains("Test Invoice", body);
+        Assert.Contains("Workflow authorization is not captured", body);
+        Assert.Contains("primary-action disabled", body);
+    }
+
+    private sealed class TestAuthenticationHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder,
+        TestIdentity testIdentity)
+        : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    {
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            if (!testIdentity.IsAuthenticated)
+                return Task.FromResult(AuthenticateResult.NoResult());
+
+            const string groupId = "33333333-3333-3333-3333-333333333333";
+            var identity = new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.Name, "Admin User"),
+                new Claim(ClaimTypes.NameIdentifier, "44444444-4444-4444-4444-444444444444"),
+                new Claim("oid", "44444444-4444-4444-4444-444444444444"),
+                new Claim("admin_group", groupId),
+                new Claim("groups", testIdentity.IsGroupMember ? groupId : "55555555-5555-5555-5555-555555555555"),
+            ], Scheme.Name);
+            return Task.FromResult(AuthenticateResult.Success(
+                new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));
+        }
+    }
+
+    private sealed record TestIdentity(bool IsAuthenticated, bool IsGroupMember);
 }

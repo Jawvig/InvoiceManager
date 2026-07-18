@@ -99,6 +99,24 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
         return records;
     }
 
+    public async Task<IReadOnlyList<InvoiceRecord>> ListRetryableForMigrationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var query = new QueryDefinition(
+            "SELECT * FROM c WHERE c.status IN (@expected, @error, @retrieved)")
+            .WithParameter("@expected", nameof(Expected))
+            .WithParameter("@error", nameof(RetrievalError))
+            .WithParameter("@retrieved", nameof(Retrieved));
+        using var iterator = container.GetItemQueryIterator<InvoiceRecordDocument>(query);
+        var records = new List<InvoiceRecord>();
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            records.AddRange(page.Select(document => document.ToRecord()));
+        }
+        return records;
+    }
+
     public async Task ReplaceAsync(InvoiceRecord record, CancellationToken cancellationToken = default)
     {
         var document = InvoiceRecordDocument.FromRecord(record);

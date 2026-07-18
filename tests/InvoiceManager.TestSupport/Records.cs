@@ -17,6 +17,7 @@ public static class Records
             resolvedConfig.DateToleranceDays,
             resolvedConfig.AmountMatchingCriteria,
             resolvedConfig.DefaultVatMode,
-            state ?? new Expected());
+            state ?? new Expected(),
+            InvoiceProcessingSnapshot.FromConfiguration(resolvedConfig));
     }
 }
