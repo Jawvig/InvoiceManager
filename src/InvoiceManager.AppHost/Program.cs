@@ -25,7 +25,11 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithEnvironment("CosmosDatabase", "invoicemanager")
         // Seed the local emulator as the "test" environment so every OneDrive destination is
         // nested under a root "Test" folder and local downloads never collide with production.
-        .WithArgs("--ensure-schema", "--environment", "test", seedFile)
+        // Aspire launches project resources via `dotnet run`, which (as of the .NET 11 preview
+        // SDK this repo targets) only forwards args to the app when they follow a literal "--"
+        // separator — without it, the app receives none of these and exits with a usage error.
+        // scripts/Deploy-Infra.ps1's own `dotnet run` invocation already does this correctly.
+        .WithArgs("--", "--ensure-schema", "--environment", "test", seedFile)
         .WaitFor(cosmos);
 
     // Microsoft delegated auth settings shared by the admin website and the Functions app.
