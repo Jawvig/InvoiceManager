@@ -310,6 +310,15 @@ authorization for Azure Resource Manager and Microsoft Graph, then persists the
 serialized MSAL token cache in the environment Key Vault as
 `MicrosoftAuthorization--MsalTokenCache`.
 
+The scopes requested on sign-in are hard-coded in
+`MicrosoftOpenIdConnectOptionsSetup` (`src/InvoiceManager.AdminWeb/Program.cs`),
+not derived from the app registration's declared `required_resource_access`.
+Terraform can add a new delegated permission (e.g. `Mail.Read` for the
+`Microsoft365Email` source) to the app registration, but that alone changes
+nothing about what the interactive sign-in actually asks for or what the
+admin has consented to — the scope must also be added here, and the admin
+must sign in again afterward, before a new scope takes effect.
+
 The admin website runs both locally (from `src/InvoiceManager.AdminWeb`) and
 deployed to Azure Container Apps. Terraform registers two callback URIs on each
 app registration: the local `https://localhost:5001/signin-oidc` (from
