@@ -37,6 +37,10 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
     var microsoftAuthTenantId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:TenantId");
     var microsoftAuthClientId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:ClientId");
     var microsoftAuthKeyVaultUri = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:KeyVaultUri");
+    // The Document Intelligence resource is provisioned by Terraform, not Aspire (there is no
+    // local emulator for it), so its endpoint must point at a real deployed resource, the same
+    // way the Microsoft auth values above point at the real test Key Vault.
+    var documentIntelligenceEndpoint = builder.Configuration.GetRequiredValue("DocumentIntelligence:Endpoint");
 
     var functions = builder
         .AddAzureFunctionsProject<Projects.InvoiceManager_Functions>("functions")
@@ -50,6 +54,7 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
         .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
         .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
+        .WithEnvironment("DocumentIntelligence__Endpoint", documentIntelligenceEndpoint)
         .WaitFor(cosmos)
         .WaitForCompletion(seeder)
         .WithHttpHealthCheck("/api/health");

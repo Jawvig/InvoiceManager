@@ -339,6 +339,18 @@ dotnet user-secrets set "MicrosoftAuthorization:ClientId" "<application-client-i
 dotnet user-secrets set "MicrosoftAuthorization:KeyVaultUri" "https://<key-vault-name>.vault.azure.net/" --project src/InvoiceManager.AdminWeb
 ```
 
+The AppHost (`src/InvoiceManager.AppHost`, `UserSecretsId` `InvoiceManager.AppHost`) needs its own copies of the
+`MicrosoftAuthorization` values above, plus the Document Intelligence endpoint used by the
+`Microsoft365Email` invoice source — there is no local emulator for Document Intelligence, so this
+must point at a real resource already provisioned by Terraform:
+
+```bash
+dotnet user-secrets set "DocumentIntelligence:Endpoint" "https://<doc-intel-resource-name>.cognitiveservices.azure.com/" --project src/InvoiceManager.AppHost
+```
+
+Without it, the Functions app fails `DocumentIntelligenceOptions` validation at startup and the
+AppHost's `functions` resource never becomes healthy.
+
 When the admin website starts, it uses `MicrosoftAuthorization:KeyVaultUri` and
 `DefaultAzureCredential` to load `MicrosoftAuthorization:ClientSecret` from Key
 Vault before binding and validating the final authentication configuration.
