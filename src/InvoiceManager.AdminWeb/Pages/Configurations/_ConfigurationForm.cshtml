@@ -11,7 +11,7 @@
     <label>Configuration ID <input asp-for="Input.Id" readonly="@Model.IsEdit" /></label>
     <label>Integration
         <select asp-for="Input.IntegrationType" disabled="@Model.IsEdit">
-            <option value="Microsoft365">Microsoft 365</option><option value="Azure">Azure</option>
+            <option value="Microsoft365">Microsoft 365 billing</option><option value="Azure">Azure billing</option><option value="Microsoft365Email">Microsoft 365 email</option>
         </select>
     </label>
     <label>Invoice description <input asp-for="Input.InvoiceDescription" /></label>
@@ -23,12 +23,14 @@
     <label>Default VAT mode <select asp-for="Input.DefaultVatMode"><option value="Inclusive">Inclusive</option><option value="Exclusive">Exclusive</option></select></label>
     <label>Start date <input asp-for="Input.StartDate" type="date" /></label>
     <p class="status-label">Changing the start date does not alter records already generated. After the first record, recurrence follows invoice history.</p>
-    <label>Billing account
+    <label>Billing account (billing integrations only)
         <select asp-for="Input.BillingAccountId">
             @foreach (var account in Model.BillingAccounts) { <option value="@account.Id">@account.Label</option> }
             @if (Model.ShowMissingBillingWarning) { <option value="@Model.Input.OriginalBillingAccountId">Unavailable: @Model.Input.OriginalBillingAccountId</option> }
         </select>
     </label>
+    <label>Sender email address (email integration only) <input asp-for="Input.SenderEmailAddress" type="email" /></label>
+    <label>Email body regex (email integration only) <input asp-for="Input.BodyPattern" /></label>
     <label>Date tolerance (days) <input asp-for="Input.DateToleranceDays" type="number" min="0" max="365" /></label>
     <label>Existing OneDrive folder
         <select asp-for="Input.FolderItemId">

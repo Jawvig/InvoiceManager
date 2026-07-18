@@ -58,11 +58,6 @@ public class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<InvoiceRecord>> ListRetryableForMigrationAsync(
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<InvoiceRecord>>(store
-            .Where(r => r.State is Expected or RetrievalError or Retrieved)
-            .ToList());
 }
 
 /// <summary>

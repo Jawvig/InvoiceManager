@@ -110,15 +110,20 @@ public sealed class InvoiceRecordDocumentTests
             {
               "id": "config-1_2025-07-01",
               "configurationId": "config-1",
-              "invoiceDescription": "Test Invoice",
               "expectedDate": "2025-07-01",
-              "dateToleranceDays": 5,
-              "amountMatchingCriteria": {
-                "amount": 10.00,
-                "currency": "GBP",
-                "amountTolerance": 0.50
+              "processingSnapshot": {
+                "integrationType": "Microsoft365",
+                "billingAccountId": "billing-id",
+                "oneDriveDestination": "/Bills",
+                "invoiceDescription": "Test Invoice",
+                "dateToleranceDays": 5,
+                "amountMatchingCriteria": {
+                  "amount": 10.00,
+                  "currency": "GBP",
+                  "amountTolerance": 0.50
+                },
+                "vatMode": "Exclusive"
               },
-              "expectedVatMode": "Exclusive",
               "status": "Retrieved",
               "actualInvoiceDetails": {}
             }
@@ -131,12 +136,9 @@ public sealed class InvoiceRecordDocumentTests
     private static InvoiceRecord BuildRecord(InvoiceWorkflowState state) =>
         new(
             new InvoiceConfigurationId("config-1"),
-            "Test Invoice",
             new DateOnly(2025, 7, 1),
-            DateToleranceDays: 5,
-            new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0.50m),
-            VatMode.Exclusive,
-            state);
+            state,
+            BuildSnapshot().ToSnapshot());
 
     private static InvoiceRecordDocument BuildDocument(
         string status,
@@ -146,18 +148,26 @@ public sealed class InvoiceRecordDocumentTests
         {
             Id = "config-1_2025-07-01",
             ConfigurationId = "config-1",
-            InvoiceDescription = "Test Invoice",
             ExpectedDate = "2025-07-01",
-            DateToleranceDays = 5,
-            AmountMatchingCriteria = new()
-            {
-                Amount = 10.00m,
-                Currency = "GBP",
-                AmountTolerance = 0.50m,
-            },
-            ExpectedVatMode = "Exclusive",
+            ProcessingSnapshot = BuildSnapshot(),
             Status = status,
             ActualInvoiceDetails = actualDetails,
             OneDriveDetails = oneDriveDetails,
         };
+
+    private static InvoiceProcessingSnapshotDocument BuildSnapshot() => new()
+    {
+        IntegrationType = "Microsoft365",
+        BillingAccountId = "billing-id",
+        OneDriveDestination = JsonSerializer.SerializeToElement("/Bills"),
+        InvoiceDescription = "Test Invoice",
+        DateToleranceDays = 5,
+        AmountMatchingCriteria = new()
+        {
+            Amount = 10.00m,
+            Currency = "GBP",
+            AmountTolerance = 0.50m,
+        },
+        VatMode = "Exclusive",
+    };
 }

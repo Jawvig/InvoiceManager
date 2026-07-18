@@ -26,4 +26,18 @@ public sealed class InvoiceConfigurationValidationTests
         Assert.Contains(errors, x => x.Contains("non-negative"));
         Assert.Contains(errors, x => x.Contains("365"));
     }
+
+    [Theory]
+    [InlineData("Uppercase")]
+    [InlineData("has spaces")]
+    [InlineData("leading-")]
+    [InlineData(" ")]
+    public void Validate_RejectsMalformedIds(string id)
+    {
+        var configuration = InvoiceManager.TestSupport.Configurations.Build() with { Id = new(id) };
+
+        Assert.Contains(
+            InvoiceConfigurationValidation.Validate(configuration),
+            error => error.Contains("lowercase kebab-case"));
+    }
 }

@@ -17,6 +17,21 @@ public sealed class InvoiceConfigurationServiceTests
     }
 
     [Fact]
+    public async Task Create_RejectsDuplicateIdAcrossIntegrationTypes()
+    {
+        var existing = Configurations.Build();
+        var service = new InvoiceConfigurationService(new FakeConfigurationRepository(existing));
+        var duplicate = Configurations.Build(isActive: false) with
+        {
+            Id = existing.Id,
+            IntegrationType = IntegrationType.Azure,
+        };
+
+        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
+            service.CreateAsync(duplicate, Actor));
+    }
+
+    [Fact]
     public async Task Restore_KeepsCurrentIdentityIntegrationAndActivationState()
     {
         var current = Configurations.Build(isActive: true);

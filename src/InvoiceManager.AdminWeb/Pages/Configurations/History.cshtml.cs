@@ -11,8 +11,7 @@ public sealed record RevisionDisplay(InvoiceConfigurationRevision Revision, stri
 
 public sealed class HistoryModel(
     InvoiceConfigurationService service,
-    IMicrosoftAuthorizationStore authorizationStore,
-    LegacyInvoiceRecordMigration migration) : PageModel
+    IMicrosoftAuthorizationStore authorizationStore) : PageModel
 {
     public StoredInvoiceConfiguration? Current { get; private set; }
     public IReadOnlyList<RevisionDisplay> Revisions { get; private set; } = [];
@@ -38,10 +37,9 @@ public sealed class HistoryModel(
             TempData["StatusMessage"] = "Confirm the revision restore before continuing.";
             return RedirectToPage(new { id, integrationType });
         }
-        if (!await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted) ||
-            await migration.CountPendingAsync(HttpContext.RequestAborted) > 0)
+        if (!await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted))
         {
-            TempData["StatusMessage"] = "Workflow authorization and legacy-record migration are required before restore.";
+            TempData["StatusMessage"] = "Workflow authorization is required before restore.";
             return RedirectToPage(new { id, integrationType });
         }
 
@@ -83,8 +81,7 @@ public sealed class HistoryModel(
                 JsonSerializer.Serialize(revision.Snapshot, new JsonSerializerOptions { WriteIndented = true })));
         }
         Revisions = displayed;
-        CanRestore = await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted) &&
-            await migration.CountPendingAsync(HttpContext.RequestAborted) == 0;
+        CanRestore = await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted);
         return true;
     }
 

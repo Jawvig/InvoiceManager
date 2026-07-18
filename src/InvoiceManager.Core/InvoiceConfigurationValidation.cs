@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Net.Mail;
 using NodaMoney;
 
 namespace InvoiceManager.Core;
@@ -38,8 +39,29 @@ public static partial class InvoiceConfigurationValidation
 
         if (configuration.DateToleranceDays is < 0 or > 365)
             errors.Add("Date tolerance must be between 0 and 365 days.");
-        if (string.IsNullOrWhiteSpace(configuration.BillingAccountId))
+        if (configuration.IntegrationType != IntegrationType.Microsoft365Email &&
+            string.IsNullOrWhiteSpace(configuration.BillingAccountId))
             errors.Add("Billing account is required.");
+        if (configuration.IntegrationType == IntegrationType.Microsoft365Email)
+        {
+            if (string.IsNullOrWhiteSpace(configuration.SenderEmailAddress))
+                errors.Add("Sender email address is required.");
+            else if (!MailAddress.TryCreate(configuration.SenderEmailAddress, out _))
+                errors.Add("Sender email address must be valid.");
+            if (string.IsNullOrWhiteSpace(configuration.BodyPattern))
+                errors.Add("Email body pattern is required.");
+            else
+            {
+                try
+                {
+                    _ = new Regex(configuration.BodyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+                }
+                catch (ArgumentException)
+                {
+                    errors.Add("Email body pattern must be a valid regular expression.");
+                }
+            }
+        }
         if (string.IsNullOrWhiteSpace(configuration.OneDriveDestination.DisplayPath))
             errors.Add("OneDrive destination is required.");
 

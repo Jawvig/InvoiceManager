@@ -22,7 +22,7 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await emulator.EnsureDatabaseAndContainerAsync(
-            TestDatabase, new ContainerProperties("invoice-configurations", "/integrationType"));
+            TestDatabase, new ContainerProperties("invoice-configurations", "/partitionKey"));
 
         repository = new CosmosInvoiceConfigurationRepository(emulator.Client, TestDatabase);
     }
@@ -92,6 +92,18 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
             x => Assert.Equal(InvoiceConfigurationRevisionAction.Created, x.Action),
             x => Assert.Equal(InvoiceConfigurationRevisionAction.Updated, x.Action));
         Assert.Equal("Updated", revisions[1].Snapshot.InvoiceDescription);
+    }
+
+    [Fact]
+    public async Task Create_RejectsDuplicateIdAcrossIntegrationTypes()
+    {
+        var actor = new InvoiceConfigurationActor("actor-1", "Admin User");
+        var original = BuildConfiguration(new("duplicate-id"), isActive: false);
+        await repository!.CreateAsync(original, actor);
+        var duplicate = original with { IntegrationType = IntegrationType.Azure };
+
+        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
+            repository.CreateAsync(duplicate, actor));
     }
 
     [Fact]

@@ -7,7 +7,7 @@ namespace InvoiceManager.Infrastructure.CosmosDb;
 
 /// <summary>
 /// Cosmos configuration repository. Live configuration mutations and immutable
-/// revision appends are committed atomically in the integration-type partition.
+/// revision appends are committed atomically in one configuration partition.
 /// </summary>
 public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfigurationRepository
 {
@@ -31,13 +31,13 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
     public async Task<IReadOnlyList<InvoiceConfiguration>> ListActiveAsync(
         CancellationToken cancellationToken = default) =>
         (await QueryLiveAsync(
-            "SELECT * FROM c WHERE c.isActive = true AND (NOT IS_DEFINED(c.documentType) OR c.documentType = @live)",
+            "SELECT * FROM c WHERE c.isActive = true AND c.documentType = @live",
             cancellationToken)).Select(x => x.Configuration).ToList();
 
     public Task<IReadOnlyList<StoredInvoiceConfiguration>> ListAllAsync(
         CancellationToken cancellationToken = default) =>
         QueryLiveAsync(
-            "SELECT * FROM c WHERE NOT IS_DEFINED(c.documentType) OR c.documentType = @live",
+            "SELECT * FROM c WHERE c.documentType = @live",
             cancellationToken);
 
     public async Task<Option<StoredInvoiceConfiguration>> GetAsync(
@@ -48,8 +48,9 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         try
         {
             var response = await container.ReadItemAsync<InvoiceConfigurationDocument>(
-                id.Value, new PartitionKey(integrationType.ToString()), cancellationToken: cancellationToken);
-            if (response.Resource.DocumentType != InvoiceConfigurationDocument.LiveDocumentType)
+                id.Value, ConfigurationPartition, cancellationToken: cancellationToken);
+            if (response.Resource.DocumentType != InvoiceConfigurationDocument.LiveDocumentType ||
+                !string.Equals(response.Resource.IntegrationType, integrationType.ToString(), StringComparison.OrdinalIgnoreCase))
                 return Option.None;
             return new StoredInvoiceConfiguration(response.Resource.ToConfiguration(), response.ETag);
         }
@@ -68,7 +69,7 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         {
             await container.CreateItemAsync(
                 document,
-                new PartitionKey(document.IntegrationType),
+                ConfigurationPartition,
                 cancellationToken: cancellationToken);
         }
         catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
@@ -82,14 +83,10 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         InvoiceConfigurationActor actor,
         CancellationToken cancellationToken = default)
     {
-        if (await IdExistsAsync(configuration.Id, cancellationToken))
-            throw new DuplicateInvoiceConfigurationException(
-                $"Invoice configuration ID '{configuration.Id}' already exists.");
-
         var now = timeProvider.GetUtcNow();
         var revision = NewRevision(configuration, InvoiceConfigurationRevisionAction.Created, actor, now);
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
-        var batch = container.CreateTransactionalBatch(new PartitionKey(document.IntegrationType))
+        var batch = container.CreateTransactionalBatch(ConfigurationPartition)
             .CreateItem(document)
             .CreateItem(InvoiceConfigurationRevisionDocument.FromRevision(revision));
 
@@ -113,7 +110,7 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         var revisions = await ListRevisionsAsync(configuration.Id, configuration.IntegrationType, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
-        var batch = container.CreateTransactionalBatch(new PartitionKey(document.IntegrationType));
+        var batch = container.CreateTransactionalBatch(ConfigurationPartition);
 
         if (revisions.Count == 0)
         {
@@ -152,7 +149,7 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
             .WithParameter("@id", id.Value);
         using var iterator = container.GetItemQueryIterator<InvoiceConfigurationRevisionDocument>(
             query,
-            requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(integrationType.ToString()) });
+            requestOptions: new QueryRequestOptions { PartitionKey = ConfigurationPartition });
         var results = new List<InvoiceConfigurationRevision>();
         while (iterator.HasMoreResults)
         {
@@ -168,7 +165,8 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
     {
         var query = new QueryDefinition(queryText)
             .WithParameter("@live", InvoiceConfigurationDocument.LiveDocumentType);
-        using var iterator = container.GetItemQueryIterator<InvoiceConfigurationDocument>(query);
+        using var iterator = container.GetItemQueryIterator<InvoiceConfigurationDocument>(
+            query, requestOptions: new QueryRequestOptions { PartitionKey = ConfigurationPartition });
         var results = new List<StoredInvoiceConfiguration>();
         while (iterator.HasMoreResults)
         {
@@ -179,21 +177,8 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         return results;
     }
 
-    private async Task<bool> IdExistsAsync(InvoiceConfigurationId id, CancellationToken cancellationToken)
-    {
-        var query = new QueryDefinition(
-                "SELECT VALUE COUNT(1) FROM c WHERE c.id = @id AND (NOT IS_DEFINED(c.documentType) OR c.documentType = @live)")
-            .WithParameter("@id", id.Value)
-            .WithParameter("@live", InvoiceConfigurationDocument.LiveDocumentType);
-        using var iterator = container.GetItemQueryIterator<int>(query);
-        while (iterator.HasMoreResults)
-        {
-            var page = await iterator.ReadNextAsync(cancellationToken);
-            if (page.Resource.Sum() > 0)
-                return true;
-        }
-        return false;
-    }
+    private static PartitionKey ConfigurationPartition =>
+        new(InvoiceConfigurationDocument.ConfigurationPartitionKey);
 
     private async Task<StoredInvoiceConfiguration> ReadRequiredAsync(
         InvoiceConfigurationId id,

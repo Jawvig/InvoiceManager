@@ -40,6 +40,9 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
         InvoiceConfigurationActor actor,
         CancellationToken cancellationToken = default)
     {
+        if (store.Any(c => c.Id == configuration.Id))
+            throw new DuplicateInvoiceConfigurationException(
+                $"Invoice configuration ID '{configuration.Id}' already exists.");
         store.Add(configuration);
         return Task.FromResult(new StoredInvoiceConfiguration(configuration, $"etag-{configuration.Id}"));
     }

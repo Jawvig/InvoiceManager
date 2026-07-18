@@ -8,8 +8,7 @@ namespace InvoiceManager.AdminWeb.Pages.Configurations;
 public sealed class EditModel(
     InvoiceConfigurationService service,
     IMicrosoftResourceDiscovery discovery,
-    IMicrosoftAuthorizationStore authorizationStore,
-    LegacyInvoiceRecordMigration migration) : ConfigurationFormPageModel(discovery)
+    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery)
 {
     [BindProperty]
     public override ConfigurationFormInput Input { get; set; } = new();
@@ -53,7 +52,7 @@ public sealed class EditModel(
         try
         {
             var updated = Input.Build(
-                current.Configuration.IsActive, BillingAccounts, Folders, true, current.Configuration);
+                current.Configuration.IsActive, BillingAccounts, Folders, true);
             await service.UpdateAsync(
                 current.Configuration, updated, Input.ETag, User.ToConfigurationActor(), HttpContext.RequestAborted);
             TempData["StatusMessage"] = "Configuration updated. Existing expected records retain their snapshots.";
@@ -70,7 +69,6 @@ public sealed class EditModel(
         return Page();
     }
 
-    private async Task<bool> CanMutateAsync() =>
-        await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted) &&
-        await migration.CountPendingAsync(HttpContext.RequestAborted) == 0;
+    private Task<bool> CanMutateAsync() =>
+        authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted);
 }

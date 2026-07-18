@@ -74,9 +74,9 @@ public sealed class DueInvoiceProcessor(
             using var recordActivity = Telemetry.ActivitySource.StartActivity("process_invoice_record");
             recordActivity?.SetTag("invoice.record_id", record.Id.Value);
             recordActivity?.SetTag("invoice.configuration_id", record.ConfigurationId.Value);
-            var snapshot = record.ProcessingSnapshot ?? InvoiceProcessingSnapshot.FromConfiguration(configuration);
+            var snapshot = record.ProcessingSnapshot;
             recordActivity?.SetTag("invoice.integration_type", snapshot.IntegrationType.ToString());
-            recordActivity?.SetTag("invoice.description", record.InvoiceDescription);
+            recordActivity?.SetTag("invoice.description", snapshot.InvoiceDescription);
             recordActivity?.SetTag("invoice.expected_date", record.ExpectedDate.ToString("O"));
 
             using var scope = logger.BeginScope(new Dictionary<string, object>
@@ -84,7 +84,7 @@ public sealed class DueInvoiceProcessor(
                 ["RecordId"] = record.Id.Value,
                 ["ConfigurationId"] = record.ConfigurationId.Value,
                 ["IntegrationType"] = snapshot.IntegrationType.ToString(),
-                ["InvoiceDescription"] = record.InvoiceDescription,
+                ["InvoiceDescription"] = snapshot.InvoiceDescription,
                 ["ExpectedDate"] = record.ExpectedDate,
             });
 
@@ -140,8 +140,8 @@ public sealed class DueInvoiceProcessor(
         var criteria = new InvoiceSearchCriteria(
             snapshot.BillingAccountId,
             record.ExpectedDate,
-            record.DateToleranceDays,
-            record.AmountMatchingCriteria,
+            snapshot.DateToleranceDays,
+            snapshot.AmountMatchingCriteria,
             snapshot.SenderEmailAddress,
             snapshot.BodyPattern);
 
@@ -151,8 +151,8 @@ public sealed class DueInvoiceProcessor(
         // sharing one folder do not reconcile against each other's files.
         var oneDriveCriteria = new OneDriveSearchCriteria(
             record.ExpectedDate,
-            record.DateToleranceDays,
-            record.AmountMatchingCriteria,
+            snapshot.DateToleranceDays,
+            snapshot.AmountMatchingCriteria,
             snapshot.InvoiceDescription);
 
         OneDriveSearchResult search;
@@ -283,7 +283,7 @@ public sealed class DueInvoiceProcessor(
         Activity? recordActivity,
         CancellationToken cancellationToken)
     {
-        var deadline = record.ExpectedDate.AddDays(record.DateToleranceDays);
+        var deadline = record.ExpectedDate.AddDays(record.ProcessingSnapshot.DateToleranceDays);
 
         if (asOf < deadline)
         {

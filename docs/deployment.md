@@ -375,11 +375,10 @@ Local developers must be signed in to Azure with access to the test Key Vault.
 Key Vault access is controlled through Azure RBAC rather than legacy vault
 access policies.
 
-The admin website administers invoice configurations and append-only history. If
-retryable legacy invoice records lack routing snapshots, operators must run the
-explicit Cosmos-only migration before configuration mutations are enabled. The
-website still does not own invoice matching, reconciliation, filename generation,
-or FreeAgent behavior.
+The admin website administers invoice configurations and append-only history.
+Every invoice record is created with a required routing snapshot, so no record
+migration gate is needed. The website still does not own invoice matching,
+reconciliation, filename generation, or FreeAgent behavior.
 
 ## GitHub Actions Workflow
 

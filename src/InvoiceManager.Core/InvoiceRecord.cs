@@ -6,13 +6,9 @@ namespace InvoiceManager.Core;
 /// </summary>
 public sealed record InvoiceRecord(
     InvoiceConfigurationId ConfigurationId,
-    string InvoiceDescription,
     DateOnly ExpectedDate,
-    int DateToleranceDays,
-    Option<AmountMatchingCriteria> AmountMatchingCriteria,
-    VatMode ExpectedVatMode,
     InvoiceWorkflowState State,
-    InvoiceProcessingSnapshot? ProcessingSnapshot = null)
+    InvoiceProcessingSnapshot ProcessingSnapshot)
 {
     public InvoiceRecordId Id { get; } = InvoiceRecordId.NewId(ExpectedDate, ConfigurationId);
 }

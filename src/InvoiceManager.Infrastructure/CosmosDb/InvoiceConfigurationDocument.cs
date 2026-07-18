@@ -13,12 +13,16 @@ namespace InvoiceManager.Infrastructure.CosmosDb;
 internal sealed class InvoiceConfigurationDocument
 {
     public const string LiveDocumentType = "invoiceConfiguration";
+    public const string ConfigurationPartitionKey = "config";
 
     [JsonPropertyName("id")]
     public required string Id { get; init; }
 
     [JsonPropertyName("documentType")]
     public string DocumentType { get; init; } = LiveDocumentType;
+
+    [JsonPropertyName("partitionKey")]
+    public string PartitionKey { get; init; } = ConfigurationPartitionKey;
 
     [JsonPropertyName("_etag")]
     public string ETag { get; init; } = "";
@@ -147,6 +151,9 @@ internal sealed class InvoiceConfigurationRevisionDocument
 
     [JsonPropertyName("documentType")]
     public string DocumentType { get; init; } = RevisionDocumentType;
+
+    [JsonPropertyName("partitionKey")]
+    public string PartitionKey { get; init; } = InvoiceConfigurationDocument.ConfigurationPartitionKey;
 
     [JsonPropertyName("configurationId")]
     public required string ConfigurationId { get; init; }

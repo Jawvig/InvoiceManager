@@ -8,8 +8,7 @@ namespace InvoiceManager.AdminWeb.Pages.Configurations;
 public sealed class CreateModel(
     InvoiceConfigurationService service,
     IMicrosoftResourceDiscovery discovery,
-    IMicrosoftAuthorizationStore authorizationStore,
-    LegacyInvoiceRecordMigration migration) : ConfigurationFormPageModel(discovery)
+    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery)
 {
     [BindProperty]
     public override ConfigurationFormInput Input { get; set; } = new();
@@ -30,8 +29,6 @@ public sealed class CreateModel(
         if (!ModelState.IsValid) return Page();
         try
         {
-            if (Input.IntegrationType is not (IntegrationType.Microsoft365 or IntegrationType.Azure))
-                throw new ArgumentException("Only Microsoft365 and Azure configurations can currently be created.");
             var configuration = Input.Build(false, BillingAccounts, Folders, false);
             await service.CreateAsync(configuration, User.ToConfigurationActor(), HttpContext.RequestAborted);
             TempData["StatusMessage"] = "Inactive configuration draft created.";
@@ -44,7 +41,6 @@ public sealed class CreateModel(
         }
     }
 
-    private async Task<bool> CanMutateAsync() =>
-        await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted) &&
-        await migration.CountPendingAsync(HttpContext.RequestAborted) == 0;
+    private Task<bool> CanMutateAsync() =>
+        authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted);
 }

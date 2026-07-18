@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Net.Mail;
+using System.Text.RegularExpressions;
 using InvoiceManager.Core;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using NodaMoney;
@@ -29,8 +31,12 @@ public sealed class ConfigurationFormInput
     [Required, DataType(DataType.Date)]
     public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
 
-    [Required]
     public string BillingAccountId { get; set; } = "";
+
+    [EmailAddress]
+    public string SenderEmailAddress { get; set; } = "";
+
+    public string BodyPattern { get; set; } = "";
 
     [Range(0, 365)]
     public int DateToleranceDays { get; set; } = 5;
@@ -48,12 +54,36 @@ public sealed class ConfigurationFormInput
         bool isActive,
         IReadOnlyList<BillingAccountChoice> billingAccounts,
         IReadOnlyList<OneDriveFolderChoice> folders,
-        bool allowUnchangedMissingSelections,
-        InvoiceConfiguration? original = null)
+        bool allowUnchangedMissingSelections)
     {
-        if (!billingAccounts.Any(x => x.Id == BillingAccountId) &&
-            !(allowUnchangedMissingSelections && BillingAccountId == OriginalBillingAccountId))
+        var billingAccountId = BillingAccountId;
+        var senderEmailAddress = "";
+        var bodyPattern = "";
+        if (IntegrationType == IntegrationType.Microsoft365Email)
+        {
+            billingAccountId = "";
+            if (string.IsNullOrWhiteSpace(SenderEmailAddress))
+                throw new ArgumentException("Sender email address is required for Microsoft 365 email invoices.");
+            if (!MailAddress.TryCreate(SenderEmailAddress.Trim(), out _))
+                throw new ArgumentException("Sender email address must be valid.");
+            if (string.IsNullOrWhiteSpace(BodyPattern))
+                throw new ArgumentException("Body pattern is required for Microsoft 365 email invoices.");
+            try
+            {
+                _ = new Regex(BodyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+            }
+            catch (ArgumentException)
+            {
+                throw new ArgumentException("Body pattern must be a valid regular expression.");
+            }
+            senderEmailAddress = SenderEmailAddress.Trim();
+            bodyPattern = BodyPattern;
+        }
+        else if (!billingAccounts.Any(x => x.Id == BillingAccountId) &&
+                 !(allowUnchangedMissingSelections && BillingAccountId == OriginalBillingAccountId))
+        {
             throw new ArgumentException("Select a billing account returned by discovery.");
+        }
 
         OneDriveDestination destination;
         if (folders.FirstOrDefault(x => x.Destination.FolderItemId == FolderItemId) is { } selected)
@@ -75,7 +105,14 @@ public sealed class ConfigurationFormInput
         {
             if (ExpectedAmount is null)
                 throw new ArgumentException("Expected amount is required when amount matching is enabled.");
-            amount = new AmountMatchingCriteria(new Money(ExpectedAmount.Value, Currency), AmountTolerance);
+            try
+            {
+                amount = new AmountMatchingCriteria(new Money(ExpectedAmount.Value, Currency), AmountTolerance);
+            }
+            catch (InvalidCurrencyException)
+            {
+                throw new ArgumentException("Currency must be a recognized ISO 4217 currency code.");
+            }
         }
 
         return new(
@@ -88,10 +125,10 @@ public sealed class ConfigurationFormInput
             isActive,
             destination,
             StartDate,
-            BillingAccountId,
+            billingAccountId,
             DateToleranceDays,
-            original?.SenderEmailAddress ?? "",
-            original?.BodyPattern ?? "");
+            senderEmailAddress,
+            bodyPattern);
     }
 
     public static ConfigurationFormInput From(StoredInvoiceConfiguration stored)
@@ -106,6 +143,8 @@ public sealed class ConfigurationFormInput
             DefaultVatMode = configuration.DefaultVatMode,
             StartDate = configuration.StartDate,
             BillingAccountId = configuration.BillingAccountId,
+            SenderEmailAddress = configuration.SenderEmailAddress,
+            BodyPattern = configuration.BodyPattern,
             DateToleranceDays = configuration.DateToleranceDays,
             FolderItemId = configuration.OneDriveDestination.FolderItemId ?? "",
             OriginalBillingAccountId = configuration.BillingAccountId,

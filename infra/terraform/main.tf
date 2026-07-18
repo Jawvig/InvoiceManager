@@ -135,10 +135,11 @@ resource "azurerm_cosmosdb_sql_container" "invoice_configurations" {
   resource_group_name = azurerm_cosmosdb_account.invoice_manager.resource_group_name
   account_name        = azurerm_cosmosdb_account.invoice_manager.name
   database_name       = azurerm_cosmosdb_sql_database.invoice_manager.name
-  partition_key_paths = ["/integrationType"]
+  partition_key_paths = ["/partitionKey"]
 
+  # The partition key is intentionally replaceable while the application is in testing.
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
 

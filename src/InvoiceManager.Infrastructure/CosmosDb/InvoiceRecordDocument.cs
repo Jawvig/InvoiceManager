@@ -71,23 +71,11 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("configurationId")]
     public required string ConfigurationId { get; init; }
 
-    [JsonPropertyName("invoiceDescription")]
-    public required string InvoiceDescription { get; init; }
-
     [JsonPropertyName("expectedDate")]
     public required string ExpectedDate { get; init; }
 
-    [JsonPropertyName("dateToleranceDays")]
-    public required int DateToleranceDays { get; init; }
-
-    [JsonPropertyName("amountMatchingCriteria")]
-    public AmountMatchingCriteriaDocument? AmountMatchingCriteria { get; init; }
-
-    [JsonPropertyName("expectedVatMode")]
-    public required string ExpectedVatMode { get; init; }
-
     [JsonPropertyName("processingSnapshot")]
-    public InvoiceProcessingSnapshotDocument? ProcessingSnapshot { get; init; }
+    public required InvoiceProcessingSnapshotDocument ProcessingSnapshot { get; init; }
 
     [JsonPropertyName("status")]
     public required string Status { get; init; }
@@ -113,13 +101,9 @@ internal sealed class InvoiceRecordDocument
     public InvoiceRecord ToRecord() =>
         new(
             new InvoiceConfigurationId(ConfigurationId),
-            InvoiceDescription,
             DateOnly.ParseExact(ExpectedDate, "O", CultureInfo.InvariantCulture),
-            DateToleranceDays,
-            ToAmountMatchingCriteria(),
-            Enum.Parse<VatMode>(ExpectedVatMode, ignoreCase: true),
             ToState(),
-            ProcessingSnapshot?.ToSnapshot());
+            ProcessingSnapshot.ToSnapshot());
 
     public static InvoiceRecordDocument FromRecord(InvoiceRecord record)
     {
@@ -128,18 +112,8 @@ internal sealed class InvoiceRecordDocument
         {
             Id = record.Id.Value,
             ConfigurationId = record.ConfigurationId.Value,
-            InvoiceDescription = record.InvoiceDescription,
             ExpectedDate = record.ExpectedDate.ToString("O", CultureInfo.InvariantCulture),
-            DateToleranceDays = record.DateToleranceDays,
-            AmountMatchingCriteria = record.AmountMatchingCriteria switch
-            {
-                AmountMatchingCriteria criteria => AmountMatchingCriteriaDocument.FromCriteria(criteria),
-                None => null,
-            },
-            ExpectedVatMode = record.ExpectedVatMode.ToString(),
-            ProcessingSnapshot = record.ProcessingSnapshot is { } snapshot
-                ? InvoiceProcessingSnapshotDocument.FromSnapshot(snapshot)
-                : null,
+            ProcessingSnapshot = InvoiceProcessingSnapshotDocument.FromSnapshot(record.ProcessingSnapshot),
             Status = fields.Status,
             ActualInvoiceDetails = fields.ActualDetails,
             OneDriveDetails = fields.OneDriveDetails,
@@ -148,11 +122,6 @@ internal sealed class InvoiceRecordDocument
             ReconciledAt = fields.ReconciledAt,
         };
     }
-
-    private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
-        AmountMatchingCriteria is { } criteria
-            ? criteria.ToCriteria()
-            : Option.None;
 
     private InvoiceWorkflowState ToState() => Status switch
     {
