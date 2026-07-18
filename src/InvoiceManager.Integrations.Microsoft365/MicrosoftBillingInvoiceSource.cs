@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
+using InvoiceManager.Infrastructure.Http;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -106,7 +107,7 @@ public sealed class MicrosoftBillingInvoiceSource(
         while (url is not null)
         {
             using var response = await SendAuthenticatedAsync(HttpMethod.Get, url, token, content: null, cancellationToken);
-            await EnsureSuccessAsync(response, "listing invoices", cancellationToken);
+            await response.EnsureSuccessAsync("Microsoft 365 billing", "listing invoices", cancellationToken);
 
             var page = await response.Content.ReadFromJsonAsync<BillingInvoiceListResponse>(cancellationToken);
             if (page is null)
@@ -175,7 +176,7 @@ public sealed class MicrosoftBillingInvoiceSource(
 
             if (response.StatusCode != HttpStatusCode.Accepted)
             {
-                await EnsureSuccessAsync(response, "requesting document download", cancellationToken);
+                await response.EnsureSuccessAsync("Microsoft 365 billing", "requesting document download", cancellationToken);
             }
 
             var pollUrl = response.Headers.Location
@@ -207,7 +208,7 @@ public sealed class MicrosoftBillingInvoiceSource(
         // The SAS URL carries its own credential; it must not be sent the bearer token.
         using var request = new HttpRequestMessage(HttpMethod.Get, sasUrl);
         using var response = await httpClient.SendAsync(request, cancellationToken);
-        await EnsureSuccessAsync(response, "downloading the invoice file", cancellationToken);
+        await response.EnsureSuccessAsync("Microsoft 365 billing", "downloading the invoice file", cancellationToken);
         return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
@@ -244,13 +245,4 @@ public sealed class MicrosoftBillingInvoiceSource(
         return httpClient.SendAsync(request, cancellationToken);
     }
 
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response, string action, CancellationToken cancellationToken)
-    {
-        if (response.IsSuccessStatusCode)
-            return;
-
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new HttpRequestException(
-            $"Microsoft 365 billing request failed while {action}: {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
-    }
 }

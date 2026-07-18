@@ -312,16 +312,18 @@ function Set-TestAdminWebLocalConfiguration {
     # the AppHost, which reads its OWN user-secrets store and forwards them to the Functions
     # and admin website resources. Set them for both projects so a clean setup needs no manual
     # step. The client secret is never stored here; it stays in Key Vault.
-    $projects = @(
-        (Join-Path $RepoRoot "src/InvoiceManager.AdminWeb/InvoiceManager.AdminWeb.csproj"),
-        (Join-Path $RepoRoot "src/InvoiceManager.AppHost/InvoiceManager.AppHost.csproj")
-    )
+    $adminWebProject = Join-Path $RepoRoot "src/InvoiceManager.AdminWeb/InvoiceManager.AdminWeb.csproj"
+    $appHostProject = Join-Path $RepoRoot "src/InvoiceManager.AppHost/InvoiceManager.AppHost.csproj"
 
-    foreach ($project in $projects) {
+    foreach ($project in @($adminWebProject, $appHostProject)) {
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:TenantId" -Value $outputs.tenant_id.value
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:KeyVaultUri" -Value $outputs.key_vault_uri.value
     }
+
+    # Only the AppHost forwards this to the Functions project (see AppHost/Program.cs); the
+    # admin website never uses Document Intelligence, so it doesn't need the secret.
+    Set-ProjectUserSecret -ProjectPath $appHostProject -Key "DocumentIntelligence:Endpoint" -Value $outputs.document_intelligence_endpoint.value
 
     Write-Host "Local user secrets configured for the test environment (admin website + AppHost)."
     Write-Host "Client secret remains in Key Vault as MicrosoftAuthorization--ClientSecret."

@@ -84,6 +84,12 @@ Terraform manages all Azure infrastructure including:
 - **Microsoft Identity Setup**: Entra app registration, service principal, and
   redirect URIs (local admin plus the deployed Container Apps callback) used for
   delegated authorization capture.
+- **Document Intelligence**: An `azurerm_cognitive_account` (kind
+  `FormRecognizer`) used by the `Microsoft365Email` invoice source to read
+  invoice date/total out of PDF attachments via the prebuilt `invoice` model.
+  RBAC-only (`local_auth_enabled = false`); the Functions managed identity
+  holds `Cognitive Services User` on it, and its endpoint is passed to the
+  Functions app as `DocumentIntelligence__Endpoint`.
 
 ### Terraform Structure
 
@@ -109,7 +115,9 @@ The initial Terraform configuration creates the Microsoft identity foundation:
 - An Entra app registration.
 - The tenant-local service principal / Enterprise Application.
 - Required delegated API permissions for Azure Resource Manager
-  `user_impersonation` and Microsoft Graph `User.Read`.
+  `user_impersonation` and Microsoft Graph `User.Read` and `Mail.Read` (the
+  latter used by the `Microsoft365Email` invoice source to search the same
+  delegated mailbox already used for OneDrive uploads).
 - An environment Key Vault used by the admin website to store its client secret
   and captured Microsoft authorization token-cache material.
 - Azure RBAC assignments for Key Vault data-plane access. Terraform grants the
@@ -302,6 +310,15 @@ authorization for Azure Resource Manager and Microsoft Graph, then persists the
 serialized MSAL token cache in the environment Key Vault as
 `MicrosoftAuthorization--MsalTokenCache`.
 
+The scopes requested on sign-in are hard-coded in
+`MicrosoftOpenIdConnectOptionsSetup` (`src/InvoiceManager.AdminWeb/Program.cs`),
+not derived from the app registration's declared `required_resource_access`.
+Terraform can add a new delegated permission (e.g. `Mail.Read` for the
+`Microsoft365Email` source) to the app registration, but that alone changes
+nothing about what the interactive sign-in actually asks for or what the
+admin has consented to — the scope must also be added here, and the admin
+must sign in again afterward, before a new scope takes effect.
+
 The admin website runs both locally (from `src/InvoiceManager.AdminWeb`) and
 deployed to Azure Container Apps. Terraform registers two callback URIs on each
 app registration: the local `https://localhost:5001/signin-oidc` (from
@@ -330,6 +347,18 @@ dotnet user-secrets set "MicrosoftAuthorization:TenantId" "<tenant-id>" --projec
 dotnet user-secrets set "MicrosoftAuthorization:ClientId" "<application-client-id>" --project src/InvoiceManager.AdminWeb
 dotnet user-secrets set "MicrosoftAuthorization:KeyVaultUri" "https://<key-vault-name>.vault.azure.net/" --project src/InvoiceManager.AdminWeb
 ```
+
+The AppHost (`src/InvoiceManager.AppHost`, `UserSecretsId` `InvoiceManager.AppHost`) needs its own copies of the
+`MicrosoftAuthorization` values above, plus the Document Intelligence endpoint used by the
+`Microsoft365Email` invoice source — there is no local emulator for Document Intelligence, so this
+must point at a real resource already provisioned by Terraform:
+
+```bash
+dotnet user-secrets set "DocumentIntelligence:Endpoint" "https://<doc-intel-resource-name>.cognitiveservices.azure.com/" --project src/InvoiceManager.AppHost
+```
+
+Without it, the Functions app fails `DocumentIntelligenceOptions` validation at startup and the
+AppHost's `functions` resource never becomes healthy.
 
 When the admin website starts, it uses `MicrosoftAuthorization:KeyVaultUri` and
 `DefaultAzureCredential` to load `MicrosoftAuthorization:ClientSecret` from Key

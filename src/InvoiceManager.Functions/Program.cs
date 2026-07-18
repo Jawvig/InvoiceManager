@@ -1,9 +1,11 @@
 using System.Globalization;
+using Azure.Core;
 using Azure.Identity;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
 using InvoiceManager.Core.Repositories;
 using InvoiceManager.Infrastructure.CosmosDb;
+using InvoiceManager.Infrastructure.DocumentIntelligence;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.Infrastructure.OneDrive;
 using InvoiceManager.Integrations.Microsoft365;
@@ -110,6 +112,38 @@ var host = new HostBuilder()
 
         // Graph client gets the standard resilience handler (429/503 + Retry-After, timeouts).
         services.AddGraphOneDriveIntegration();
+
+        // Document Intelligence PDF extraction (app-only via managed identity, unrelated to
+        // the delegated MSAL cache used above) and the Microsoft365Email source that uses it.
+        services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
+        services.AddOptions<DocumentIntelligenceOptions>()
+            .Bind(context.Configuration.GetSection(DocumentIntelligenceOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<DocumentIntelligenceOptions>, DocumentIntelligenceOptionsValidator>();
+        // Transient (not Singleton), matching the other HttpClientFactory-backed
+        // integrations below: CreateClient must be called fresh per resolution so the
+        // factory's handler-rotation (DNS staleness mitigation) actually takes effect.
+        services.AddHttpClient(nameof(DocumentIntelligencePdfExtractor));
+        services.AddTransient<IInvoicePdfExtractor>(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            return new DocumentIntelligencePdfExtractor(
+                factory.CreateClient(nameof(DocumentIntelligencePdfExtractor)),
+                sp.GetRequiredService<TokenCredential>(),
+                sp.GetRequiredService<IOptions<DocumentIntelligenceOptions>>(),
+                sp.GetRequiredService<ILogger<DocumentIntelligencePdfExtractor>>());
+        });
+
+        services.AddHttpClient(nameof(GraphEmailInvoiceSource));
+        services.AddTransient<IInvoiceSourceIntegration>(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            return new GraphEmailInvoiceSource(
+                factory.CreateClient(nameof(GraphEmailInvoiceSource)),
+                sp.GetRequiredService<IMicrosoftTokenProvider>(),
+                sp.GetRequiredService<IInvoicePdfExtractor>(),
+                sp.GetRequiredService<ILogger<GraphEmailInvoiceSource>>());
+        });
 
         services.AddSingleton(TimeProvider.System);
         services.AddTransient<DueInvoiceProcessor>();

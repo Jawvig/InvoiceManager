@@ -109,6 +109,11 @@ Conceptual responsibilities:
   returns match details, and saves files to configured folders.
 - FreeAgent integration finds bills, updates totals when required, and uploads
   invoice attachments.
+- PDF field extraction (`IInvoicePdfExtractor`) reads invoice date/total out of
+  a PDF's own content for sources with no reliable pre-open metadata, currently
+  used by the `Microsoft365Email` source. It is its own boundary interface, not
+  folded into the email source, so the Document Intelligence specifics stay out
+  of both the email integration and the core workflow.
 
 The exact C# interfaces will be defined during implementation, but they should
 support provider-independent workflow testing.

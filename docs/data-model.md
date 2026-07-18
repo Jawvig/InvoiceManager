@@ -46,6 +46,11 @@ Candidate fields:
 - `oneDriveDestination`
 - `billingAccountId`
 - `dateToleranceDays`
+- `senderEmailAddress` — for `Microsoft365Email`, the exact sender a candidate
+  email must come from; empty and unused for other integration types
+- `bodyPattern` — for `Microsoft365Email`, a regular expression a candidate
+  email's plain-text body must match; empty and unused for other integration
+  types
 - `freeAgentMatching`
 - `createdAt`
 - `updatedAt`

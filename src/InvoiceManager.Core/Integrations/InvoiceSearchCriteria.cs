@@ -11,11 +11,23 @@ namespace InvoiceManager.Core.Integrations;
 /// <param name="ExpectedDate">The nominal date the invoice is expected on.</param>
 /// <param name="DateToleranceDays">How many days either side of <paramref name="ExpectedDate"/> a candidate may fall.</param>
 /// <param name="AmountMatchingCriteria">Optional expected amount, currency, and tolerance.</param>
+/// <param name="SenderEmailAddress">
+/// For <see cref="IntegrationType.Microsoft365Email"/> sources, the exact
+/// sender address a candidate email must come from. Empty and unused for
+/// other sources.
+/// </param>
+/// <param name="BodyPattern">
+/// For <see cref="IntegrationType.Microsoft365Email"/> sources, a regular expression a
+/// candidate email's plain-text body must match. Empty and unused for other
+/// sources.
+/// </param>
 public sealed record InvoiceSearchCriteria(
     string BillingAccountId,
     DateOnly ExpectedDate,
     int DateToleranceDays,
-    Option<AmountMatchingCriteria> AmountMatchingCriteria)
+    Option<AmountMatchingCriteria> AmountMatchingCriteria,
+    string SenderEmailAddress = "",
+    string BodyPattern = "")
 {
     /// <summary>
     /// Whether a candidate with the given actual date and amount satisfies these

@@ -25,7 +25,11 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithEnvironment("CosmosDatabase", "invoicemanager")
         // Seed the local emulator as the "test" environment so every OneDrive destination is
         // nested under a root "Test" folder and local downloads never collide with production.
-        .WithArgs("--ensure-schema", "--environment", "test", seedFile)
+        // Aspire launches project resources via `dotnet run`, which (as of the .NET 11 preview
+        // SDK this repo targets) only forwards args to the app when they follow a literal "--"
+        // separator — without it, the app receives none of these and exits with a usage error.
+        // scripts/Deploy-Infra.ps1's own `dotnet run` invocation already does this correctly.
+        .WithArgs("--", "--ensure-schema", "--environment", "test", seedFile)
         .WaitFor(cosmos);
 
     // Microsoft delegated auth settings shared by the admin website and the Functions app.
@@ -37,6 +41,10 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
     var microsoftAuthTenantId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:TenantId");
     var microsoftAuthClientId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:ClientId");
     var microsoftAuthKeyVaultUri = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:KeyVaultUri");
+    // The Document Intelligence resource is provisioned by Terraform, not Aspire (there is no
+    // local emulator for it), so its endpoint must point at a real deployed resource, the same
+    // way the Microsoft auth values above point at the real test Key Vault.
+    var documentIntelligenceEndpoint = builder.Configuration.GetRequiredValue("DocumentIntelligence:Endpoint");
 
     var functions = builder
         .AddAzureFunctionsProject<Projects.InvoiceManager_Functions>("functions")
@@ -50,6 +58,7 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
         .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
         .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
+        .WithEnvironment("DocumentIntelligence__Endpoint", documentIntelligenceEndpoint)
         .WaitFor(cosmos)
         .WaitForCompletion(seeder)
         .WithHttpHealthCheck("/api/health");

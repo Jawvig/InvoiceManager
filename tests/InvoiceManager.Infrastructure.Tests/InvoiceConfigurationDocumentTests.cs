@@ -34,4 +34,48 @@ public sealed class InvoiceConfigurationDocumentTests
         Assert.True(document.AmountMatchingCriteria is null);
         Assert.True(document.ToConfiguration().AmountMatchingCriteria is None);
     }
+
+    [Fact]
+    public void FromConfiguration_RoundTripsEmailMatchingFields()
+    {
+        var configuration = new InvoiceConfiguration(
+            new InvoiceConfigurationId("email-test"), IntegrationType.Microsoft365Email, "Test",
+            InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
+            true, "/drives/test/root:/Bills", new DateOnly(2026, 1, 1), "", 5,
+            SenderEmailAddress: "billing@contoso.com",
+            BodyPattern: "Invoice for account \\d+");
+
+        var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
+        var roundTripped = document.ToConfiguration();
+
+        Assert.Equal("billing@contoso.com", document.SenderEmailAddress);
+        Assert.Equal("Invoice for account \\d+", document.BodyPattern);
+        Assert.Equal(configuration.SenderEmailAddress, roundTripped.SenderEmailAddress);
+        Assert.Equal(configuration.BodyPattern, roundTripped.BodyPattern);
+    }
+
+    [Fact]
+    public void ToConfiguration_DefaultsEmailMatchingFields_WhenAbsentFromJson()
+    {
+        var json = """
+            {
+              "id": "azure-test",
+              "integrationType": "Azure",
+              "invoiceDescription": "",
+              "frequency": "Monthly",
+              "defaultVatMode": "Inclusive",
+              "isActive": true,
+              "oneDriveDestination": "/drives/test/root:/Bills",
+              "startDate": "2026-01-01",
+              "billingAccountId": "account",
+              "dateToleranceDays": 5
+            }
+            """;
+
+        var document = System.Text.Json.JsonSerializer.Deserialize<InvoiceConfigurationDocument>(json)!;
+        var configuration = document.ToConfiguration();
+
+        Assert.Equal("", configuration.SenderEmailAddress);
+        Assert.Equal("", configuration.BodyPattern);
+    }
 }

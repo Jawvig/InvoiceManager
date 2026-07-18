@@ -2,6 +2,7 @@ using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.AdminWeb.Pages;
 using InvoiceManager.AdminWeb.Services;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -16,6 +17,19 @@ namespace InvoiceManager.AdminWeb.Tests;
 
 public sealed class AdminHomePageTests
 {
+    [Fact]
+    public async Task SignIn_RequestsMailReadScope_SoConsentCoversTheEmailInvoiceSource()
+    {
+        await using var factory = CreateConfiguredFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var options = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>()
+            .Get(OpenIdConnectDefaults.AuthenticationScheme);
+
+        Assert.Contains("https://graph.microsoft.com/Mail.Read", options.Scope);
+    }
+
     [Fact]
     public async Task HomePage_FailsFast_WhenAuthorizationConfigurationIsMissing()
     {

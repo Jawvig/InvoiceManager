@@ -39,6 +39,12 @@ InvoiceManager must therefore support matching expected invoices by
 provider-specific selection criteria while keeping those provider details out of
 the core workflow.
 
+The Microsoft 365 email attachment source is the extreme case of this: none of
+sender, date window, or body text reveal the invoice date, total, or VAT mode,
+so those fields are read from the PDF itself (via Azure AI Document
+Intelligence) once a candidate email is matched. See
+[workflow.md#source-matching](workflow.md#source-matching).
+
 Microsoft 365 may produce more than one invoice for the same period, such as
 separate invoices for Copilot and Office 365 extensions. These should be modeled
 as separate expected invoices even when they use the same source integration. See

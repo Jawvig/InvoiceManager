@@ -16,6 +16,9 @@ Expected fields include:
 - OneDrive destination.
 - FreeAgent matching information.
 - Active/inactive state.
+- Sender email address and a body regular expression, used only by
+  `Microsoft365Email` configurations to find the candidate email (empty and
+  unused for other integration types).
 
 ## Integration
 
@@ -42,7 +45,9 @@ Examples:
 - `OpenAI`
 - `Microsoft365Email`
 
-Exact values should be defined in code when implementation starts.
+`Azure`, `Microsoft365`, and `Microsoft365Email` are implemented
+(`IntegrationType`); `OpenAI` is blocked pending a provider API (see the
+tracking issue referenced from [product.md](product.md#invoice-sources)).
 
 ## Invoice Name
 
@@ -148,6 +153,23 @@ reason the match was accepted.
 
 Provider-specific matching behavior is defined in
 [workflow.md#source-matching](workflow.md#source-matching).
+
+## PDF Field Extraction
+
+For sources that expose no reliable metadata before the invoice PDF is opened
+— currently `Microsoft365Email` — the invoice date and total are read from the
+PDF's own content via `IInvoicePdfExtractor`, implemented using Azure AI
+Document Intelligence's prebuilt `invoice` model. This is a provider-boundary
+interface like the invoice source and OneDrive integrations: the core workflow
+and the email source integration both stay unaware of Document Intelligence
+specifics.
+
+VAT mode is deliberately never derived from the PDF; `actualVatMode` always
+comes from configuration, the same rule as every other integration type (see
+[Invoice Total](#invoice-total)). A failed or low-confidence extraction is
+treated as a `RetrievalError` — no new workflow state is needed. See
+[workflow.md#source-matching](workflow.md#source-matching) for how this fits
+the email source's matching flow.
 
 ## Invoice Date
 
