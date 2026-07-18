@@ -21,6 +21,13 @@ more containers.
 
 Stores recurring invoice expectations and provider configuration references.
 
+Live configurations and immutable audit revisions share this container and the
+same constant `/partitionKey` value, `config`. `documentType` is
+`invoiceConfiguration` or `invoiceConfigurationRevision`; every live query
+excludes revisions. Keeping every configuration in one partition makes the
+Cosmos-native `id` constraint enforce globally unique configuration IDs while
+preserving atomic live-document and revision writes.
+
 Purpose:
 
 - List active invoice configurations.
@@ -31,11 +38,12 @@ Purpose:
 
 Suggested partition key:
 
-- `/integrationType`
+- `/partitionKey` (constant value `config`)
 
 Candidate fields:
 
 - `id`
+- `partitionKey`
 - `integrationType`
 - `invoiceName`
 - `expectedFrequency`
@@ -54,6 +62,14 @@ Candidate fields:
 - `freeAgentMatching`
 - `createdAt`
 - `updatedAt`
+
+`oneDriveDestination` is either the backward-compatible legacy path string or an
+object containing `driveId`, `folderItemId`, and `displayPath`. Live documents
+carry the Cosmos `_etag` through edit/restore forms. Mutations use `If-Match` and
+a same-partition transactional batch to replace the live document and append the
+revision atomically. Revisions have no TTL and contain a unique ID, action,
+timestamp, actor object ID/display name, and the complete resulting snapshot. The
+first mutation of legacy unaudited data also appends a pre-audit baseline.
 
 Notes:
 
@@ -86,13 +102,10 @@ Candidate fields:
 
 - `id`
 - `configurationId`
-- `invoiceName`
-- `integrationType`
 - `expectedDate`
-- `expectedDateToleranceDays`
-- `amountMatchingCriteria` — snapshot of the optional configuration criteria
-  at record creation, used as matching criteria
-- `expectedVatMode`
+- `processingSnapshot` — required object containing integration type, billing
+  account ID, OneDrive destination, invoice description, date/amount criteria,
+  VAT mode, and provider-neutral source-selection fields
 - `status`
 - `actualInvoiceDetails` — nested sub-object, present when the state carries
   actual values: `actualInvoiceDate`, `actualAmount`, `actualCurrency`,
@@ -125,8 +138,8 @@ Notes:
   sub-objects are present exactly when the state requires them; reads reject
   documents whose sub-objects are missing when the status requires them, or
   incomplete.
-- `expectedVatMode` and `actualVatMode` should distinguish VAT inclusive (`inc`)
-  and VAT exclusive (`exc`) totals.
+- The snapshot VAT mode distinguishes VAT inclusive (`inc`) and VAT exclusive
+  (`exc`) totals.
 - Amount comparisons must include currency. OpenAI invoices may be in USD while
   most other invoices are expected to be in GBP.
 - `sourceMetadata` may contain provider-specific non-secret metadata.

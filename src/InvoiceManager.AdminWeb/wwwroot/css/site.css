@@ -165,3 +165,29 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+.form-grid {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-grid label {
+  display: grid;
+  gap: .35rem;
+}
+
+.form-grid input,
+.form-grid select {
+  max-width: 38rem;
+  padding: .55rem;
+}
+
+.disabled {
+  opacity: .5;
+  pointer-events: none;
+}
+
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

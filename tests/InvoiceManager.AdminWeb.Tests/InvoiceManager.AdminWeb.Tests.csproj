@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\InvoiceManager.AdminWeb\InvoiceManager.AdminWeb.csproj" />
+    <ProjectReference Include="..\InvoiceManager.TestSupport\InvoiceManager.TestSupport.csproj" />
   </ItemGroup>
 
   <ItemGroup>

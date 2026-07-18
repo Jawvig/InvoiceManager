@@ -1,0 +1,5 @@
+@page
+@model InvoiceManager.AdminWeb.Pages.Configurations.EditModel
+@{ ViewData["Title"] = "Edit invoice configuration"; }
+<section class="admin-shell"><div class="page-heading"><h1>Edit invoice configuration</h1><p class="summary">Identity and integration type are immutable. Changes affect future expected records only.</p></div>
+<form method="post">@await Html.PartialAsync("_ConfigurationForm", Model)</form></section>

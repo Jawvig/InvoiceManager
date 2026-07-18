@@ -73,12 +73,9 @@ public sealed class ExpectedRecordGenerator(
 
         var record = new InvoiceRecord(
             configuration.Id,
-            configuration.InvoiceDescription,
             nextExpectedDate.Date,
-            configuration.DateToleranceDays,
-            configuration.AmountMatchingCriteria,
-            configuration.DefaultVatMode,
-            new Expected());
+            new Expected(),
+            InvoiceProcessingSnapshot.FromConfiguration(configuration));
 
         await repository.CreateIfNotExistsAsync(record, cancellationToken);
     }

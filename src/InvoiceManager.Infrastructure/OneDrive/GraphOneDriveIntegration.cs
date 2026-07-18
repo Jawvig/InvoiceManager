@@ -39,14 +39,15 @@ public sealed class GraphOneDriveIntegration(
     {
         using var activity = Telemetry.ActivitySource.StartActivity("upload_onedrive");
         activity?.SetTag("onedrive.file_name", request.FileName);
-        activity?.SetTag("onedrive.destination", request.DestinationPath);
+        activity?.SetTag("onedrive.destination", request.Destination.DisplayPath);
 
         var token = await tokenProvider.AcquireTokenAsync(Scopes, cancellationToken);
 
         // Graph simple upload: PUT {drivePath}/{filename}:/content. The destination
         // path already ends at the folder (e.g. /drives/{id}/root:/Bills/Microsoft 365).
-        var uploadUrl =
-            $"{GraphBaseUrl}{request.DestinationPath}/{Uri.EscapeDataString(request.FileName)}:/content";
+        var uploadUrl = request.Destination.HasStableIds
+            ? $"{GraphBaseUrl}{request.DestinationPath}:/{Uri.EscapeDataString(request.FileName)}:/content"
+            : $"{GraphBaseUrl}{request.DestinationPath}/{Uri.EscapeDataString(request.FileName)}:/content";
 
         using var message = new HttpRequestMessage(HttpMethod.Put, uploadUrl);
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -82,14 +83,16 @@ public sealed class GraphOneDriveIntegration(
         CancellationToken cancellationToken = default)
     {
         using var activity = Telemetry.ActivitySource.StartActivity("search_onedrive");
-        activity?.SetTag("onedrive.destination", request.DestinationPath);
+        activity?.SetTag("onedrive.destination", request.Destination.DisplayPath);
         activity?.SetTag("invoice.expected_date", request.Criteria.ExpectedDate.ToString("O"));
 
         var token = await tokenProvider.AcquireTokenAsync(Scopes, cancellationToken);
 
         // Graph children listing: GET {folderPath}:/children. The destination path
         // already ends at the folder, so append ":/children".
-        var next = $"{GraphBaseUrl}{request.DestinationPath}:/children";
+        var next = request.Destination.HasStableIds
+            ? $"{GraphBaseUrl}{request.DestinationPath}/children"
+            : $"{GraphBaseUrl}{request.DestinationPath}:/children";
         var candidateCount = 0;
         DriveChild? best = null;
         ParsedInvoiceFilename? bestParsed = null;

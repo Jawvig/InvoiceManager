@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using InvoiceManager.Core;
 using NodaMoney;
 
@@ -70,20 +71,11 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("configurationId")]
     public required string ConfigurationId { get; init; }
 
-    [JsonPropertyName("invoiceDescription")]
-    public required string InvoiceDescription { get; init; }
-
     [JsonPropertyName("expectedDate")]
     public required string ExpectedDate { get; init; }
 
-    [JsonPropertyName("dateToleranceDays")]
-    public required int DateToleranceDays { get; init; }
-
-    [JsonPropertyName("amountMatchingCriteria")]
-    public AmountMatchingCriteriaDocument? AmountMatchingCriteria { get; init; }
-
-    [JsonPropertyName("expectedVatMode")]
-    public required string ExpectedVatMode { get; init; }
+    [JsonPropertyName("processingSnapshot")]
+    public required InvoiceProcessingSnapshotDocument ProcessingSnapshot { get; init; }
 
     [JsonPropertyName("status")]
     public required string Status { get; init; }
@@ -109,12 +101,9 @@ internal sealed class InvoiceRecordDocument
     public InvoiceRecord ToRecord() =>
         new(
             new InvoiceConfigurationId(ConfigurationId),
-            InvoiceDescription,
             DateOnly.ParseExact(ExpectedDate, "O", CultureInfo.InvariantCulture),
-            DateToleranceDays,
-            ToAmountMatchingCriteria(),
-            Enum.Parse<VatMode>(ExpectedVatMode, ignoreCase: true),
-            ToState());
+            ToState(),
+            ProcessingSnapshot.ToSnapshot());
 
     public static InvoiceRecordDocument FromRecord(InvoiceRecord record)
     {
@@ -123,15 +112,8 @@ internal sealed class InvoiceRecordDocument
         {
             Id = record.Id.Value,
             ConfigurationId = record.ConfigurationId.Value,
-            InvoiceDescription = record.InvoiceDescription,
             ExpectedDate = record.ExpectedDate.ToString("O", CultureInfo.InvariantCulture),
-            DateToleranceDays = record.DateToleranceDays,
-            AmountMatchingCriteria = record.AmountMatchingCriteria switch
-            {
-                AmountMatchingCriteria criteria => AmountMatchingCriteriaDocument.FromCriteria(criteria),
-                None => null,
-            },
-            ExpectedVatMode = record.ExpectedVatMode.ToString(),
+            ProcessingSnapshot = InvoiceProcessingSnapshotDocument.FromSnapshot(record.ProcessingSnapshot),
             Status = fields.Status,
             ActualInvoiceDetails = fields.ActualDetails,
             OneDriveDetails = fields.OneDriveDetails,
@@ -140,11 +122,6 @@ internal sealed class InvoiceRecordDocument
             ReconciledAt = fields.ReconciledAt,
         };
     }
-
-    private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
-        AmountMatchingCriteria is { } criteria
-            ? criteria.ToCriteria()
-            : Option.None;
 
     private InvoiceWorkflowState ToState() => Status switch
     {
@@ -218,4 +195,69 @@ internal sealed class InvoiceRecordDocument
         string? LastError,
         string? MatchReason,
         string? ReconciledAt);
+}
+
+internal sealed class InvoiceProcessingSnapshotDocument
+{
+    [JsonPropertyName("integrationType")]
+    public required string IntegrationType { get; init; }
+
+    [JsonPropertyName("billingAccountId")]
+    public required string BillingAccountId { get; init; }
+
+    [JsonPropertyName("oneDriveDestination")]
+    public required JsonElement OneDriveDestination { get; init; }
+
+    [JsonPropertyName("invoiceDescription")]
+    public required string InvoiceDescription { get; init; }
+
+    [JsonPropertyName("dateToleranceDays")]
+    public required int DateToleranceDays { get; init; }
+
+    [JsonPropertyName("amountMatchingCriteria")]
+    public AmountMatchingCriteriaDocument? AmountMatchingCriteria { get; init; }
+
+    [JsonPropertyName("vatMode")]
+    public required string VatMode { get; init; }
+
+    [JsonPropertyName("senderEmailAddress")]
+    public string SenderEmailAddress { get; init; } = "";
+
+    [JsonPropertyName("bodyPattern")]
+    public string BodyPattern { get; init; } = "";
+
+    public InvoiceProcessingSnapshot ToSnapshot() => new(
+        Enum.Parse<IntegrationType>(IntegrationType, true),
+        BillingAccountId,
+        ToDestination(),
+        InvoiceDescription,
+        DateToleranceDays,
+        AmountMatchingCriteria is { } criteria ? criteria.ToCriteria() : Option.None,
+        Enum.Parse<VatMode>(VatMode, true),
+        SenderEmailAddress,
+        BodyPattern);
+
+    public static InvoiceProcessingSnapshotDocument FromSnapshot(InvoiceProcessingSnapshot snapshot) => new()
+    {
+        IntegrationType = snapshot.IntegrationType.ToString(),
+        BillingAccountId = snapshot.BillingAccountId,
+        OneDriveDestination = snapshot.OneDriveDestination.IsLegacyPath
+            ? JsonSerializer.SerializeToElement(snapshot.OneDriveDestination.DisplayPath)
+            : JsonSerializer.SerializeToElement(OneDriveDestinationDocument.FromDestination(snapshot.OneDriveDestination)),
+        InvoiceDescription = snapshot.InvoiceDescription,
+        DateToleranceDays = snapshot.DateToleranceDays,
+        AmountMatchingCriteria = snapshot.AmountMatchingCriteria switch
+        {
+            AmountMatchingCriteria criteria => AmountMatchingCriteriaDocument.FromCriteria(criteria),
+            None => null,
+        },
+        VatMode = snapshot.VatMode.ToString(),
+        SenderEmailAddress = snapshot.SenderEmailAddress,
+        BodyPattern = snapshot.BodyPattern,
+    };
+
+    private OneDriveDestination ToDestination() => OneDriveDestination.ValueKind == JsonValueKind.String
+        ? new(OneDriveDestination.GetString() ?? string.Empty)
+        : OneDriveDestination.Deserialize<OneDriveDestinationDocument>()?.ToDestination()
+          ?? throw new InvalidOperationException("Invoice record has an invalid OneDrive destination snapshot.");
 }

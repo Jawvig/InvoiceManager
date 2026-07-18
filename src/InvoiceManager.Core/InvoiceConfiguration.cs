@@ -22,7 +22,7 @@ public sealed record InvoiceConfiguration(
     Option<AmountMatchingCriteria> AmountMatchingCriteria,
     VatMode DefaultVatMode,
     bool IsActive,
-    string OneDriveDestination,
+    OneDriveDestination OneDriveDestination,
     DateOnly StartDate,
     string BillingAccountId,
     int DateToleranceDays,

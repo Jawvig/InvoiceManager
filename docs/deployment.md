@@ -305,10 +305,17 @@ authentication will be handled by the future admin site.
 ### Local Admin Authorization Website
 
 The local admin website runs from `src/InvoiceManager.AdminWeb` and uses the
-Terraform-managed Entra app registration. It captures Microsoft delegated
-authorization for Azure Resource Manager and Microsoft Graph, then persists the
-serialized MSAL token cache in the environment Key Vault as
-`MicrosoftAuthorization--MsalTokenCache`.
+Terraform-managed Entra app registration. The whole operational site is limited
+to direct members of a per-environment Entra security group. Terraform emits the
+security-group claim and adds the deploying operator through a non-authoritative
+membership resource, so additional direct members are not removed on apply.
+
+Ordinary OIDC sign-in creates only the administrator site session and never writes
+the shared MSAL cache. A separate, confirmed workflow-authorization action captures
+Microsoft delegated authorization for Azure Resource Manager and Microsoft Graph,
+then persists the serialized cache in Key Vault as
+`MicrosoftAuthorization--MsalTokenCache`. Billing/OneDrive discovery and Functions
+use that explicitly captured account.
 
 The scopes requested on sign-in are hard-coded in
 `MicrosoftOpenIdConnectOptionsSetup` (`src/InvoiceManager.AdminWeb/Program.cs`),
@@ -346,6 +353,7 @@ user secrets contain only non-secret settings:
 dotnet user-secrets set "MicrosoftAuthorization:TenantId" "<tenant-id>" --project src/InvoiceManager.AdminWeb
 dotnet user-secrets set "MicrosoftAuthorization:ClientId" "<application-client-id>" --project src/InvoiceManager.AdminWeb
 dotnet user-secrets set "MicrosoftAuthorization:KeyVaultUri" "https://<key-vault-name>.vault.azure.net/" --project src/InvoiceManager.AdminWeb
+dotnet user-secrets set "AdminAuthorization:GroupObjectId" "<admin-group-object-id>" --project src/InvoiceManager.AdminWeb
 ```
 
 The AppHost (`src/InvoiceManager.AppHost`, `UserSecretsId` `InvoiceManager.AppHost`) needs its own copies of the
@@ -367,8 +375,10 @@ Local developers must be signed in to Azure with access to the test Key Vault.
 Key Vault access is controlled through Azure RBAC rather than legacy vault
 access policies.
 
-The admin website does not configure invoices, manually reconcile OneDrive
-files, or manage FreeAgent authorization in this first implementation.
+The admin website administers invoice configurations and append-only history.
+Every invoice record is created with a required routing snapshot, so no record
+migration gate is needed. The website still does not own invoice matching,
+reconciliation, filename generation, or FreeAgent behavior.
 
 ## GitHub Actions Workflow
 

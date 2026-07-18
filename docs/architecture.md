@@ -157,9 +157,15 @@ first responsibility is to capture delegated Microsoft authorization for the
 Terraform-managed Entra app registration and store the resulting MSAL token
 cache material in Azure Key Vault.
 
-The admin website is not part of the provider-independent core workflow. It
-should not own invoice matching, OneDrive reconciliation, invoice configuration
-editing, or FreeAgent behavior. Those remain workflow and integration concerns.
+The admin website is not part of the provider-independent core workflow. It owns
+invoice-configuration administration, typed validation, and audit/history
+presentation. It must not own invoice matching, retrieval,
+OneDrive reconciliation, filename generation, or FreeAgent behavior. Those remain
+core-workflow and integration concerns.
+
+All AdminWeb pages require an Entra sign-in from the environment's administrator
+security group. The ordinary administrator session is deliberately separate from
+the explicitly captured delegated account used by the unattended workflow.
 
 ## Monitoring
 

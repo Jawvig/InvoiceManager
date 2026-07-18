@@ -57,6 +57,7 @@ public class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
             store.Add(record);
         return Task.CompletedTask;
     }
+
 }
 
 /// <summary>

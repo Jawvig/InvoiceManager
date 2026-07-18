@@ -58,7 +58,7 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
         await repository.CreateIfNotExistsAsync(modified);
 
         var stored = RequireRecord(await repository.GetMostRecentAsync(configurationId));
-        Assert.Equal("Original", stored.InvoiceDescription);
+        Assert.Equal("Original", stored.ProcessingSnapshot.InvoiceDescription);
     }
 
     [Fact]
@@ -196,12 +196,16 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
         InvoiceWorkflowState? state = null) =>
         new(
             configurationId,
-            invoiceDescription,
             expectedDate,
-            DateToleranceDays: 5,
-            new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0.50m),
-            VatMode.Exclusive,
-            state ?? new Expected());
+            state ?? new Expected(),
+            new InvoiceProcessingSnapshot(
+                IntegrationType.Microsoft365,
+                "billing-id",
+                "/drives/test/root:/Bills/Test",
+                invoiceDescription,
+                5,
+                new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0.50m),
+                VatMode.Exclusive));
 
     private static ActualInvoiceDetails BuildActualDetails(
         DateOnly? actualInvoiceDate = null,
@@ -222,10 +226,7 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
     {
         Assert.Equal(expected.Id, actual.Id);
         Assert.Equal(expected.ConfigurationId, actual.ConfigurationId);
-        Assert.Equal(expected.InvoiceDescription, actual.InvoiceDescription);
         Assert.Equal(expected.ExpectedDate, actual.ExpectedDate);
-        Assert.Equal(expected.DateToleranceDays, actual.DateToleranceDays);
-        Assert.Equal(expected.AmountMatchingCriteria, actual.AmountMatchingCriteria);
-        Assert.Equal(expected.ExpectedVatMode, actual.ExpectedVatMode);
+        Assert.Equal(expected.ProcessingSnapshot, actual.ProcessingSnapshot);
     }
 }

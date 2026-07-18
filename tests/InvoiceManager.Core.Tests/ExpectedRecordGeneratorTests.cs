@@ -20,10 +20,10 @@ public sealed class ExpectedRecordGeneratorTests
         Assert.Equal(config.Id, record.ConfigurationId);
         Assert.Equal(new DateOnly(2025, 7, 1), record.ExpectedDate);
         Assert.True(record.State is Expected);
-        Assert.Equal(config.InvoiceDescription, record.InvoiceDescription);
-        Assert.Equal(config.AmountMatchingCriteria, record.AmountMatchingCriteria);
-        Assert.Equal(config.DefaultVatMode, record.ExpectedVatMode);
-        Assert.Equal(config.DateToleranceDays, record.DateToleranceDays);
+        Assert.Equal(config.InvoiceDescription, record.ProcessingSnapshot.InvoiceDescription);
+        Assert.Equal(config.AmountMatchingCriteria, record.ProcessingSnapshot.AmountMatchingCriteria);
+        Assert.Equal(config.DefaultVatMode, record.ProcessingSnapshot.VatMode);
+        Assert.Equal(config.DateToleranceDays, record.ProcessingSnapshot.DateToleranceDays);
     }
 
     // Cycle 2: most recent record is SavedToOneDrive → creates next expected record using actual date + frequency.

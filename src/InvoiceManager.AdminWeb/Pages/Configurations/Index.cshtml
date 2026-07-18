@@ -1,0 +1,33 @@
+@page
+@model InvoiceManager.AdminWeb.Pages.Configurations.IndexModel
+@{ ViewData["Title"] = "Invoice configurations"; }
+<section class="admin-shell">
+    <div class="page-heading"><p class="eyebrow">Operations</p><h1>Invoice configurations</h1>
+        <p class="summary">Manage recurring invoice expectations. Changes apply only to future expected records.</p></div>
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="notice">@Model.StatusMessage</div> }
+    @if (!Model.HasWorkflowAuthorization) { <div class="notice warning">Workflow authorization is not captured. You may list configurations and inspect history, but configuration changes are disabled.</div> }
+    <p><a asp-page="Create" class="primary-action @(Model.EditingEnabled ? "" : "disabled")" aria-disabled="@(!Model.EditingEnabled)">Create inactive draft</a></p>
+    <div class="configuration-list">
+    @foreach (var item in Model.Configurations.OrderBy(x => x.Configuration.InvoiceDescription)) {
+        var configuration = item.Configuration;
+        <section class="status-panel">
+            <h2>@(string.IsNullOrWhiteSpace(configuration.InvoiceDescription) ? configuration.Id.Value : configuration.InvoiceDescription)</h2>
+            <p><strong>@configuration.IntegrationType</strong> · @(configuration.IsActive ? "Active" : "Inactive") · @configuration.Id</p>
+            <p>@configuration.OneDriveDestination.DisplayPath · @(configuration.IntegrationType == InvoiceManager.Core.IntegrationType.Microsoft365Email ? $"Sender {configuration.SenderEmailAddress}" : $"Billing account {configuration.BillingAccountId}")</p>
+            <div class="actions">
+                <a asp-page="History" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType">History</a>
+                @if (Model.EditingEnabled) {
+                    <a asp-page="Edit" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType">Edit</a>
+                    <form method="post">
+                        <input type="hidden" name="id" value="@configuration.Id.Value" /><input type="hidden" name="integrationType" value="@configuration.IntegrationType" />
+                        <input type="hidden" name="etag" value="@item.ETag" /><input type="hidden" name="activate" value="@(!configuration.IsActive)" />
+                        <label><input type="checkbox" name="confirmed" value="true" /> Confirm</label>
+                        <button asp-page-handler="SetActive" class="secondary-action">@(configuration.IsActive ? "Deactivate" : "Activate")</button>
+                    </form>
+                    @if (configuration.IsActive) { <p class="status-label">Deactivation preserves history; outstanding records will be skipped until reactivated.</p> }
+                }
+            </div>
+        </section>
+    }
+    </div>
+</section>

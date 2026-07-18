@@ -58,6 +58,22 @@ public sealed class GraphOneDriveIntegrationTests
     }
 
     [Fact]
+    public async Task StableFolderReference_UsesDriveItemEndpoints_ForUploadAndSearch()
+    {
+        var handler = new StubHttpMessageHandler((_, index) => index == 0
+            ? Json(HttpStatusCode.Created, """{"id":"file","webUrl":"https://example/file"}""")
+            : Json(HttpStatusCode.OK, Children(nextLink: null)));
+        var integration = Build(new HttpClient(handler));
+        var destination = new OneDriveDestination("/Bills/Renamed", "drive-id", "folder-id");
+
+        await integration.UploadAsync(new OneDriveUploadRequest(destination, "invoice.pdf", [1]));
+        await integration.SearchAsync(new OneDriveSearchRequest(destination, Criteria()));
+
+        Assert.Contains("/drives/drive-id/items/folder-id:/invoice.pdf:/content", handler.Requests[0].RequestUri!.ToString());
+        Assert.EndsWith("/drives/drive-id/items/folder-id/children", handler.Requests[1].RequestUri!.ToString());
+    }
+
+    [Fact]
     public async Task UploadAsync_Throws_WhenGraphReturnsError()
     {
         var handler = new StubHttpMessageHandler((_, _) => Json(HttpStatusCode.Forbidden, "denied"));

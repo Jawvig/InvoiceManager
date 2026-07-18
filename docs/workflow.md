@@ -23,7 +23,9 @@ The workflow must account for:
 The daily controller should process each due or retryable expected invoice as
 follows:
 
-1. Load the expected invoice record and its configuration.
+1. Load the expected invoice record and the live configuration used only for the
+   active/inactive gate. Matching, source selection, reconciliation, and upload
+   use the record's immutable processing snapshot.
 2. Build provider-independent invoice search criteria from the expected record.
 3. Ask the OneDrive integration to search the configured destination for an
    existing matching file.

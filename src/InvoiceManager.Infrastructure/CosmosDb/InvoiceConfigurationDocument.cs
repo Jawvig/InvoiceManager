@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using InvoiceManager.Core;
 using NodaMoney;
 
@@ -11,8 +12,20 @@ namespace InvoiceManager.Infrastructure.CosmosDb;
 /// </summary>
 internal sealed class InvoiceConfigurationDocument
 {
+    public const string LiveDocumentType = "invoiceConfiguration";
+    public const string ConfigurationPartitionKey = "config";
+
     [JsonPropertyName("id")]
     public required string Id { get; init; }
+
+    [JsonPropertyName("documentType")]
+    public string DocumentType { get; init; } = LiveDocumentType;
+
+    [JsonPropertyName("partitionKey")]
+    public string PartitionKey { get; init; } = ConfigurationPartitionKey;
+
+    [JsonPropertyName("_etag")]
+    public string ETag { get; init; } = "";
 
     [JsonPropertyName("integrationType")]
     public required string IntegrationType { get; init; }
@@ -33,7 +46,7 @@ internal sealed class InvoiceConfigurationDocument
     public required bool IsActive { get; init; }
 
     [JsonPropertyName("oneDriveDestination")]
-    public required string OneDriveDestination { get; init; }
+    public required JsonElement OneDriveDestination { get; init; }
 
     [JsonPropertyName("startDate")]
     public required string StartDate { get; init; }
@@ -61,7 +74,7 @@ internal sealed class InvoiceConfigurationDocument
             ToAmountMatchingCriteria(),
             Enum.Parse<VatMode>(DefaultVatMode, ignoreCase: true),
             IsActive,
-            OneDriveDestination,
+            ToOneDriveDestination(),
             DateOnly.ParseExact(StartDate, "O", CultureInfo.InvariantCulture),
             BillingAccountId,
             DateToleranceDays,
@@ -72,6 +85,16 @@ internal sealed class InvoiceConfigurationDocument
         AmountMatchingCriteria is { } criteria
             ? criteria.ToCriteria()
             : Option.None;
+
+    private OneDriveDestination ToOneDriveDestination()
+    {
+        if (OneDriveDestination.ValueKind == JsonValueKind.String)
+            return new(OneDriveDestination.GetString() ?? string.Empty);
+
+        var destination = OneDriveDestination.Deserialize<OneDriveDestinationDocument>()
+            ?? throw new InvalidOperationException($"Configuration '{Id}' has an invalid OneDrive destination.");
+        return destination.ToDestination();
+    }
 
     public static InvoiceConfigurationDocument FromConfiguration(InvoiceConfiguration config) =>
         new()
@@ -87,13 +110,93 @@ internal sealed class InvoiceConfigurationDocument
             },
             DefaultVatMode = config.DefaultVatMode.ToString(),
             IsActive = config.IsActive,
-            OneDriveDestination = config.OneDriveDestination,
+            OneDriveDestination = config.OneDriveDestination.IsLegacyPath
+                ? JsonSerializer.SerializeToElement(config.OneDriveDestination.DisplayPath)
+                : JsonSerializer.SerializeToElement(OneDriveDestinationDocument.FromDestination(config.OneDriveDestination)),
             StartDate = config.StartDate.ToString("O", CultureInfo.InvariantCulture),
             BillingAccountId = config.BillingAccountId,
             DateToleranceDays = config.DateToleranceDays,
             SenderEmailAddress = config.SenderEmailAddress,
             BodyPattern = config.BodyPattern,
         };
+}
+
+internal sealed class OneDriveDestinationDocument
+{
+    [JsonPropertyName("driveId")]
+    public required string DriveId { get; init; }
+
+    [JsonPropertyName("folderItemId")]
+    public required string FolderItemId { get; init; }
+
+    [JsonPropertyName("displayPath")]
+    public required string DisplayPath { get; init; }
+
+    public OneDriveDestination ToDestination() => new(DisplayPath, DriveId, FolderItemId);
+
+    public static OneDriveDestinationDocument FromDestination(OneDriveDestination destination) => new()
+    {
+        DriveId = destination.DriveId!,
+        FolderItemId = destination.FolderItemId!,
+        DisplayPath = destination.DisplayPath,
+    };
+}
+
+internal sealed class InvoiceConfigurationRevisionDocument
+{
+    public const string RevisionDocumentType = "invoiceConfigurationRevision";
+
+    [JsonPropertyName("id")]
+    public required string Id { get; init; }
+
+    [JsonPropertyName("documentType")]
+    public string DocumentType { get; init; } = RevisionDocumentType;
+
+    [JsonPropertyName("partitionKey")]
+    public string PartitionKey { get; init; } = InvoiceConfigurationDocument.ConfigurationPartitionKey;
+
+    [JsonPropertyName("configurationId")]
+    public required string ConfigurationId { get; init; }
+
+    [JsonPropertyName("integrationType")]
+    public required string IntegrationType { get; init; }
+
+    [JsonPropertyName("action")]
+    public required string Action { get; init; }
+
+    [JsonPropertyName("timestamp")]
+    public required string Timestamp { get; init; }
+
+    [JsonPropertyName("actorObjectId")]
+    public string? ActorObjectId { get; init; }
+
+    [JsonPropertyName("actorDisplayName")]
+    public required string ActorDisplayName { get; init; }
+
+    [JsonPropertyName("snapshot")]
+    public required InvoiceConfigurationDocument Snapshot { get; init; }
+
+    public InvoiceConfigurationRevision ToRevision() => new(
+        Id,
+        new(ConfigurationId),
+        Enum.Parse<IntegrationType>(IntegrationType, true),
+        Enum.Parse<InvoiceConfigurationRevisionAction>(Action, true),
+        DateTimeOffset.ParseExact(Timestamp, "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+        ActorObjectId,
+        ActorDisplayName,
+        Snapshot.ToConfiguration());
+
+    public static InvoiceConfigurationRevisionDocument FromRevision(InvoiceConfigurationRevision revision) => new()
+    {
+        Id = revision.RevisionId,
+        ConfigurationId = revision.ConfigurationId.Value,
+        IntegrationType = revision.IntegrationType.ToString(),
+        Action = revision.Action.ToString(),
+        Timestamp = revision.Timestamp.ToString("O", CultureInfo.InvariantCulture),
+        ActorObjectId = revision.ActorObjectId,
+        ActorDisplayName = revision.ActorDisplayName,
+        Snapshot = InvoiceConfigurationDocument.FromConfiguration(revision.Snapshot),
+    };
 }
 
 internal sealed class AmountMatchingCriteriaDocument

@@ -36,6 +36,21 @@ public sealed class InvoiceConfigurationDocumentTests
     }
 
     [Fact]
+    public void FromConfiguration_RoundTripsStableOneDriveDestination()
+    {
+        var configuration = new InvoiceConfiguration(
+            new("stable-folder"), IntegrationType.Azure, "Azure",
+            InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive, true,
+            new OneDriveDestination("/Bills/Azure", "drive-id", "folder-id"),
+            new DateOnly(2026, 1, 1), "account", 5);
+
+        var roundTripped = InvoiceConfigurationDocument.FromConfiguration(configuration).ToConfiguration();
+
+        Assert.Equal(configuration.OneDriveDestination, roundTripped.OneDriveDestination);
+        Assert.Equal("/drives/drive-id/items/folder-id", roundTripped.OneDriveDestination.GraphPath);
+    }
+
+    [Fact]
     public void FromConfiguration_RoundTripsEmailMatchingFields()
     {
         var configuration = new InvoiceConfiguration(

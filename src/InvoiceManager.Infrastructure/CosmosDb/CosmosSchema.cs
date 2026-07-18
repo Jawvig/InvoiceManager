@@ -17,7 +17,7 @@ public static class CosmosSchema
 {
     /// <summary>Stores <c>InvoiceConfiguration</c> documents.</summary>
     public static ContainerDefinition InvoiceConfigurations { get; } =
-        new("invoice-configurations", "/integrationType");
+        new("invoice-configurations", "/partitionKey");
 
     /// <summary>Stores <c>InvoiceRecord</c> documents.</summary>
     public static ContainerDefinition InvoiceRecords { get; } =
