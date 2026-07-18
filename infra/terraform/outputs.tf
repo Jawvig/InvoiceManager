@@ -92,3 +92,8 @@ output "github_actions_app_object_id" {
   description = "Object ID of the per-environment GitHub Actions CI Entra app registration."
   value       = azuread_application.github_actions.object_id
 }
+
+output "document_intelligence_endpoint" {
+  description = "Document Intelligence resource endpoint (DocumentIntelligence:Endpoint for the AppHost)."
+  value       = azurerm_cognitive_account.document_intelligence.endpoint
+}
