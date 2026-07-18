@@ -47,7 +47,6 @@ locals {
   workflow_redirect_uris         = [for uri in var.redirect_uris : replace(uri, "/signin-oidc", "/workflow-signin-oidc")]
 
   # Built-in Cosmos DB SQL data-plane role definition ids (fixed GUIDs on every account).
-  cosmos_data_reader_role_id      = "00000000-0000-0000-0000-000000000001"
   cosmos_data_contributor_role_id = "00000000-0000-0000-0000-000000000002"
 
   api_permissions = {
