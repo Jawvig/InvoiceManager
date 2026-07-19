@@ -402,6 +402,15 @@ local user secrets set in the block above must already be configured on the
 `InvoiceManager.AdminWeb` project for the standalone app to start — the AppHost
 copy alone is not enough, since AppHost is not launched here.
 
+The tool only waits for AdminWeb's Kestrel process to start listening on
+`/health`, not for a healthy result — `/health` also aggregates Cosmos and
+Functions app checks, and neither is reachable (or expected to be) in this
+standalone launch, so it always reports `503`. Seeing "Cosmos DB is not
+reachable" and "Functions:BaseUrl is not configured" in the AdminWeb console
+output while the tool runs is expected and does not affect sign-in; only a
+`ValidateOnStart` failure for the `MicrosoftAuthorization`/`AdminAuthorization`
+options (missing user secrets) actually stops the app from starting.
+
 The `playwright` MCP server (`.mcp.json`) loads that file automatically via
 `--storage-state`, so once it exists, MCP-driven browser sessions start already
 signed in. `tests/InvoiceManager.AdminWeb.PlaywrightTests` reuses the same file

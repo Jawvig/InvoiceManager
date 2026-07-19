@@ -14,7 +14,7 @@ var adminWebProcess = StartAdminWeb(repoRoot);
 
 try
 {
-    await WaitForHealthyAsync($"{adminWebUrl}/health", TimeSpan.FromMinutes(2));
+    await WaitForListeningAsync($"{adminWebUrl}/health", TimeSpan.FromMinutes(2));
 
     Console.WriteLine("AdminWeb is up. Launching Edge for interactive sign-in...");
     using var playwright = await Playwright.CreateAsync();
@@ -84,7 +84,7 @@ static void StopAdminWeb(Process process)
     }
 }
 
-static async Task WaitForHealthyAsync(string healthUrl, TimeSpan timeout)
+static async Task WaitForListeningAsync(string healthUrl, TimeSpan timeout)
 {
     using var handler = new HttpClientHandler
     {
@@ -98,11 +98,12 @@ static async Task WaitForHealthyAsync(string healthUrl, TimeSpan timeout)
     {
         try
         {
-            var response = await client.GetAsync(healthUrl);
-            if (response.IsSuccessStatusCode)
-            {
-                return;
-            }
+            // /health is anonymous and always responds once Kestrel is listening, even with a
+            // 503 (its Cosmos/Functions sub-checks are never satisfied for a standalone AdminWeb
+            // launch, which is expected here and irrelevant to capturing the sign-in cookie).
+            // Any response - not just success - means the app has finished starting.
+            await client.GetAsync(healthUrl);
+            return;
         }
         catch (HttpRequestException)
         {
@@ -112,7 +113,7 @@ static async Task WaitForHealthyAsync(string healthUrl, TimeSpan timeout)
         await Task.Delay(TimeSpan.FromSeconds(1));
     }
 
-    throw new TimeoutException($"AdminWeb did not become healthy at {healthUrl} within {timeout}.");
+    throw new TimeoutException($"AdminWeb did not start listening at {healthUrl} within {timeout}.");
 }
 
 static string FindRepoRoot(string startDirectory)
