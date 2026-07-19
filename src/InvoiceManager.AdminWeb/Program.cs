@@ -188,6 +188,10 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
         var isWorkflowAuthorization = name == WorkflowAuthorizationScheme;
         options.CallbackPath = isWorkflowAuthorization ? "/workflow-signin-oidc" : "/signin-oidc";
         options.ResponseType = OpenIdConnectResponseType.Code;
+        // Entra's form_post response is rejected by .NET 11's automatic cross-origin CSRF
+        // protection before the OIDC handler can validate its state and correlation values.
+        // A code-only flow supports query mode and remains protected by PKCE and OIDC state.
+        options.ResponseMode = OpenIdConnectResponseMode.Query;
         options.SaveTokens = false;
         options.UsePkce = true;
         options.Scope.Clear();
