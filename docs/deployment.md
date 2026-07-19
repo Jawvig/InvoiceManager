@@ -333,7 +333,10 @@ app registration: the local `https://localhost:5001/signin-oidc` (from
 `https://adminweb.<env-domain>/signin-oidc` (derived automatically from the
 Container Apps environment). Behind the Container Apps ingress the app honors
 `X-Forwarded-Proto` (forwarded-headers middleware) so the callback is built as
-`https://`.
+`https://`. Both administrator and workflow authorization use the authorization
+code flow with PKCE and return the code in the callback query string. Query mode
+avoids treating Entra's cross-origin callback as a form post, which .NET 11's
+automatic CSRF protection rejects before the OIDC handler can validate it.
 
 The deployed image is a **public ghcr.io package** pulled anonymously, so no
 registry credential is stored anywhere and there is nothing to rotate. CI builds

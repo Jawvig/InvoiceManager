@@ -16,6 +16,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.Text.Encodings.Web;
 
 namespace InvoiceManager.AdminWeb.Tests;
@@ -33,6 +34,22 @@ public sealed class AdminHomePageTests
             .Get("WorkflowAuthorization");
 
         Assert.Contains("https://graph.microsoft.com/Mail.Read", options.Scope);
+    }
+
+    [Theory]
+    [InlineData(OpenIdConnectDefaults.AuthenticationScheme)]
+    [InlineData("WorkflowAuthorization")]
+    public async Task SignIn_UsesQueryResponseMode_ToAvoidCrossOriginFormPostCsrfRejection(
+        string scheme)
+    {
+        await using var factory = CreateConfiguredFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var options = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>()
+            .Get(scheme);
+
+        Assert.Equal(OpenIdConnectResponseMode.Query, options.ResponseMode);
     }
 
     [Fact]
