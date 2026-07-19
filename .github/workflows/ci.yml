@@ -62,6 +62,9 @@ jobs:
     name: Terraform
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+
     defaults:
       run:
         working-directory: infra/terraform
@@ -75,7 +78,9 @@ jobs:
       - name: Setup tflint
         uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: latest
+          tflint_version: v0.64.0
+          cache: true
+          tflint_config_path: infra/terraform/.tflint.hcl
 
       - name: Init
         run: terraform init -backend=false
@@ -88,6 +93,8 @@ jobs:
 
       - name: tflint init
         run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: tflint
         run: tflint
