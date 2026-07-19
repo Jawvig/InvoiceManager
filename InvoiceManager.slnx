@@ -8,6 +8,7 @@
     <Project Path="src/InvoiceManager.Integrations.Microsoft365/InvoiceManager.Integrations.Microsoft365.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/InvoiceManager.AdminWeb.PlaywrightTests/InvoiceManager.AdminWeb.PlaywrightTests.csproj" />
     <Project Path="tests/InvoiceManager.AdminWeb.Tests/InvoiceManager.AdminWeb.Tests.csproj" />
     <Project Path="tests/InvoiceManager.AppHost.IntegrationTests/InvoiceManager.AppHost.IntegrationTests.csproj" />
     <Project Path="tests/InvoiceManager.Core.Tests/InvoiceManager.Core.Tests.csproj" />
@@ -18,6 +19,7 @@
     <Project Path="tests/InvoiceManager.TestSupport/InvoiceManager.TestSupport.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/InvoiceManager.PlaywrightAuth/InvoiceManager.PlaywrightAuth.csproj" />
     <Project Path="tools/InvoiceManager.Seeder/InvoiceManager.Seeder.csproj" />
   </Folder>
 </Solution>
