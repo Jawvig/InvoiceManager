@@ -267,6 +267,18 @@ static (bool EnsureSchema, bool ClearDatabase, bool Force, string? Environment, 
 
             environment = args[++i];
         }
+        else if (arg.Equals("--", StringComparison.Ordinal))
+        {
+            // AppHost's WithArgs leads with a literal "--" because Aspire launches project
+            // resources two different ways depending on how the AppHost itself was started:
+            // via `dotnet run`, which (on this repo's .NET 11 preview SDK) only forwards
+            // trailing args to the child app when they follow a "--"; or, under a debugger
+            // (e.g. Visual Studio), by exec'ing the built binary directly with WithArgs's raw
+            // list, bypassing `dotnet run` entirely. Only the first path consumes the "--" --
+            // the second passes it straight through as a literal token. Recognise and drop it
+            // here rather than erroring, the same way dotnet/git/npm treat a bare "--" as a
+            // separator rather than option data.
+        }
         else if (arg.StartsWith("--", StringComparison.Ordinal))
         {
             throw new ArgumentException($"Unknown option '{arg}'.");
