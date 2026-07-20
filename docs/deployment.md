@@ -411,6 +411,17 @@ output while the tool runs is expected and does not affect sign-in; only a
 `ValidateOnStart` failure for the `MicrosoftAuthorization`/`AdminAuthorization`
 options (missing user secrets) actually stops the app from starting.
 
+`tests/InvoiceManager.AdminWeb.PlaywrightTests` reuses the saved storage state
+but, unlike the capture tool, starts AdminWeb through the real AppHost
+orchestration (`AdminWebAppHostFixture`, an `Aspire.Hosting.Testing`
+collection fixture also usable by future Playwright tests) — Cosmos emulator,
+seeder, and Functions all come up too, and the AdminWeb URL is read from the
+running orchestration (`DistributedApplication.GetEndpoint("adminweb",
+"https")`) rather than assumed to be `https://localhost:5001`. This needs
+Docker running and AppHost's own user secrets configured (the `dotnet
+user-secrets ... --project src/InvoiceManager.AppHost` copies above), and
+takes noticeably longer than the capture tool's standalone launch.
+
 The `playwright` MCP server (`.mcp.json`) loads that file automatically via
 `--storage-state`, so once it exists, MCP-driven browser sessions start already
 signed in. `tests/InvoiceManager.AdminWeb.PlaywrightTests` reuses the same file

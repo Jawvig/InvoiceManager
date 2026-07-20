@@ -2,13 +2,13 @@ using Microsoft.Playwright;
 
 namespace InvoiceManager.AdminWeb.PlaywrightTests;
 
+[Collection("AdminWebAppHost")]
 [Trait("Category", "Integration")]
-public sealed class AdminWebSignInSmokeTests
+public sealed class AdminWebSignInSmokeTests(AdminWebAppHostFixture appHost)
 {
-    private const string AdminWebUrl = "https://localhost:5001";
-
     // Reused, not regenerated here: tools/InvoiceManager.PlaywrightAuth captures this by driving
-    // a real Microsoft sign-in once (see docs/deployment.md).
+    // a real Microsoft sign-in once (see docs/deployment.md). The cookie is host-scoped, not
+    // port-scoped, so it stays valid regardless of which port AppHost assigns AdminWeb.
     private static readonly string StorageStatePath = Path.Combine(
         FindRepoRoot(AppContext.BaseDirectory), "playwright", ".auth", "adminweb.json");
 
@@ -18,8 +18,8 @@ public sealed class AdminWebSignInSmokeTests
         Assert.True(
             File.Exists(StorageStatePath),
             $"No saved Playwright storage state at '{StorageStatePath}'. Run " +
-            "`dotnet run --project tools/InvoiceManager.PlaywrightAuth` (with AdminWeb reachable " +
-            "at https://localhost:5001) to capture one, then re-run this test.");
+            "`dotnet run --project tools/InvoiceManager.PlaywrightAuth` to capture one, then " +
+            "re-run this test.");
 
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
@@ -33,7 +33,7 @@ public sealed class AdminWebSignInSmokeTests
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(AdminWebUrl);
+        await page.GotoAsync(appHost.AdminWebUrl.ToString());
 
         Assert.DoesNotContain("/signin-oidc", page.Url, StringComparison.OrdinalIgnoreCase);
         await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync("Microsoft authorization");
