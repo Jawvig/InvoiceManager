@@ -1,0 +1,11 @@
+@{
+    bool IsActive(string path) => path == "/"
+        ? Context.Request.Path == "/"
+        : Context.Request.Path.StartsWithSegments(path, StringComparison.OrdinalIgnoreCase);
+}
+<nav id="nav-menu" class="nav-menu" aria-hidden="true">
+    <a class="nav-link @(IsActive("/") ? "active" : "")" asp-page="/Index">Home</a>
+    <a class="nav-link @(IsActive("/Authorization") ? "active" : "")" asp-page="/Authorization">Reauthorization</a>
+    <a class="nav-link @(IsActive("/Configurations") ? "active" : "")" asp-page="/Configurations/Index">Invoice configurations</a>
+    <a class="nav-link @(IsActive("/ServiceStatus") ? "active" : "")" asp-page="/ServiceStatus">Health status</a>
+</nav>

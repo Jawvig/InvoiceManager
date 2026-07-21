@@ -9,6 +9,8 @@
   --primary-hover: #13598f;
   --warning-bg: #fff6db;
   --warning-line: #e5c150;
+  --success-bg: #e9f7ee;
+  --success-line: #3fa661;
 }
 
 html {
@@ -25,6 +27,8 @@ body {
 }
 
 .top-bar {
+  position: relative;
+  z-index: 1001;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
 }
@@ -39,6 +43,80 @@ body {
   color: var(--ink);
   font-weight: 650;
   text-decoration: none;
+}
+
+.top-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-toggle {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--ink);
+}
+
+.nav-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  width: 280px;
+  height: 100vh;
+  padding: 72px 0 24px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.12);
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+  overflow-y: auto;
+}
+
+.nav-menu.open {
+  transform: translateX(0);
+}
+
+.nav-menu .nav-link {
+  display: block;
+  padding: 14px 24px;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600;
+  border-left: 3px solid transparent;
+}
+
+.nav-menu .nav-link:hover {
+  background: var(--page);
+}
+
+.nav-menu .nav-link.active {
+  border-left-color: var(--primary);
+  color: var(--primary);
+  background: var(--page);
+}
+
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .admin-shell {
@@ -123,6 +201,17 @@ h1 {
 .status-label {
   margin: 0;
   color: var(--muted);
+}
+
+.status-panel.status-healthy {
+  border-color: var(--success-line);
+  background: var(--success-bg);
+}
+
+.status-panel.status-degraded,
+.status-panel.status-unhealthy {
+  border-color: var(--warning-line);
+  background: var(--warning-bg);
 }
 
 .actions {
