@@ -6,48 +6,29 @@ namespace InvoiceManager.AdminWeb.PlaywrightTests;
 [Trait("Category", "Integration")]
 public sealed class AdminWebSignInSmokeTests(AdminWebAppHostFixture appHost)
 {
-    // Reused, not regenerated here: tools/InvoiceManager.PlaywrightAuth captures this by driving
-    // a real Microsoft sign-in once (see docs/deployment.md). The cookie is host-scoped, not
-    // port-scoped, so it stays valid regardless of which port AppHost assigns AdminWeb.
-    private static readonly string StorageStatePath = Path.Combine(
-        FindRepoRoot(AppContext.BaseDirectory), "playwright", ".auth", "adminweb.json");
-
     [Fact]
     public async Task HomePage_WithSavedStorageState_RendersPastSignIn()
     {
-        Assert.True(
-            File.Exists(StorageStatePath),
-            $"No saved Playwright storage state at '{StorageStatePath}'. Run " +
-            "`dotnet run --project tools/InvoiceManager.PlaywrightAuth` to capture one, then " +
-            "re-run this test.");
-
         using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
-        {
-            Channel = "msedge",
-        });
-        var context = await browser.NewContextAsync(new BrowserNewContextOptions
-        {
-            StorageStatePath = StorageStatePath,
-            IgnoreHTTPSErrors = true,
-        });
-        var page = await context.NewPageAsync();
+        var (browser, page) = await AdminWebSignedInPageFactory.CreateAsync(playwright);
+        await using var _ = browser;
 
         await page.GotoAsync(appHost.AdminWebUrl.ToString());
 
         Assert.DoesNotContain("/signin-oidc", page.Url, StringComparison.OrdinalIgnoreCase);
-        await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync("Microsoft authorization");
+        await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync("Home");
     }
 
-    private static string FindRepoRoot(string startDirectory)
+    [Fact]
+    public async Task AuthorizationPage_WithSavedStorageState_RendersAuthorizationStatus()
     {
-        var directory = new DirectoryInfo(startDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "InvoiceManager.slnx")))
-        {
-            directory = directory.Parent;
-        }
+        using var playwright = await Playwright.CreateAsync();
+        var (browser, page) = await AdminWebSignedInPageFactory.CreateAsync(playwright);
+        await using var _ = browser;
 
-        return directory?.FullName
-            ?? throw new InvalidOperationException($"Could not locate InvoiceManager.slnx above {startDirectory}.");
+        await page.GotoAsync(new Uri(appHost.AdminWebUrl, "/Authorization").ToString());
+
+        Assert.DoesNotContain("/signin-oidc", page.Url, StringComparison.OrdinalIgnoreCase);
+        await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync("Microsoft authorization");
     }
 }

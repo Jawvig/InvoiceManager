@@ -21,7 +21,7 @@ using System.Text.Encodings.Web;
 
 namespace InvoiceManager.AdminWeb.Tests;
 
-public sealed class AdminHomePageTests
+public sealed class AdminAuthorizationPageTests
 {
     [Fact]
     public async Task SignIn_RequestsMailReadScope_SoConsentCoversTheEmailInvoiceSource()
@@ -89,7 +89,7 @@ public sealed class AdminHomePageTests
     }
 
     [Fact]
-    public async Task HomePage_FailsFast_WhenAuthorizationConfigurationIsMissing()
+    public async Task App_FailsFast_WhenAuthorizationConfigurationIsMissing()
     {
         await using var factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -108,12 +108,12 @@ public sealed class AdminHomePageTests
     }
 
     [Fact]
-    public async Task HomePage_RendersStatus_WhenAuthorizationConfigurationIsPresent()
+    public async Task AuthorizationPage_RendersStatus_WhenAuthorizationConfigurationIsPresent()
     {
         await using var factory = CreateConfiguredFactory();
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/");
+        var response = await client.GetAsync("/Authorization");
         var body = await response.Content.ReadAsStringAsync();
 
         response.EnsureSuccessStatusCode();
@@ -125,12 +125,12 @@ public sealed class AdminHomePageTests
     }
 
     [Fact]
-    public async Task HomePage_RendersSignInAndResetActions_WhenAuthorizationIsCapturedAndUserIsNotSignedIn()
+    public async Task AuthorizationPage_RendersSignInAndResetActions_WhenAuthorizationIsCapturedAndUserIsNotSignedIn()
     {
         await using var factory = CreateConfiguredFactory(hasTokenCache: true);
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/");
+        var response = await client.GetAsync("/Authorization");
         var body = await response.Content.ReadAsStringAsync();
 
         response.EnsureSuccessStatusCode();
@@ -141,9 +141,9 @@ public sealed class AdminHomePageTests
     }
 
     [Fact]
-    public async Task HomePageModel_ShowsAuthorizeAction_WhenUserIsSignedInAndAuthorizationIsNotCaptured()
+    public async Task AuthorizationPageModel_ShowsAuthorizeAction_WhenUserIsSignedInAndAuthorizationIsNotCaptured()
     {
-        var model = CreateIndexModel(hasTokenCache: false, isSignedIn: true);
+        var model = CreateAuthorizationModel(hasTokenCache: false, isSignedIn: true);
 
         await model.OnGetAsync();
 
@@ -154,9 +154,9 @@ public sealed class AdminHomePageTests
     }
 
     [Fact]
-    public async Task HomePageModel_OffersExplicitReplacement_WhenAuthorizationIsCaptured()
+    public async Task AuthorizationPageModel_OffersExplicitReplacement_WhenAuthorizationIsCaptured()
     {
-        var model = CreateIndexModel(hasTokenCache: true, isSignedIn: true);
+        var model = CreateAuthorizationModel(hasTokenCache: true, isSignedIn: true);
 
         await model.OnGetAsync();
 
@@ -207,12 +207,12 @@ public sealed class AdminHomePageTests
             });
     }
 
-    private static IndexModel CreateIndexModel(
+    private static AuthorizationModel CreateAuthorizationModel(
         bool hasTokenCache,
         bool isSignedIn,
         IExpectedRecordGenerationTrigger? expectedRecordGenerationTrigger = null)
     {
-        var model = new IndexModel(
+        var model = new AuthorizationModel(
             new FakeMicrosoftAuthorizationStore(hasTokenCache),
             Options.Create(new MicrosoftAuthorizationOptions
             {
@@ -244,7 +244,7 @@ public sealed class AdminHomePageTests
     {
         var trigger = new FakeExpectedRecordGenerationTrigger(
             new ExpectedRecordGenerationTriggered(207));
-        var model = CreateIndexModel(hasTokenCache: true, isSignedIn: true, trigger);
+        var model = CreateAuthorizationModel(hasTokenCache: true, isSignedIn: true, trigger);
 
         var result = await model.OnPostGenerateExpectedRecordsAsync();
 
@@ -260,7 +260,7 @@ public sealed class AdminHomePageTests
     {
         var trigger = new FakeExpectedRecordGenerationTrigger(
             new ExpectedRecordGenerationNotConfigured());
-        var model = CreateIndexModel(hasTokenCache: true, isSignedIn: true, trigger);
+        var model = CreateAuthorizationModel(hasTokenCache: true, isSignedIn: true, trigger);
 
         await model.OnPostGenerateExpectedRecordsAsync();
 

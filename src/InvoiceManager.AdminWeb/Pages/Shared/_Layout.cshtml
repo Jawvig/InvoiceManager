@@ -12,10 +12,14 @@
 <body>
     <header class="top-bar">
         <div class="top-bar-inner">
+            <button id="nav-toggle" class="nav-toggle" aria-controls="nav-menu" aria-expanded="false" aria-label="Open menu">
+                <span></span><span></span><span></span>
+            </button>
             <a class="brand" asp-page="/Index">InvoiceManager Admin</a>
-            <nav><a class="nav-link text-light" asp-page="/Configurations/Index">Invoice configurations</a></nav>
         </div>
     </header>
+    <partial name="_NavMenu" />
+    <div id="nav-backdrop" class="nav-backdrop" hidden></div>
     <main role="main">
         @RenderBody()
     </main>
@@ -23,6 +27,7 @@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/nav.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
 </body>

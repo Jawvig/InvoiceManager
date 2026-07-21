@@ -1,81 +1,19 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "Microsoft Authorization";
+    ViewData["Title"] = "Home";
 }
 
 <section class="admin-shell">
     <div class="page-heading">
         <p class="eyebrow">InvoiceManager Admin</p>
-        <h1>Microsoft authorization</h1>
+        <h1>Home</h1>
         <p class="summary">
-            Capture delegated Microsoft access for the unattended invoice workflow.
+            Dashboard coming soon.
         </p>
     </div>
 
-    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
-    {
-        <div class="notice">@Model.StatusMessage</div>
-    }
-
-    @if (Model.ConfigurationMessages.Count > 0)
-    {
-        <div class="notice warning">
-            @foreach (var message in Model.ConfigurationMessages)
-            {
-                <p>@message</p>
-            }
-        </div>
-    }
-
-    <div class="status-grid">
-        <section class="status-panel">
-            <h2>Signed-in operator</h2>
-            <p class="status-value">@Model.DisplayName</p>
-            <p class="status-label">This administrator session does not alter the unattended workflow account.</p>
-        </section>
-
-        <section class="status-panel">
-            <h2>Captured authorization</h2>
-            <p class="status-value">@(Model.IsAuthorizationCaptured ? "Ready" : "Not captured")</p>
-            <p class="status-label">The MSAL token cache is stored in Azure Key Vault.</p>
-        </section>
+    <div class="notice">
+        <p>Processing status for current invoices will appear here.</p>
     </div>
-
-    <form method="post" class="actions">
-        @if (Model.ShowAuthorizeButton)
-        {
-            <label>
-                <input type="checkbox" name="confirmed" value="true" />
-                I understand this will replace the delegated account used by the unattended workflow.
-            </label>
-            <button asp-page-handler="Authorize" class="primary-action">
-                @Model.AuthorizeButtonCaption
-            </button>
-        }
-        @if (Model.IsAuthorizationCaptured)
-        {
-            <button asp-page-handler="Reset" class="secondary-action">
-                Reset authorization
-            </button>
-        }
-        @if (Model.IsSignedIn)
-        {
-            <button asp-page-handler="SignOut" class="secondary-action">
-                Sign out
-            </button>
-        }
-    </form>
-
-    <section class="status-panel">
-        <h2>Invoice workflow</h2>
-        <p class="status-label">
-            Manually run expected record generation and due-invoice processing in the Functions app.
-        </p>
-        <form method="post" class="actions">
-            <button asp-page-handler="GenerateExpectedRecords" class="secondary-action">
-                Generate expected records
-            </button>
-        </form>
-    </section>
 </section>
