@@ -493,5 +493,5 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Local MCP server configuration
-.mcp.json
+# Playwright authentication
+playwright/.auth

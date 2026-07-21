@@ -383,6 +383,56 @@ Every invoice record is created with a required routing snapshot, so no record
 migration gate is needed. The website still does not own invoice matching,
 reconciliation, filename generation, or FreeAgent behavior.
 
+### Local Playwright auth state for the admin website
+
+The admin website's fallback authorization policy requires a real Entra sign-in
+on every page, so AI coding agents (Claude, Codex, Copilot) and Playwright test
+projects need a captured browser session to interact with it without prompting
+for credentials each time. `tools/InvoiceManager.PlaywrightAuth` (a standalone
+console app, not part of the test suite) drives this once:
+
+```bash
+dotnet run --project tools/InvoiceManager.PlaywrightAuth
+```
+
+It starts `src/InvoiceManager.AdminWeb` standalone on `https://localhost:5001`,
+opens Edge, and waits for you to complete Microsoft sign-in. The resulting
+storage state is saved to `playwright/.auth/adminweb.json` (gitignored). The
+local user secrets set in the block above must already be configured on the
+`InvoiceManager.AdminWeb` project for the standalone app to start — the AppHost
+copy alone is not enough, since AppHost is not launched here.
+
+The tool only waits for AdminWeb's Kestrel process to start listening on
+`/health`, not for a healthy result — `/health` also aggregates Cosmos and
+Functions app checks, and neither is reachable (or expected to be) in this
+standalone launch, so it always reports `503`. Seeing "Cosmos DB is not
+reachable" and "Functions:BaseUrl is not configured" in the AdminWeb console
+output while the tool runs is expected and does not affect sign-in; only a
+`ValidateOnStart` failure for the `MicrosoftAuthorization`/`AdminAuthorization`
+options (missing user secrets) actually stops the app from starting.
+
+`tests/InvoiceManager.AdminWeb.PlaywrightTests` reuses the saved storage state
+but, unlike the capture tool, starts AdminWeb through the real AppHost
+orchestration (`AdminWebAppHostFixture`, an `Aspire.Hosting.Testing`
+collection fixture also usable by future Playwright tests) — Cosmos emulator,
+seeder, and Functions all come up too, and the AdminWeb URL is read from the
+running orchestration (`DistributedApplication.GetEndpoint("adminweb",
+"https")`) rather than assumed to be `https://localhost:5001`. This needs
+Docker running and AppHost's own user secrets configured (the `dotnet
+user-secrets ... --project src/InvoiceManager.AppHost` copies above), and
+takes noticeably longer than the capture tool's standalone launch.
+
+The `playwright` MCP server (`.mcp.json`) loads that file automatically via
+`--storage-state`, so once it exists, MCP-driven browser sessions start already
+signed in. `tests/InvoiceManager.AdminWeb.PlaywrightTests` reuses the same file
+for automated Playwright tests; it is tagged `Category=Integration` (like the
+Cosmos emulator integration tests) so CI's `--filter "Category!=Integration"`
+skips it, since it needs a real signed-in session and a running AdminWeb
+instance.
+
+Re-run the tool whenever the saved session expires (an Entra sign-in prompt
+reappearing is the signal).
+
 ## GitHub Actions Workflow
 
 Two workflows orchestrate the pipeline: `ci.yml` (build/test/terraform-validate)
