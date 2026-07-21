@@ -29,7 +29,7 @@ public sealed class CreateModel(
         if (!ModelState.IsValid) return Page();
         try
         {
-            var configuration = Input.Build(false, BillingAccounts, Folders, false);
+            var configuration = Input.Build(false, BillingAccounts, false);
             await service.CreateAsync(configuration, User.ToConfigurationActor(), HttpContext.RequestAborted);
             TempData["StatusMessage"] = "Inactive configuration draft created.";
             return RedirectToPage("Index");

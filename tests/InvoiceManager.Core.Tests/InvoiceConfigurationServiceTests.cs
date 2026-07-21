@@ -21,10 +21,11 @@ public sealed class InvoiceConfigurationServiceTests
     {
         var existing = Configurations.Build();
         var service = new InvoiceConfigurationService(new FakeConfigurationRepository(existing));
-        var duplicate = Configurations.Build(isActive: false) with
+        var duplicate = Configurations.Build(
+            isActive: false,
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice")) with
         {
             Id = existing.Id,
-            IntegrationType = IntegrationType.Azure,
         };
 
         await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
@@ -38,7 +39,6 @@ public sealed class InvoiceConfigurationServiceTests
         var historical = current with
         {
             Id = new("different-id"),
-            IntegrationType = IntegrationType.Azure,
             InvoiceDescription = "Historical description",
             IsActive = false,
         };

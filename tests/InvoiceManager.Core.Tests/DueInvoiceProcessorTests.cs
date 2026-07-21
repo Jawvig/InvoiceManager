@@ -20,8 +20,8 @@ public sealed class DueInvoiceProcessorTests
         var edited = original with
         {
             InvoiceDescription = "Changed Later",
-            BillingAccountId = "changed-account",
-            OneDriveDestination = new OneDriveDestination("/Changed", "new-drive", "new-folder"),
+            IntegrationConfiguration = new MicrosoftBillingIntegrationConfiguration("changed-account"),
+            OneDriveFolder = new OneDriveFolder("new-drive", "New Drive", "new-folder", "/Changed"),
         };
         var records = new InMemoryInvoiceRecordRepository(record);
         var source = new FakeInvoiceSourceIntegration(
@@ -30,8 +30,10 @@ public sealed class DueInvoiceProcessorTests
 
         await BuildProcessor(records, source, oneDrive, edited).ProcessDueAsync();
 
-        Assert.Equal("test:billing:account", Assert.Single(source.Requests).BillingAccountId);
-        Assert.Equal("/drives/test/root:/Bills/Test", Assert.Single(oneDrive.Uploads).Destination.DisplayPath);
+        var requestedConfiguration = Assert.Single(source.Requests).IntegrationConfiguration;
+        Assert.True(requestedConfiguration is MicrosoftBillingIntegrationConfiguration billing &&
+            billing.BillingAccountId == "test:billing:account");
+        Assert.Equal("/Bills/Test", Assert.Single(oneDrive.Uploads).Destination.FolderPath);
         Assert.Contains("Test Invoice", Assert.Single(oneDrive.Uploads).FileName);
     }
 
@@ -63,7 +65,7 @@ public sealed class DueInvoiceProcessorTests
         Assert.Equal(new DateOnly(2025, 7, 12), savedState.ActualDetails.ActualInvoiceDate);
         Assert.Equal(new SourceInvoiceId("G152207778"), savedState.ActualDetails.SourceInvoiceId);
         Assert.Equal(
-            "/drives/test/root:/Bills/Test/2025-07-12 Test Invoice G152207778 £10.00 exc.pdf",
+            "/drives/test-drive/items/test-folder-item/2025-07-12 Test Invoice G152207778 £10.00 exc.pdf",
             savedState.OneDriveDetails.OneDriveLocation);
     }
 
@@ -85,7 +87,7 @@ public sealed class DueInvoiceProcessorTests
         await processor.ProcessDueAsync();
 
         var upload = Assert.Single(oneDrive.Uploads);
-        Assert.Equal("/drives/test/root:/Bills/Test", upload.DestinationPath);
+        Assert.Equal("/drives/test-drive/items/test-folder-item", upload.DestinationPath);
         Assert.Equal("2025-07-12 Test Invoice G152207778 £10.00 exc.pdf", upload.FileName);
         Assert.Equal(pdf, upload.Content);
     }
@@ -170,7 +172,7 @@ public sealed class DueInvoiceProcessorTests
         await processor.ProcessDueAsync();
 
         var criteria = Assert.Single(source.Requests);
-        Assert.Equal(config.BillingAccountId, criteria.BillingAccountId);
+        Assert.Equal(config.IntegrationConfiguration, criteria.IntegrationConfiguration);
         Assert.Equal(new DateOnly(2025, 7, 10), criteria.ExpectedDate);
         Assert.Equal(config.DateToleranceDays, criteria.DateToleranceDays);
         Assert.Equal(config.AmountMatchingCriteria, criteria.AmountMatchingCriteria);
@@ -375,7 +377,7 @@ public sealed class DueInvoiceProcessorTests
         var oneDrive = new FakeOneDriveIntegration
         {
             NextSearchResult = new OneDriveMatch(
-                new OneDriveDetails("/drives/test/root:/Bills/Test/existing.pdf"),
+                new OneDriveDetails("/drives/test-drive/items/test-folder-item/existing.pdf"),
                 Actuals.Build(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), new SourceInvoiceId("G152207778")),
                 "matched by date and amount"),
         };
@@ -393,13 +395,13 @@ public sealed class DueInvoiceProcessorTests
             return;
         }
 
-        Assert.Equal("/drives/test/root:/Bills/Test/existing.pdf", state.OneDriveDetails.OneDriveLocation);
+        Assert.Equal("/drives/test-drive/items/test-folder-item/existing.pdf", state.OneDriveDetails.OneDriveLocation);
         Assert.Equal(new DateOnly(2025, 7, 12), state.ActualDetails.ActualInvoiceDate);
         Assert.Equal("matched by date and amount", state.MatchReason);
         Assert.Equal(Today, DateOnly.FromDateTime(state.ReconciledAt.UtcDateTime));
 
         var searched = Assert.Single(oneDrive.Searches);
-        Assert.Equal(config.OneDriveDestination, searched.DestinationPath);
+        Assert.Equal(config.OneDriveFolder.GraphPath, searched.DestinationPath);
         // The description is part of the reconciliation criteria so records for
         // different subscriptions sharing a folder don't match each other's files.
         Assert.Equal(config.InvoiceDescription, searched.Criteria.InvoiceDescription);
@@ -511,7 +513,7 @@ public sealed class DueInvoiceProcessorTests
     private sealed class ThrowingSourceIntegration(DateOnly failFor, InvoiceSourceResult otherwise)
         : IInvoiceSourceIntegration
     {
-        public IntegrationType IntegrationType => IntegrationType.Microsoft365;
+        public IntegrationType IntegrationType => IntegrationType.MicrosoftBilling;
 
         public Task<InvoiceSourceResult> FindInvoiceAsync(
             InvoiceSearchCriteria criteria,
@@ -525,7 +527,7 @@ public sealed class DueInvoiceProcessorTests
     private sealed class DateDrivenSourceIntegration(IReadOnlyDictionary<DateOnly, InvoiceSourceResult> matches)
         : IInvoiceSourceIntegration
     {
-        public IntegrationType IntegrationType => IntegrationType.Microsoft365;
+        public IntegrationType IntegrationType => IntegrationType.MicrosoftBilling;
 
         public Task<InvoiceSourceResult> FindInvoiceAsync(
             InvoiceSearchCriteria criteria,

@@ -20,7 +20,7 @@ public sealed class MicrosoftBillingInvoiceSourceTests
     private static readonly byte[] PdfBytes = "%PDF-1.7 fake invoice"u8.ToArray();
 
     private static InvoiceSearchCriteria Criteria(decimal amountTolerance = 0m) => new(
-        BillingAccountId: "account:2019-05-31",
+        IntegrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account:2019-05-31"),
         ExpectedDate: new DateOnly(2025, 7, 10),
         DateToleranceDays: 5,
         AmountMatchingCriteria: new AmountMatchingCriteria(new Money(11.59m, "GBP"), amountTolerance));
@@ -94,7 +94,7 @@ public sealed class MicrosoftBillingInvoiceSourceTests
     public async Task FindInvoiceAsync_MatchesByDateOnly_WhenAmountCriteriaAreAbsent()
     {
         var handler = new StubHttpMessageHandler(Script(PdfBytes, invoiceAmount: 999.99m));
-        var source = BuildSource(handler, IntegrationType.Azure);
+        var source = BuildSource(handler);
 
         var result = await source.FindInvoiceAsync(CriteriaWithoutAmount());
 
@@ -154,8 +154,7 @@ public sealed class MicrosoftBillingInvoiceSourceTests
         Assert.Contains(handler.Requests, request => request.RequestUri!.ToString() == NextPageUrl);
     }
 
-    private static MicrosoftBillingInvoiceSource BuildSource(
-        StubHttpMessageHandler handler, IntegrationType integrationType = IntegrationType.Microsoft365)
+    private static MicrosoftBillingInvoiceSource BuildSource(StubHttpMessageHandler handler)
     {
         var httpClient = new HttpClient(handler);
         var options = Options.Create(new MicrosoftBillingOptions { PollInterval = TimeSpan.Zero });
@@ -163,12 +162,11 @@ public sealed class MicrosoftBillingInvoiceSourceTests
             httpClient,
             new FakeMicrosoftTokenProvider(),
             options,
-            NullLogger<MicrosoftBillingInvoiceSource>.Instance,
-            integrationType);
+            NullLogger<MicrosoftBillingInvoiceSource>.Instance);
     }
 
     private static InvoiceSearchCriteria CriteriaWithoutAmount() => new(
-        BillingAccountId: "azure-account",
+        IntegrationConfiguration: new MicrosoftBillingIntegrationConfiguration("azure-account"),
         ExpectedDate: new DateOnly(2025, 7, 10),
         DateToleranceDays: 5,
         AmountMatchingCriteria: Option.None);

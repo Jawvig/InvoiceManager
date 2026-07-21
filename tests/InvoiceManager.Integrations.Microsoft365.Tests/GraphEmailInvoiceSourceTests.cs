@@ -14,12 +14,10 @@ public sealed class GraphEmailInvoiceSourceTests
 
     private static InvoiceSearchCriteria Criteria(
         string bodyPattern = "", AmountMatchingCriteria? amountMatchingCriteria = null) => new(
-        BillingAccountId: "",
+        IntegrationConfiguration: new GraphEmailIntegrationConfiguration("billing@contoso.com", bodyPattern),
         ExpectedDate: new DateOnly(2025, 7, 10),
         DateToleranceDays: 5,
-        AmountMatchingCriteria: amountMatchingCriteria is { } criteria ? criteria : Option.None,
-        SenderEmailAddress: "billing@contoso.com",
-        BodyPattern: bodyPattern);
+        AmountMatchingCriteria: amountMatchingCriteria is { } criteria ? criteria : Option.None);
 
     [Fact]
     public async Task FindInvoiceAsync_ReturnsMatch_ForSinglePdfAttachment()
@@ -250,12 +248,10 @@ public sealed class GraphEmailInvoiceSourceTests
         var source = Build(handler, new FakePdfExtractor(_ => throw new InvalidOperationException("should not extract")));
 
         var criteria = new InvoiceSearchCriteria(
-            BillingAccountId: "",
+            IntegrationConfiguration: new GraphEmailIntegrationConfiguration("o'brien@contoso.com", ""),
             ExpectedDate: new DateOnly(2025, 7, 10),
             DateToleranceDays: 5,
-            AmountMatchingCriteria: Option.None,
-            SenderEmailAddress: "o'brien@contoso.com",
-            BodyPattern: "");
+            AmountMatchingCriteria: Option.None);
 
         await source.FindInvoiceAsync(criteria);
 

@@ -6,7 +6,7 @@ namespace InvoiceManager.Core.Integrations;
 /// <param name="DestinationPath">The Graph API path of the destination folder (from the invoice configuration).</param>
 /// <param name="FileName">The generated filename, including extension.</param>
 /// <param name="Content">The PDF bytes to upload.</param>
-public sealed record OneDriveUploadRequest(OneDriveDestination Destination, string FileName, byte[] Content)
+public sealed record OneDriveUploadRequest(OneDriveFolder Destination, string FileName, byte[] Content)
 {
     public string DestinationPath => Destination.GraphPath;
 }
@@ -17,7 +17,7 @@ public sealed record OneDriveUploadRequest(OneDriveDestination Destination, stri
 /// </summary>
 /// <param name="DestinationPath">The Graph API path of the folder to search (from the invoice configuration).</param>
 /// <param name="Criteria">The date/amount/currency tolerances plus expected description used to match a file.</param>
-public sealed record OneDriveSearchRequest(OneDriveDestination Destination, OneDriveSearchCriteria Criteria)
+public sealed record OneDriveSearchRequest(OneDriveFolder Destination, OneDriveSearchCriteria Criteria)
 {
     public string DestinationPath => Destination.GraphPath;
 }

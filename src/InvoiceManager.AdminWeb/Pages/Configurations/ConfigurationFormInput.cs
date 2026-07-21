@@ -13,7 +13,7 @@ public sealed class ConfigurationFormInput
     public string Id { get; set; } = "";
 
     [Required]
-    public IntegrationType IntegrationType { get; set; } = IntegrationType.Microsoft365;
+    public IntegrationType IntegrationType { get; set; } = IntegrationType.MicrosoftBilling;
 
     public string InvoiceDescription { get; set; } = "";
 
@@ -41,27 +41,32 @@ public sealed class ConfigurationFormInput
     [Range(0, 365)]
     public int DateToleranceDays { get; set; } = 5;
 
+    // Manual-entry OneDrive folder fields. There is no discovery/picker source for
+    // these in this phase (see MicrosoftResourceDiscovery); an operator fills them
+    // in by hand until the OneDrive File Picker v8 integration replaces this.
+    [Required]
+    public string DriveId { get; set; } = "";
+
+    [Required]
+    public string DriveName { get; set; } = "";
+
     [Required]
     public string FolderItemId { get; set; } = "";
 
+    [Required]
+    public string FolderPath { get; set; } = "";
+
     public string OriginalBillingAccountId { get; set; } = "";
-    public string OriginalFolderItemId { get; set; } = "";
-    public string OriginalDriveId { get; set; } = "";
-    public string OriginalDisplayPath { get; set; } = "";
     public string ETag { get; set; } = "";
 
     public InvoiceConfiguration Build(
         bool isActive,
         IReadOnlyList<BillingAccountChoice> billingAccounts,
-        IReadOnlyList<OneDriveFolderChoice> folders,
         bool allowUnchangedMissingSelections)
     {
-        var billingAccountId = BillingAccountId;
-        var senderEmailAddress = "";
-        var bodyPattern = "";
-        if (IntegrationType == IntegrationType.Microsoft365Email)
+        IntegrationConfiguration integrationConfiguration;
+        if (IntegrationType == IntegrationType.GraphEmail)
         {
-            billingAccountId = "";
             if (string.IsNullOrWhiteSpace(SenderEmailAddress))
                 throw new ArgumentException("Sender email address is required for Microsoft 365 email invoices.");
             if (!MailAddress.TryCreate(SenderEmailAddress.Trim(), out _))
@@ -76,29 +81,19 @@ public sealed class ConfigurationFormInput
             {
                 throw new ArgumentException("Body pattern must be a valid regular expression.");
             }
-            senderEmailAddress = SenderEmailAddress.Trim();
-            bodyPattern = BodyPattern;
-        }
-        else if (!billingAccounts.Any(x => x.Id == BillingAccountId) &&
-                 !(allowUnchangedMissingSelections && BillingAccountId == OriginalBillingAccountId))
-        {
-            throw new ArgumentException("Select a billing account returned by discovery.");
-        }
-
-        OneDriveDestination destination;
-        if (folders.FirstOrDefault(x => x.Destination.FolderItemId == FolderItemId) is { } selected)
-        {
-            destination = selected.Destination;
-        }
-        else if (allowUnchangedMissingSelections && FolderItemId == OriginalFolderItemId &&
-                 !string.IsNullOrWhiteSpace(OriginalDisplayPath))
-        {
-            destination = new(OriginalDisplayPath, OriginalDriveId, OriginalFolderItemId);
+            integrationConfiguration = new GraphEmailIntegrationConfiguration(SenderEmailAddress.Trim(), BodyPattern);
         }
         else
         {
-            throw new ArgumentException("Select an existing OneDrive folder returned by discovery.");
+            if (!billingAccounts.Any(x => x.Id == BillingAccountId) &&
+                !(allowUnchangedMissingSelections && BillingAccountId == OriginalBillingAccountId))
+            {
+                throw new ArgumentException("Select a billing account returned by discovery.");
+            }
+            integrationConfiguration = new MicrosoftBillingIntegrationConfiguration(BillingAccountId);
         }
+
+        var folder = new OneDriveFolder(DriveId, DriveName, FolderItemId, FolderPath);
 
         Option<AmountMatchingCriteria> amount = Option.None;
         if (HasExpectedAmount)
@@ -117,18 +112,15 @@ public sealed class ConfigurationFormInput
 
         return new(
             new InvoiceConfigurationId(Id),
-            IntegrationType,
+            integrationConfiguration,
             InvoiceDescription?.Trim() ?? "",
             Frequency,
             amount,
             DefaultVatMode,
             isActive,
-            destination,
+            folder,
             StartDate,
-            billingAccountId,
-            DateToleranceDays,
-            senderEmailAddress,
-            bodyPattern);
+            DateToleranceDays);
     }
 
     public static ConfigurationFormInput From(StoredInvoiceConfiguration stored)
@@ -142,17 +134,24 @@ public sealed class ConfigurationFormInput
             Frequency = configuration.Frequency,
             DefaultVatMode = configuration.DefaultVatMode,
             StartDate = configuration.StartDate,
-            BillingAccountId = configuration.BillingAccountId,
-            SenderEmailAddress = configuration.SenderEmailAddress,
-            BodyPattern = configuration.BodyPattern,
             DateToleranceDays = configuration.DateToleranceDays,
-            FolderItemId = configuration.OneDriveDestination.FolderItemId ?? "",
-            OriginalBillingAccountId = configuration.BillingAccountId,
-            OriginalFolderItemId = configuration.OneDriveDestination.FolderItemId ?? "",
-            OriginalDriveId = configuration.OneDriveDestination.DriveId ?? "",
-            OriginalDisplayPath = configuration.OneDriveDestination.DisplayPath,
+            DriveId = configuration.OneDriveFolder.DriveId,
+            DriveName = configuration.OneDriveFolder.DriveName,
+            FolderItemId = configuration.OneDriveFolder.FolderItemId,
+            FolderPath = configuration.OneDriveFolder.FolderPath,
             ETag = stored.ETag,
         };
+        switch (configuration.IntegrationConfiguration)
+        {
+            case MicrosoftBillingIntegrationConfiguration billing:
+                input.BillingAccountId = billing.BillingAccountId;
+                input.OriginalBillingAccountId = billing.BillingAccountId;
+                break;
+            case GraphEmailIntegrationConfiguration email:
+                input.SenderEmailAddress = email.SenderEmailAddress;
+                input.BodyPattern = email.BodyPattern;
+                break;
+        }
         if (configuration.AmountMatchingCriteria is AmountMatchingCriteria amount)
         {
             input.HasExpectedAmount = true;

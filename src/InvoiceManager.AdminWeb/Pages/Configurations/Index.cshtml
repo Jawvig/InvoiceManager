@@ -13,7 +13,11 @@
         <section class="status-panel">
             <h2>@(string.IsNullOrWhiteSpace(configuration.InvoiceDescription) ? configuration.Id.Value : configuration.InvoiceDescription)</h2>
             <p><strong>@configuration.IntegrationType</strong> · @(configuration.IsActive ? "Active" : "Inactive") · @configuration.Id</p>
-            <p>@configuration.OneDriveDestination.DisplayPath · @(configuration.IntegrationType == InvoiceManager.Core.IntegrationType.Microsoft365Email ? $"Sender {configuration.SenderEmailAddress}" : $"Billing account {configuration.BillingAccountId}")</p>
+            <p>@configuration.OneDriveFolder.DriveName · @configuration.OneDriveFolder.FolderPath · @(configuration.IntegrationConfiguration switch {
+                InvoiceManager.Core.GraphEmailIntegrationConfiguration email => $"Sender {email.SenderEmailAddress}",
+                InvoiceManager.Core.MicrosoftBillingIntegrationConfiguration billing => $"Billing account {billing.BillingAccountId}",
+                _ => "",
+            })</p>
             <div class="actions">
                 <a asp-page="History" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType">History</a>
                 @if (Model.EditingEnabled) {

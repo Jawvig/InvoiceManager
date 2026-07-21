@@ -3,15 +3,12 @@
 @foreach (var warning in Model.DiscoveryWarnings) { <div class="notice warning">@warning</div> }
 <input asp-for="Input.ETag" type="hidden" />
 <input asp-for="Input.OriginalBillingAccountId" type="hidden" />
-<input asp-for="Input.OriginalFolderItemId" type="hidden" />
-<input asp-for="Input.OriginalDriveId" type="hidden" />
-<input asp-for="Input.OriginalDisplayPath" type="hidden" />
 @if (Model.IsEdit) { <input asp-for="Input.IntegrationType" type="hidden" /> }
 <div class="form-grid">
     <label>Configuration ID <input asp-for="Input.Id" readonly="@Model.IsEdit" /></label>
     <label>Integration
         <select asp-for="Input.IntegrationType" disabled="@Model.IsEdit">
-            <option value="Microsoft365">Microsoft 365 billing</option><option value="Azure">Azure billing</option><option value="Microsoft365Email">Microsoft 365 email</option>
+            <option value="MicrosoftBilling">Microsoft billing</option><option value="GraphEmail">Microsoft 365 email</option>
         </select>
     </label>
     <label>Invoice description <input asp-for="Input.InvoiceDescription" /></label>
@@ -32,12 +29,10 @@
     <label>Sender email address (email integration only) <input asp-for="Input.SenderEmailAddress" type="email" /></label>
     <label>Email body regex (email integration only) <input asp-for="Input.BodyPattern" /></label>
     <label>Date tolerance (days) <input asp-for="Input.DateToleranceDays" type="number" min="0" max="365" /></label>
-    <label>Existing OneDrive folder
-        <select asp-for="Input.FolderItemId">
-            @foreach (var folder in Model.Folders) { <option value="@folder.Destination.FolderItemId">@folder.Destination.DisplayPath</option> }
-            @if (Model.ShowMissingFolderWarning) { <option value="@Model.Input.OriginalFolderItemId">Unavailable: @Model.Input.OriginalDisplayPath</option> }
-        </select>
-    </label>
+    <label>OneDrive drive ID <input asp-for="Input.DriveId" /></label>
+    <label>OneDrive drive name <input asp-for="Input.DriveName" /></label>
+    <label>OneDrive folder item ID <input asp-for="Input.FolderItemId" /></label>
+    <label>OneDrive folder path <input asp-for="Input.FolderPath" /></label>
 </div>
 <button type="submit" class="primary-action">Save configuration</button>
 <a asp-page="Index" class="secondary-action">Cancel</a>

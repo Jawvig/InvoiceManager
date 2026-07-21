@@ -72,7 +72,7 @@ Console.WriteLine($"Loaded {records.Count} configuration(s) from seed file.");
 
 var configurations = records.Select(r => new InvoiceConfiguration(
     new InvoiceConfigurationId(r.Id),
-    Enum.Parse<IntegrationType>(r.IntegrationType, ignoreCase: true),
+    ToIntegrationConfiguration(r),
     r.InvoiceDescription,
     Enum.Parse<InvoiceFrequency>(r.Frequency, ignoreCase: true),
     r.AmountMatchingCriteria is { } amountCriteria
@@ -80,12 +80,9 @@ var configurations = records.Select(r => new InvoiceConfiguration(
         : Option.None,
     Enum.Parse<VatMode>(r.DefaultVatMode, ignoreCase: true),
     r.IsActive,
-    InjectEnvironmentFolder(r.OneDriveDestination, isTest),
+    ToOneDriveFolder(r.OneDriveFolder, isTest),
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
-    r.BillingAccountId,
-    r.DateToleranceDays,
-    r.SenderEmailAddress,
-    r.BodyPattern)).ToList();
+    r.DateToleranceDays)).ToList();
 
 var cosmosClient = CosmosClientFactory.Create(configuration);
 
@@ -210,29 +207,41 @@ static async Task ClearDatabaseAsync(CosmosClient client, string databaseName)
     }
 }
 
-// For the test environment, nest every OneDrive destination under a single root "Test"
-// folder (inserted immediately after the drive "root:/" marker), mirroring the production
-// tree inside it so test downloads never collide with production files.
-static string InjectEnvironmentFolder(string oneDriveDestination, bool isTest)
+static IntegrationConfiguration ToIntegrationConfiguration(SeedInvoiceConfigurationRecord record) =>
+    Enum.Parse<IntegrationType>(record.IntegrationType, ignoreCase: true) switch
+    {
+        IntegrationType.GraphEmail => new GraphEmailIntegrationConfiguration(record.SenderEmailAddress, record.BodyPattern),
+        IntegrationType.MicrosoftBilling => new MicrosoftBillingIntegrationConfiguration(record.BillingAccountId),
+        var other => throw new InvalidOperationException($"Unrecognised integration type '{other}' in seed file."),
+    };
+
+// driveId/folderItemId come from their own (placeholder-token) fields as-is; for the
+// test environment, the display-only folderPath is nested under a single root "Test"
+// folder (inserted immediately after the drive "root:/" marker), mirroring the
+// production tree inside it so test downloads never collide with production files.
+static OneDriveFolder ToOneDriveFolder(SeedOneDriveFolder folder, bool isTest) =>
+    new(folder.DriveId, folder.DriveName, folder.FolderItemId, InjectEnvironmentFolder(folder.FolderPath, isTest));
+
+static string InjectEnvironmentFolder(string folderPath, bool isTest)
 {
     if (!isTest)
     {
-        return oneDriveDestination;
+        return folderPath;
     }
 
     const string rootMarker = "root:/";
-    var markerIndex = oneDriveDestination.IndexOf(rootMarker, StringComparison.Ordinal);
+    var markerIndex = folderPath.IndexOf(rootMarker, StringComparison.Ordinal);
     if (markerIndex < 0)
     {
         // Unrecognised path shape; leave it untouched rather than corrupt it.
-        return oneDriveDestination;
+        return folderPath;
     }
 
     var insertionPoint = markerIndex + rootMarker.Length;
     return string.Concat(
-        oneDriveDestination.AsSpan(0, insertionPoint),
+        folderPath.AsSpan(0, insertionPoint),
         "Test/",
-        oneDriveDestination.AsSpan(insertionPoint));
+        folderPath.AsSpan(insertionPoint));
 }
 
 static (bool EnsureSchema, bool ClearDatabase, bool Force, string? Environment, string[] Positional) ParseArgs(string[] args)

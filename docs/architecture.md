@@ -111,7 +111,7 @@ Conceptual responsibilities:
   invoice attachments.
 - PDF field extraction (`IInvoicePdfExtractor`) reads invoice date/total out of
   a PDF's own content for sources with no reliable pre-open metadata, currently
-  used by the `Microsoft365Email` source. It is its own boundary interface, not
+  used by the `GraphEmail` source. It is its own boundary interface, not
   folded into the email source, so the Document Intelligence specifics stay out
   of both the email integration and the core workflow.
 
