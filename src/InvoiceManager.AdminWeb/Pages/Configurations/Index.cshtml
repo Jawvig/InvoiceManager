@@ -6,7 +6,16 @@
         <p class="summary">Manage recurring invoice expectations. Changes apply only to future expected records.</p></div>
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="notice">@Model.StatusMessage</div> }
     @if (!Model.HasWorkflowAuthorization) { <div class="notice warning">Workflow authorization is not captured. You may list configurations and inspect history, but configuration changes are disabled.</div> }
-    <p><a asp-page="Create" class="primary-action @(Model.EditingEnabled ? "" : "disabled")" aria-disabled="@(!Model.EditingEnabled)">Create inactive draft</a></p>
+    <div class="actions">
+        @if (Model.EditingEnabled)
+        {
+            <a asp-page="Create" class="primary-action">Create</a>
+        }
+        else
+        {
+            <button type="button" class="primary-action" disabled title="Capture workflow authorization before creating configurations.">Create</button>
+        }
+    </div>
     <div class="configuration-list">
     @foreach (var item in Model.Configurations.OrderBy(x => x.Configuration.InvoiceDescription)) {
         var configuration = item.Configuration;

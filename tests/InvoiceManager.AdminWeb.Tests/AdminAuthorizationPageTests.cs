@@ -348,7 +348,7 @@ public sealed class AdminAuthorizationPageTests
         response.EnsureSuccessStatusCode();
         Assert.Contains("Test Invoice", body);
         Assert.Contains("Workflow authorization is not captured", body);
-        Assert.Contains("primary-action disabled", body);
+        Assert.Contains("<button type=\"button\" class=\"primary-action\" disabled", body);
     }
 
     private sealed class TestAuthenticationHandler(

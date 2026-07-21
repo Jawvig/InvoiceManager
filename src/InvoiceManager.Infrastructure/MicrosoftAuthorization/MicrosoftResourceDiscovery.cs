@@ -8,6 +8,12 @@ namespace InvoiceManager.Infrastructure.MicrosoftAuthorization;
 
 public sealed record BillingAccountChoice(string Id, string Label, string AccountType);
 
+/// <summary>A OneDrive drive belonging to the workflow account, as returned by <c>GET /me/drives</c>.</summary>
+public sealed record OneDriveDriveChoice(string Id, string Name);
+
+/// <summary>A single OneDrive folder returned by a one-level children listing.</summary>
+public sealed record OneDriveFolderEntry(string Id, string Name);
+
 public sealed class MicrosoftResourceDiscoveryOptions
 {
     public const string SectionName = "MicrosoftBilling";
@@ -18,6 +24,18 @@ public interface IMicrosoftResourceDiscovery
 {
     Task<IReadOnlyList<BillingAccountChoice>> ListBillingAccountsAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>Lists all drives belonging to the workflow account (not just the default drive).</summary>
+    Task<IReadOnlyList<OneDriveDriveChoice>> ListDrivesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists the immediate folder children of <paramref name="folderItemId"/> (or the drive root
+    /// when null) in a single Graph call. Callers drive folder navigation by calling this
+    /// repeatedly as the user drills in, rather than walking the whole tree server-side.
+    /// </summary>
+    Task<IReadOnlyList<OneDriveFolderEntry>> ListFolderChildrenAsync(
+        string driveId, string? folderItemId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Discovers billing accounts using the captured workflow account.</summary>
@@ -27,6 +45,8 @@ public sealed class MicrosoftResourceDiscovery(
     IOptions<MicrosoftResourceDiscoveryOptions>? options = null) : IMicrosoftResourceDiscovery
 {
     private const string BillingScope = "https://management.azure.com/user_impersonation";
+    private const string GraphScope = "https://graph.microsoft.com/Files.ReadWrite.All";
+    private const string GraphBaseUrl = "https://graph.microsoft.com/v1.0";
     private readonly MicrosoftResourceDiscoveryOptions settings =
         options?.Value ?? new MicrosoftResourceDiscoveryOptions();
 
@@ -58,6 +78,57 @@ public sealed class MicrosoftResourceDiscovery(
         return accounts.OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    public async Task<IReadOnlyList<OneDriveDriveChoice>> ListDrivesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var token = await tokenProvider.AcquireTokenAsync([GraphScope], cancellationToken);
+        var drives = new List<OneDriveDriveChoice>();
+        string? next = $"{GraphBaseUrl}/me/drives";
+        while (next is not null)
+        {
+            using var response = await SendAsync(next, token, cancellationToken);
+            await response.EnsureSuccessAsync("Microsoft Graph", "listing OneDrive drives", cancellationToken);
+            var page = await response.Content.ReadFromJsonAsync<DrivePage>(cancellationToken);
+            foreach (var drive in page?.Value ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(drive.Id))
+                    continue;
+                var name = string.IsNullOrWhiteSpace(drive.Name) ? "OneDrive" : drive.Name;
+                drives.Add(new(drive.Id, name));
+            }
+            next = page?.NextLink;
+        }
+        return drives;
+    }
+
+    public async Task<IReadOnlyList<OneDriveFolderEntry>> ListFolderChildrenAsync(
+        string driveId, string? folderItemId, CancellationToken cancellationToken = default)
+    {
+        var token = await tokenProvider.AcquireTokenAsync([GraphScope], cancellationToken);
+        var basePath = string.IsNullOrWhiteSpace(folderItemId)
+            ? $"/drives/{Uri.EscapeDataString(driveId)}/root"
+            : $"/drives/{Uri.EscapeDataString(driveId)}/items/{Uri.EscapeDataString(folderItemId)}";
+
+        var folders = new List<OneDriveFolderEntry>();
+        string? next = $"{GraphBaseUrl}{basePath}/children?$select=id,name,folder";
+        while (next is not null)
+        {
+            using var response = await SendAsync(next, token, cancellationToken);
+            await response.EnsureSuccessAsync("Microsoft Graph", "listing OneDrive folder children", cancellationToken);
+            var page = await response.Content.ReadFromJsonAsync<FolderChildrenPage>(cancellationToken);
+            foreach (var child in page?.Value ?? [])
+            {
+                // Only directories have a "folder" facet; files are excluded client-side since
+                // Graph's $filter=folder ne null is not reliably supported on children listings.
+                if (child.Folder is null || string.IsNullOrWhiteSpace(child.Id) || string.IsNullOrWhiteSpace(child.Name))
+                    continue;
+                folders.Add(new(child.Id, child.Name));
+            }
+            next = page?.NextLink;
+        }
+        return folders.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     private async Task<HttpResponseMessage> SendAsync(string url, string token, CancellationToken cancellationToken)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -67,6 +138,21 @@ public sealed class MicrosoftResourceDiscovery(
 
     private static string LastSegment(string? value) =>
         value?.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "";
+
+    private sealed record DrivePage(
+        [property: JsonPropertyName("value")] IReadOnlyList<DriveResource> Value,
+        [property: JsonPropertyName("@odata.nextLink")] string? NextLink);
+    private sealed record DriveResource(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("name")] string? Name);
+
+    private sealed record FolderChildrenPage(
+        [property: JsonPropertyName("value")] IReadOnlyList<FolderChildResource> Value,
+        [property: JsonPropertyName("@odata.nextLink")] string? NextLink);
+    private sealed record FolderChildResource(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("folder")] object? Folder);
 
     private sealed record BillingAccountPage(
         [property: JsonPropertyName("value")] IReadOnlyList<BillingAccountResource> Value,

@@ -18,7 +18,8 @@ public sealed class CreateModel(
     {
         if (!await CanMutateAsync()) return RedirectToPage("Index");
         Input.Id = InvoiceConfigurationValidation.GenerateSlug(null, Input.IntegrationType);
-        await LoadDiscoveryAsync(HttpContext.RequestAborted);
+        // Billing-account discovery is fetched lazily by configuration-wizard.js once the
+        // Microsoft billing integration is selected, so page render is no longer blocked on it.
         return Page();
     }
 
@@ -41,6 +42,6 @@ public sealed class CreateModel(
         }
     }
 
-    private Task<bool> CanMutateAsync() =>
+    protected override Task<bool> CanMutateAsync() =>
         authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted);
 }

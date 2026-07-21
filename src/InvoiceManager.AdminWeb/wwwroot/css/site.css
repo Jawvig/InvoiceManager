@@ -271,9 +271,108 @@ button:disabled {
   padding: .55rem;
 }
 
-.disabled {
-  opacity: .5;
-  pointer-events: none;
+.form-grid fieldset {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 1rem 1.25rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.form-grid legend {
+  padding: 0 .4rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.onedrive-picker-field {
+  display: grid;
+  gap: .35rem;
+}
+
+.onedrive-picker-summary {
+  margin: 0;
+  color: var(--ink);
+}
+
+.onedrive-picker-dialog {
+  width: min(32rem, 92vw);
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.onedrive-picker-dialog::backdrop {
+  background: rgba(0, 0, 0, .45);
+}
+
+.onedrive-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .75rem;
+}
+
+.onedrive-picker-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.onedrive-picker-breadcrumb {
+  margin-bottom: .5rem;
+  color: var(--muted);
+}
+
+.onedrive-picker-breadcrumb button {
+  min-height: unset;
+  padding: 0;
+  border: none;
+  background: none;
+  font-weight: 650;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.onedrive-picker-breadcrumb button:disabled {
+  color: var(--ink);
+  cursor: default;
+  opacity: 1;
+}
+
+.onedrive-picker-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.onedrive-picker-row {
+  display: block;
+  width: 100%;
+  min-height: unset;
+  padding: .55rem .75rem;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.onedrive-picker-list li:last-child .onedrive-picker-row {
+  border-bottom: none;
+}
+
+.onedrive-picker-row:hover {
+  background: var(--warning-bg);
 }
 
 pre {

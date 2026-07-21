@@ -21,7 +21,9 @@ public sealed class EditModel(
         if (current is not StoredInvoiceConfiguration stored) return NotFound();
         Input = ConfigurationFormInput.From(stored);
 
-        await LoadDiscoveryAsync(HttpContext.RequestAborted, required: false);
+        // Render immediately with the stored billing-account value pre-populated (see
+        // ConfigurationFormInput.From); the full list is fetched in the background by
+        // configuration-wizard.js via OnGetBillingAccountsAsync rather than blocking here.
         return Page();
     }
 
@@ -53,6 +55,6 @@ public sealed class EditModel(
         return Page();
     }
 
-    private Task<bool> CanMutateAsync() =>
+    protected override Task<bool> CanMutateAsync() =>
         authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted);
 }

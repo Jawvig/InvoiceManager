@@ -3,6 +3,7 @@ using System.Net.Mail;
 using System.Text.RegularExpressions;
 using InvoiceManager.Core;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using NodaMoney;
 
 namespace InvoiceManager.AdminWeb.Pages.Configurations;
@@ -31,11 +32,19 @@ public sealed class ConfigurationFormInput
     [Required, DataType(DataType.Date)]
     public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
 
+    // BillingAccountId/SenderEmailAddress/BodyPattern are required only for one integration
+    // type each (see Build()'s explicit per-integration checks, which produce the real
+    // user-facing validation messages). [ValidateNever] opts them out of ASP.NET Core's
+    // implicit-required validation for non-nullable reference type properties, which would
+    // otherwise reject them as empty even when the other integration type is selected and
+    // their fieldset is hidden.
+    [ValidateNever]
     public string BillingAccountId { get; set; } = "";
 
-    [EmailAddress]
+    [ValidateNever]
     public string SenderEmailAddress { get; set; } = "";
 
+    [ValidateNever]
     public string BodyPattern { get; set; } = "";
 
     [Range(0, 365)]
@@ -56,7 +65,14 @@ public sealed class ConfigurationFormInput
     [Required]
     public string FolderPath { get; set; } = "";
 
+    // Plumbing fields carried via hidden inputs, not user-entered data: empty is a valid state
+    // (e.g. OriginalBillingAccountId is blank for GraphEmail configurations, and ETag is blank
+    // on Create). [ValidateNever] opts them out of ASP.NET Core's implicit-required validation
+    // for non-nullable reference type properties, which would otherwise reject an empty string.
+    [ValidateNever]
     public string OriginalBillingAccountId { get; set; } = "";
+
+    [ValidateNever]
     public string ETag { get; set; } = "";
 
     public InvoiceConfiguration Build(
