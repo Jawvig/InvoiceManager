@@ -259,10 +259,14 @@ environment-aware (it exits non-zero when the flag is absent), and optionally
 folder described below.
 
 Seed values include `InvoiceManager__Seed__DriveId`,
+`InvoiceManager__Seed__DriveName`, `InvoiceManager__Seed__Microsoft365FolderItemId`,
+`InvoiceManager__Seed__AzureFolderItemId`,
+`InvoiceManager__Seed__Microsoft365TestFolderItemId`,
+`InvoiceManager__Seed__AzureTestFolderItemId`,
 `InvoiceManager__Seed__BillingAccountId`, and
-`InvoiceManager__Seed__AzureBillingAccountId`. For local development, sign in to
-the Azure CLI as the user that owns the target OneDrive and has billing-account
-access, then run:
+`InvoiceManager__Seed__AzureBillingAccountId` — eight values in total. For local
+development, sign in to the Azure CLI as the user that owns the target OneDrive
+and has billing-account access, then run:
 
 ```powershell
 ./tools/dev-setup/Set-SeedEnvironment.ps1
@@ -270,19 +274,23 @@ access, then run:
 
 The script uses Microsoft Graph PowerShell to discover the signed-in user's
 default OneDrive and installs the `Microsoft.Graph.Authentication` module at
-CurrentUser scope when it is not already available. It uses the Azure Billing
-`billingAccounts` REST endpoint and requires exactly one account of each expected
-type, mapping the `Business` account to
+CurrentUser scope when it is not already available. It resolves the stable Graph
+item IDs for the `Bills/Microsoft 365`, `Bills/Azure + Visual Studio`,
+`Test/Bills/Microsoft 365`, and `Test/Bills/Azure + Visual Studio` folders (which
+must already exist in the target OneDrive) via path-based lookup. It uses the
+Azure Billing `billingAccounts` REST endpoint and requires exactly one account of
+each expected type, mapping the `Business` account to
 `InvoiceManager__Seed__BillingAccountId` and the `Individual` account to
-`InvoiceManager__Seed__AzureBillingAccountId`. It sets all three values in the
+`InvoiceManager__Seed__AzureBillingAccountId`. It sets all eight values in the
 current process and persistent User environment. Authentication prompts may
 appear. Restart Visual Studio afterward so its AppHost process inherits the new
 User values.
 
-- **Test folder isolation**: when the environment is `test`, every configuration's
-  OneDrive destination is nested under a single root `Test` folder (inserted after
-  `root:/`, mirroring the production tree inside it) so test downloads never
-  collide with production files.
+- **Test folder isolation**: test configurations address the distinct
+  `Test/Bills/...` folder item IDs resolved above (real, separate Graph items from
+  their production `Bills/...` counterparts), not a `Test` prefix inserted into a
+  shared path at request time — so test downloads never collide with production
+  files even though item-ID addressing has no path to prefix.
 - **`-ClearDatabase`**: deletes all items from the Cosmos containers (data-plane
   deletes only) before seeding, for a clean re-seed. It is **refused against
   `production`** unless the seeder is also passed `--force`.

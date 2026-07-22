@@ -3,11 +3,12 @@ namespace InvoiceManager.Core.Integrations;
 /// <summary>
 /// A request to upload an invoice PDF to OneDrive.
 /// </summary>
-/// <param name="DestinationPath">The Graph API path of the destination folder (from the invoice configuration).</param>
+/// <param name="Destination">The invoice configuration's OneDrive folder.</param>
 /// <param name="FileName">The generated filename, including extension.</param>
 /// <param name="Content">The PDF bytes to upload.</param>
 public sealed record OneDriveUploadRequest(OneDriveFolder Destination, string FileName, byte[] Content)
 {
+    /// <summary>The Graph API path of the destination folder, derived from <see cref="Destination"/>.</summary>
     public string DestinationPath => Destination.GraphPath;
 }
 
@@ -15,10 +16,11 @@ public sealed record OneDriveUploadRequest(OneDriveFolder Destination, string Fi
 /// A request to search OneDrive for a file that already satisfies the expected
 /// invoice criteria (reconciliation).
 /// </summary>
-/// <param name="DestinationPath">The Graph API path of the folder to search (from the invoice configuration).</param>
+/// <param name="Destination">The invoice configuration's OneDrive folder.</param>
 /// <param name="Criteria">The date/amount/currency tolerances plus expected description used to match a file.</param>
 public sealed record OneDriveSearchRequest(OneDriveFolder Destination, OneDriveSearchCriteria Criteria)
 {
+    /// <summary>The Graph API path of the folder to search, derived from <see cref="Destination"/>.</summary>
     public string DestinationPath => Destination.GraphPath;
 }
 

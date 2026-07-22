@@ -30,9 +30,12 @@ internal sealed record SeedAmountMatchingCriteria(
 
 /// <summary>
 /// The seed JSON shape for a OneDrive folder. <see cref="DriveId"/> and
-/// <see cref="FolderItemId"/> are typically placeholder tokens (e.g.
-/// <c>REPLACE_WITH_BILLS_FOLDER_ITEM_ID</c>) that a human fills in as a one-time
-/// manual step, since stable item IDs cannot be derived from a path.
+/// <see cref="FolderItemId"/> are placeholder tokens (e.g.
+/// <c>REPLACE_WITH_MICROSOFT365_FOLDER_ITEM_ID</c>) substituted at seed time from
+/// the <c>InvoiceManager__Seed__*</c> environment variables — resolved
+/// automatically from the target folders' paths by
+/// <c>tools/dev-setup/Set-SeedEnvironment.ps1</c> via Microsoft Graph, not
+/// gathered manually.
 /// </summary>
 internal sealed record SeedOneDriveFolder(
     [property: JsonRequired] string DriveId,
