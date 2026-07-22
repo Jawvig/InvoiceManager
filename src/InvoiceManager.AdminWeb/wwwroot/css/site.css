@@ -357,19 +357,15 @@ a.secondary-action.disabled {
   font-weight: 600;
 }
 
-.info-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.1rem;
-  height: 1.1rem;
-  border-radius: 50%;
-  border: 1px solid var(--line);
+.billing-id-details {
+  font-size: .8rem;
   color: var(--muted);
-  font-size: .7rem;
-  font-weight: 700;
-  font-style: normal;
-  cursor: help;
+}
+
+.billing-id-details summary {
+  display: inline;
+  cursor: pointer;
+  color: var(--primary);
 }
 
 .form-grid fieldset {

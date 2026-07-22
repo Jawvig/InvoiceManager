@@ -41,7 +41,10 @@
                             <dt>Billing account</dt>
                             <dd>
                                 @(Model.BillingAccountLabels.GetValueOrDefault(billing.BillingAccountId, billing.BillingAccountId))
-                                <i class="info-icon" title="Billing account ID: @billing.BillingAccountId" aria-label="Billing account ID: @billing.BillingAccountId">i</i>
+                                <details class="billing-id-details">
+                                    <summary>Show ID</summary>
+                                    @billing.BillingAccountId
+                                </details>
                             </dd>
                         </div>
                         break;

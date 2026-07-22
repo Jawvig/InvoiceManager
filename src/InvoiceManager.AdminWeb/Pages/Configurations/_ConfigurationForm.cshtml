@@ -31,7 +31,22 @@
             </select>
         }
     </label>
-    <label id="configuration-id-field" hidden="@(!Model.IsEdit)">Configuration ID <input asp-for="Input.Id" readonly="@Model.IsEdit" /></label>
+    @if (Model.IsEdit)
+    {
+        @* Not editable on Edit, so it shouldn't look like an editable text box — show it the
+           same label/value way the main configuration list does instead of a readonly input. *@
+        <dl id="configuration-id-field" class="field-list">
+            <div>
+                <dt>Configuration ID</dt>
+                <dd>@Model.Input.Id</dd>
+            </div>
+        </dl>
+        <input asp-for="Input.Id" type="hidden" />
+    }
+    else
+    {
+        <label id="configuration-id-field" hidden>Configuration ID <input asp-for="Input.Id" /></label>
+    }
 
     <fieldset id="common-details" hidden="@(!Model.IsEdit)">
         <legend>Common details</legend>
