@@ -15,7 +15,7 @@
       "driveId": "REPLACE_WITH_DRIVE_ID",
       "driveName": "REPLACE_WITH_DRIVE_NAME",
       "folderItemId": "REPLACE_WITH_MICROSOFT365_FOLDER_ITEM_ID",
-      "folderPath": "/drives/REPLACE_WITH_DRIVE_ID/root:/Bills/Microsoft 365"
+      "folderPath": "/Bills/Microsoft 365"
     },
     "startDate": "2026-05-10",
     "billingAccountId": "REPLACE_WITH_BILLING_ACCOUNT_ID",
@@ -32,7 +32,7 @@
       "driveId": "REPLACE_WITH_DRIVE_ID",
       "driveName": "REPLACE_WITH_DRIVE_NAME",
       "folderItemId": "REPLACE_WITH_MICROSOFT365_FOLDER_ITEM_ID",
-      "folderPath": "/drives/REPLACE_WITH_DRIVE_ID/root:/Bills/Microsoft 365"
+      "folderPath": "/Bills/Microsoft 365"
     },
     "startDate": "2026-05-21",
     "billingAccountId": "REPLACE_WITH_BILLING_ACCOUNT_ID",
@@ -54,7 +54,7 @@
       "driveId": "REPLACE_WITH_DRIVE_ID",
       "driveName": "REPLACE_WITH_DRIVE_NAME",
       "folderItemId": "REPLACE_WITH_AZURE_FOLDER_ITEM_ID",
-      "folderPath": "/drives/REPLACE_WITH_DRIVE_ID/root:/Bills/Azure + Visual Studio"
+      "folderPath": "/Bills/Azure + Visual Studio"
     },
     "startDate": "2026-06-09",
     "billingAccountId": "REPLACE_WITH_AZURE_BILLING_ACCOUNT_ID",

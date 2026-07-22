@@ -62,7 +62,7 @@ var json = await File.ReadAllTextAsync(seedFilePath);
 // OneDrive drive id lives inside a path, the M365 billing account id is a whole
 // field). Substitute the real values from configuration before deserializing so a
 // single string replace covers both the embedded and standalone cases.
-json = ReplaceSeedTokens(json, configuration);
+json = ReplaceSeedTokens(json, configuration, isTest);
 
 var records = JsonSerializer.Deserialize<List<SeedInvoiceConfigurationRecord>>(
     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
@@ -112,12 +112,26 @@ catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forb
 
 Console.WriteLine("Seeding complete.");
 
-static string ReplaceSeedTokens(string json, IConfiguration configuration)
+static string ReplaceSeedTokens(string json, IConfiguration configuration, bool isTest)
 {
     // token in seed file  ->  config key (env var: InvoiceManager__Seed__<name>)
+    //
+    // The two folder-item-id tokens resolve to different config keys depending on
+    // environment: production configurations must address the real production
+    // "/Bills/<name>" folders, while test configurations must address a separate,
+    // isolated "/Test/Bills/<name>" folder tree in the same drive (a real, distinct
+    // Graph item, not a cosmetic path prefix) so test runs never read or write the
+    // production files that live at a different, unrelated item id.
     var tokens = new (string Token, string ConfigKey, string EnvVar)[]
     {
         ("REPLACE_WITH_DRIVE_ID", "InvoiceManager:Seed:DriveId", "InvoiceManager__Seed__DriveId"),
+        ("REPLACE_WITH_DRIVE_NAME", "InvoiceManager:Seed:DriveName", "InvoiceManager__Seed__DriveName"),
+        ("REPLACE_WITH_MICROSOFT365_FOLDER_ITEM_ID",
+            isTest ? "InvoiceManager:Seed:Microsoft365TestFolderItemId" : "InvoiceManager:Seed:Microsoft365FolderItemId",
+            isTest ? "InvoiceManager__Seed__Microsoft365TestFolderItemId" : "InvoiceManager__Seed__Microsoft365FolderItemId"),
+        ("REPLACE_WITH_AZURE_FOLDER_ITEM_ID",
+            isTest ? "InvoiceManager:Seed:AzureTestFolderItemId" : "InvoiceManager:Seed:AzureFolderItemId",
+            isTest ? "InvoiceManager__Seed__AzureTestFolderItemId" : "InvoiceManager__Seed__AzureFolderItemId"),
         ("REPLACE_WITH_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:BillingAccountId", "InvoiceManager__Seed__BillingAccountId"),
         ("REPLACE_WITH_AZURE_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:AzureBillingAccountId", "InvoiceManager__Seed__AzureBillingAccountId"),
     };
@@ -215,34 +229,13 @@ static IntegrationConfiguration ToIntegrationConfiguration(SeedInvoiceConfigurat
         var other => throw new InvalidOperationException($"Unrecognised integration type '{other}' in seed file."),
     };
 
-// driveId/folderItemId come from their own (placeholder-token) fields as-is; for the
-// test environment, the display-only folderPath is nested under a single root "Test"
-// folder (inserted immediately after the drive "root:/" marker), mirroring the
-// production tree inside it so test downloads never collide with production files.
+// driveId comes from its own (placeholder-token) field; folderItemId was already resolved
+// to the environment-correct real item (production vs. the separate Test/Bills/<name> tree)
+// by ReplaceSeedTokens above. Only the display-only folderPath needs an explicit "/Test"
+// prefix here, purely so an operator reading the stored configuration can see which
+// environment it belongs to — it plays no part in addressing the folder on Graph.
 static OneDriveFolder ToOneDriveFolder(SeedOneDriveFolder folder, bool isTest) =>
-    new(folder.DriveId, folder.DriveName, folder.FolderItemId, InjectEnvironmentFolder(folder.FolderPath, isTest));
-
-static string InjectEnvironmentFolder(string folderPath, bool isTest)
-{
-    if (!isTest)
-    {
-        return folderPath;
-    }
-
-    const string rootMarker = "root:/";
-    var markerIndex = folderPath.IndexOf(rootMarker, StringComparison.Ordinal);
-    if (markerIndex < 0)
-    {
-        // Unrecognised path shape; leave it untouched rather than corrupt it.
-        return folderPath;
-    }
-
-    var insertionPoint = markerIndex + rootMarker.Length;
-    return string.Concat(
-        folderPath.AsSpan(0, insertionPoint),
-        "Test/",
-        folderPath.AsSpan(insertionPoint));
-}
+    new(folder.DriveId, folder.DriveName, folder.FolderItemId, isTest ? $"/Test{folder.FolderPath}" : folder.FolderPath);
 
 static (bool EnsureSchema, bool ClearDatabase, bool Force, string? Environment, string[] Positional) ParseArgs(string[] args)
 {
