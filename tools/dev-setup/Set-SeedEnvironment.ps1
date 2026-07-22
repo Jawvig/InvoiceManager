@@ -126,7 +126,10 @@ function Get-OneDriveFolderItemId {
         [string] $Path
     )
 
-    $encodedPath = [Uri]::EscapeDataString($Path)
+    # Escape each path segment individually so structural "/" separators survive —
+    # escaping the whole path (e.g. via [Uri]::EscapeDataString($Path)) turns them into
+    # "%2F", which Graph's root:/{path} addressing does not treat as a separator.
+    $encodedPath = ($Path -split '/' | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'
     try {
         $item = Invoke-MgGraphRequest `
             -Method GET `
