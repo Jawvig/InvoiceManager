@@ -247,20 +247,20 @@ public sealed class GraphOneDriveIntegrationTests
     }
 
     [Fact]
-    public async Task SearchAsync_ReturnsNoMatch_WhenDestinationFolderDoesNotExist()
+    public async Task SearchAsync_Throws_WhenDestinationFolderDoesNotExist()
     {
-        // Graph returns 404 itemNotFound when the folder has never been created. The upload
-        // path creates missing folders on demand, so a missing folder is "nothing to
-        // reconcile against yet", not a retrieval failure.
+        // Destinations are addressed by stable item ID, so a 404 means the configured folder
+        // was deleted or moved after the ID was captured — ID-based addressing cannot recreate
+        // it, unlike the old path-based behavior. This must surface as a retrieval failure, not
+        // be swallowed as "no match".
         var handler = new StubHttpMessageHandler((_, _) => Json(
             HttpStatusCode.NotFound,
             """{ "error": { "code": "itemNotFound", "message": "The resource could not be found." } }"""));
         using var httpClient = new HttpClient(handler);
         var integration = Build(httpClient);
 
-        var result = await integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria()));
-
-        Assert.True(result is NoOneDriveMatch, $"Expected NoOneDriveMatch but got {result}.");
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria())));
     }
 
     [Fact]
