@@ -16,9 +16,10 @@ public sealed class IndexModel(
     public string? StatusMessage { get; private set; }
     public bool EditingEnabled => HasWorkflowAuthorization;
 
-    // Billing account id -> friendly label ("Display name (id)"), so the list can show a name
-    // instead of a raw ID. Best-effort: falls back to displaying the raw ID (via
-    // GetValueOrDefault in the view) if discovery fails or an account isn't found.
+    // Billing account id -> display name only (the ID itself is shown separately, behind a
+    // "Show ID" disclosure, rather than baked into this label). Best-effort: falls back to
+    // displaying the raw ID (via GetValueOrDefault in the view) if discovery fails or an
+    // account isn't found.
     public IReadOnlyDictionary<string, string> BillingAccountLabels { get; private set; } =
         new Dictionary<string, string>();
 
@@ -57,6 +58,18 @@ public sealed class IndexModel(
         return RedirectToPage();
     }
 
+    // MicrosoftResourceDiscovery.ListBillingAccountsAsync builds Label as "DisplayName (id)"
+    // (or just "id" when there's no display name) for use in the Edit form's account picker,
+    // where showing the id disambiguates same-named accounts. This list instead shows the id
+    // separately behind a "Show ID" disclosure, so strip the "(id)" suffix back off here.
+    private static string StripTrailingId(string label, string id)
+    {
+        var suffix = $" ({id})";
+        return label.EndsWith(suffix, StringComparison.Ordinal)
+            ? label[..^suffix.Length]
+            : label;
+    }
+
     private async Task LoadAsync()
     {
         Configurations = await service.ListAsync(HttpContext.RequestAborted);
@@ -67,7 +80,7 @@ public sealed class IndexModel(
             try
             {
                 var accounts = await discovery.ListBillingAccountsAsync(HttpContext.RequestAborted);
-                BillingAccountLabels = accounts.ToDictionary(a => a.Id, a => a.Label);
+                BillingAccountLabels = accounts.ToDictionary(a => a.Id, a => StripTrailingId(a.Label, a.Id));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

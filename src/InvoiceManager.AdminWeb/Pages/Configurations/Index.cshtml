@@ -40,10 +40,9 @@
                         <div>
                             <dt>Billing account</dt>
                             <dd>
-                                @(Model.BillingAccountLabels.GetValueOrDefault(billing.BillingAccountId, billing.BillingAccountId))
                                 <details class="billing-id-details">
-                                    <summary>Show ID</summary>
-                                    @billing.BillingAccountId
+                                    <summary>@(Model.BillingAccountLabels.GetValueOrDefault(billing.BillingAccountId, billing.BillingAccountId)) <span class="show-id-toggle">Show ID</span></summary>
+                                    <span class="billing-id-value">@billing.BillingAccountId</span>
                                 </details>
                             </dd>
                         </div>

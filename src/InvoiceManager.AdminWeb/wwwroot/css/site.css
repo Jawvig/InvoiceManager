@@ -357,15 +357,28 @@ a.secondary-action.disabled {
   font-weight: 600;
 }
 
-.billing-id-details {
-  font-size: .8rem;
-  color: var(--muted);
+.billing-id-details summary {
+  cursor: pointer;
+  list-style: none;
 }
 
-.billing-id-details summary {
-  display: inline;
-  cursor: pointer;
+.billing-id-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.billing-id-details .show-id-toggle {
+  margin-left: .35rem;
+  font-size: .8rem;
+  font-weight: 500;
   color: var(--primary);
+}
+
+.billing-id-details .billing-id-value {
+  display: block;
+  margin-top: .25rem;
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .form-grid fieldset {
