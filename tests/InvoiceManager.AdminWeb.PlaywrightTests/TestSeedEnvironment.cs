@@ -14,6 +14,9 @@ internal static class TestSeedEnvironment
     internal static void Initialize()
     {
         SetIfMissing("InvoiceManager__Seed__DriveId", "integration-test-drive-id");
+        SetIfMissing("InvoiceManager__Seed__DriveName", "integration-test-drive-name");
+        SetIfMissing("InvoiceManager__Seed__Microsoft365TestFolderItemId", "integration-test-m365-folder-id");
+        SetIfMissing("InvoiceManager__Seed__AzureTestFolderItemId", "integration-test-azure-folder-id");
         SetIfMissing("InvoiceManager__Seed__BillingAccountId", "integration-test-billing-account");
         SetIfMissing("InvoiceManager__Seed__AzureBillingAccountId", "integration-test-azure-billing-account");
     }
