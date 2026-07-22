@@ -1,12 +1,14 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using InvoiceManager.Core;
 using InvoiceManager.Infrastructure.Http;
 using Microsoft.Extensions.Options;
 
 namespace InvoiceManager.Infrastructure.MicrosoftAuthorization;
 
-public sealed record BillingAccountChoice(string Id, string Label, string AccountType);
+public sealed record BillingAccountChoice(string Id, string DisplayName, string AccountType);
 
 /// <summary>A OneDrive drive belonging to the workflow account, as returned by <c>GET /me/drives</c>.</summary>
 public sealed record OneDriveDriveChoice(string Id, string Name);
@@ -36,6 +38,15 @@ public interface IMicrosoftResourceDiscovery
     /// </summary>
     Task<IReadOnlyList<OneDriveFolderEntry>> ListFolderChildrenAsync(
         string driveId, string? folderItemId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies that <paramref name="folderItemId"/> is a real, currently-existing folder in
+    /// <paramref name="driveId"/> that the workflow account can access, resolving its
+    /// authoritative drive name and full path via Graph rather than trusting posted display
+    /// values. Returns <c>null</c> when the drive/item doesn't exist or isn't a folder.
+    /// </summary>
+    Task<OneDriveFolder?> GetFolderAsync(
+        string driveId, string folderItemId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Discovers billing accounts using the captured workflow account.</summary>
@@ -68,14 +79,11 @@ public sealed class MicrosoftResourceDiscovery(
                 var id = account.Name ?? LastSegment(account.Id);
                 if (string.IsNullOrWhiteSpace(id))
                     continue;
-                var label = string.IsNullOrWhiteSpace(account.Properties.DisplayName)
-                    ? id
-                    : $"{account.Properties.DisplayName} ({id})";
-                accounts.Add(new(id, label, account.Properties.AccountType));
+                accounts.Add(new(id, account.Properties.DisplayName ?? "", account.Properties.AccountType));
             }
             next = page?.NextLink;
         }
-        return accounts.OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase).ToList();
+        return accounts.OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Id).ToList();
     }
 
     public async Task<IReadOnlyList<OneDriveDriveChoice>> ListDrivesAsync(
@@ -129,6 +137,46 @@ public sealed class MicrosoftResourceDiscovery(
         return folders.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    public async Task<OneDriveFolder?> GetFolderAsync(
+        string driveId, string folderItemId, CancellationToken cancellationToken = default)
+    {
+        var token = await tokenProvider.AcquireTokenAsync([GraphScope], cancellationToken);
+
+        var itemUrl = $"{GraphBaseUrl}/drives/{Uri.EscapeDataString(driveId)}/items/{Uri.EscapeDataString(folderItemId)}" +
+            "?$select=id,name,folder,parentReference";
+        using var itemResponse = await SendAsync(itemUrl, token, cancellationToken);
+        if (itemResponse.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        await itemResponse.EnsureSuccessAsync("Microsoft Graph", "verifying a OneDrive folder selection", cancellationToken);
+        var item = await itemResponse.Content.ReadFromJsonAsync<FolderItemResource>(cancellationToken);
+        if (item?.Folder is null || string.IsNullOrWhiteSpace(item.Id) || string.IsNullOrWhiteSpace(item.Name))
+            return null;
+
+        var driveUrl = $"{GraphBaseUrl}/drives/{Uri.EscapeDataString(driveId)}?$select=name";
+        using var driveResponse = await SendAsync(driveUrl, token, cancellationToken);
+        if (driveResponse.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        await driveResponse.EnsureSuccessAsync("Microsoft Graph", "verifying a OneDrive folder selection", cancellationToken);
+        var drive = await driveResponse.Content.ReadFromJsonAsync<DriveResource>(cancellationToken);
+        var driveName = string.IsNullOrWhiteSpace(drive?.Name) ? "OneDrive" : drive!.Name!;
+
+        var relativePath = ExtractRelativePath(item.ParentReference?.Path);
+        var folderPath = string.IsNullOrEmpty(relativePath) ? item.Name : $"{relativePath}/{item.Name}";
+
+        return new OneDriveFolder(driveId, driveName, item.Id, folderPath);
+    }
+
+    // parentReference.path looks like "/drives/{id}/root:/Bills" (or "/drives/{id}/root:" at
+    // the drive root, with no trailing segment) — strip everything up to and including "root:".
+    private static string ExtractRelativePath(string? graphPath)
+    {
+        if (string.IsNullOrEmpty(graphPath))
+            return "";
+        const string marker = "root:";
+        var index = graphPath.IndexOf(marker, StringComparison.Ordinal);
+        return index < 0 ? "" : graphPath[(index + marker.Length)..].Trim('/');
+    }
+
     private async Task<HttpResponseMessage> SendAsync(string url, string token, CancellationToken cancellationToken)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -153,6 +201,14 @@ public sealed class MicrosoftResourceDiscovery(
         [property: JsonPropertyName("id")] string? Id,
         [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("folder")] object? Folder);
+
+    private sealed record FolderItemResource(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("folder")] object? Folder,
+        [property: JsonPropertyName("parentReference")] ParentReferenceResource? ParentReference);
+    private sealed record ParentReferenceResource(
+        [property: JsonPropertyName("path")] string? Path);
 
     private sealed record BillingAccountPage(
         [property: JsonPropertyName("value")] IReadOnlyList<BillingAccountResource> Value,

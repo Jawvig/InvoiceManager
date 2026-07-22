@@ -30,9 +30,15 @@ public sealed class CreateModel(
         if (!await CanMutateAsync()) return RedirectToPage("Index");
         await LoadDiscoveryAsync(HttpContext.RequestAborted);
         if (!ModelState.IsValid) return Page();
+        var folder = await ResolveFolderAsync(storedFolder: null, HttpContext.RequestAborted);
+        if (folder is null)
+        {
+            ModelState.AddModelError(string.Empty, "Select a OneDrive folder returned by the picker.");
+            return Page();
+        }
         try
         {
-            var configuration = Input.Build(false, BillingAccounts, false);
+            var configuration = Input.Build(false, BillingAccounts, currentBillingAccountId: null, folder);
             await service.CreateAsync(configuration, User.ToConfigurationActor(), HttpContext.RequestAborted);
             TempData["StatusMessage"] = "Inactive configuration draft created.";
             return RedirectToPage("Index");

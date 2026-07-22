@@ -58,18 +58,6 @@ public sealed class IndexModel(
         return RedirectToPage();
     }
 
-    // MicrosoftResourceDiscovery.ListBillingAccountsAsync builds Label as "DisplayName (id)"
-    // (or just "id" when there's no display name) for use in the Edit form's account picker,
-    // where showing the id disambiguates same-named accounts. This list instead shows the id
-    // separately behind a "Show ID" disclosure, so strip the "(id)" suffix back off here.
-    private static string StripTrailingId(string label, string id)
-    {
-        var suffix = $" ({id})";
-        return label.EndsWith(suffix, StringComparison.Ordinal)
-            ? label[..^suffix.Length]
-            : label;
-    }
-
     private async Task LoadAsync()
     {
         Configurations = await service.ListAsync(HttpContext.RequestAborted);
@@ -80,7 +68,8 @@ public sealed class IndexModel(
             try
             {
                 var accounts = await discovery.ListBillingAccountsAsync(HttpContext.RequestAborted);
-                BillingAccountLabels = accounts.ToDictionary(a => a.Id, a => StripTrailingId(a.Label, a.Id));
+                BillingAccountLabels = accounts.ToDictionary(
+                    a => a.Id, a => string.IsNullOrWhiteSpace(a.DisplayName) ? a.Id : a.DisplayName);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

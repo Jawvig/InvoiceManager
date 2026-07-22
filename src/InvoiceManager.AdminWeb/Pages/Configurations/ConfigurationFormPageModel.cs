@@ -89,4 +89,32 @@ public abstract class ConfigurationFormPageModel(IMicrosoftResourceDiscovery dis
             return new JsonResult(new { error = ex.Message }) { StatusCode = StatusCodes.Status502BadGateway };
         }
     }
+
+    /// <summary>
+    /// Resolves the posted OneDrive folder fields into a trusted <see cref="OneDriveFolder"/>.
+    /// The posted fields are hidden inputs populated by the picker, but nothing stops a forged
+    /// request from setting them directly, so they must not be trusted outright. When they
+    /// exactly match <paramref name="storedFolder"/> (Edit, unchanged), the already-validated
+    /// stored value is reused without another Graph call; otherwise the selection is verified
+    /// against Graph, which also supplies the authoritative <c>DriveName</c>/<c>FolderPath</c>
+    /// rather than trusting the posted display strings. Returns <c>null</c> when the posted
+    /// item doesn't resolve to a real, currently-existing folder.
+    /// </summary>
+    protected async Task<OneDriveFolder?> ResolveFolderAsync(
+        OneDriveFolder? storedFolder, CancellationToken cancellationToken)
+    {
+        if (storedFolder is not null &&
+            Input.DriveId == storedFolder.DriveId &&
+            Input.DriveName == storedFolder.DriveName &&
+            Input.FolderItemId == storedFolder.FolderItemId &&
+            Input.FolderPath == storedFolder.FolderPath)
+        {
+            return storedFolder;
+        }
+
+        if (string.IsNullOrWhiteSpace(Input.DriveId) || string.IsNullOrWhiteSpace(Input.FolderItemId))
+            return null;
+
+        return await Discovery.GetFolderAsync(Input.DriveId, Input.FolderItemId, cancellationToken);
+    }
 }

@@ -1,6 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Net.Mail;
-using System.Text.RegularExpressions;
 using InvoiceManager.Core;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
@@ -82,44 +80,35 @@ public sealed class ConfigurationFormInput
     [ValidateNever]
     public string ETag { get; set; } = "";
 
+    // currentBillingAccountId is the server-loaded, already-persisted billing account for this
+    // configuration (null on Create, or for a GraphEmail configuration) — not the posted
+    // OriginalBillingAccountId hidden field, which a forged request could set to match a forged
+    // BillingAccountId and bypass discovery-list validation entirely.
     public InvoiceConfiguration Build(
         bool isActive,
         IReadOnlyList<BillingAccountChoice> billingAccounts,
-        bool allowUnchangedMissingSelections)
+        string? currentBillingAccountId,
+        OneDriveFolder folder)
     {
         if (IntegrationType is null)
             throw new ArgumentException("Select an integration.");
 
-        IntegrationConfiguration integrationConfiguration;
-        if (IntegrationType == InvoiceManager.Core.IntegrationType.GraphEmail)
-        {
-            if (string.IsNullOrWhiteSpace(SenderEmailAddress))
-                throw new ArgumentException("Sender email address is required for Microsoft 365 email invoices.");
-            if (!MailAddress.TryCreate(SenderEmailAddress.Trim(), out _))
-                throw new ArgumentException("Sender email address must be valid.");
-            if (string.IsNullOrWhiteSpace(BodyPattern))
-                throw new ArgumentException("Body pattern is required for Microsoft 365 email invoices.");
-            try
-            {
-                _ = new Regex(BodyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
-            }
-            catch (ArgumentException)
-            {
-                throw new ArgumentException("Body pattern must be a valid regular expression.");
-            }
-            integrationConfiguration = new GraphEmailIntegrationConfiguration(SenderEmailAddress.Trim(), BodyPattern);
-        }
-        else
-        {
-            if (!billingAccounts.Any(x => x.Id == BillingAccountId) &&
-                !(allowUnchangedMissingSelections && BillingAccountId == OriginalBillingAccountId))
-            {
-                throw new ArgumentException("Select a billing account returned by discovery.");
-            }
-            integrationConfiguration = new MicrosoftBillingIntegrationConfiguration(BillingAccountId);
-        }
+        // Email format, regex validity, and most other field-shape checks are not duplicated
+        // here: the candidate is built below and handed to InvoiceConfigurationValidation.Validate,
+        // the same check InvoiceConfigurationService runs, so both paths agree by construction.
+        // Only checks that need data Validate doesn't have access to stay here: discovery-list
+        // membership for BillingAccountId (below), and constructing Money at all (immediately
+        // below) since a bad currency code throws before Validate ever runs.
+        IntegrationConfiguration integrationConfiguration = IntegrationType == InvoiceManager.Core.IntegrationType.GraphEmail
+            ? new GraphEmailIntegrationConfiguration(SenderEmailAddress.Trim(), BodyPattern)
+            : new MicrosoftBillingIntegrationConfiguration(BillingAccountId);
 
-        var folder = new OneDriveFolder(DriveId, DriveName, FolderItemId, FolderPath);
+        if (IntegrationType == InvoiceManager.Core.IntegrationType.MicrosoftBilling &&
+            !billingAccounts.Any(x => x.Id == BillingAccountId) &&
+            !(currentBillingAccountId is not null && BillingAccountId == currentBillingAccountId))
+        {
+            throw new ArgumentException("Select a billing account returned by discovery.");
+        }
 
         Option<AmountMatchingCriteria> amount = Option.None;
         if (HasExpectedAmount)
@@ -136,7 +125,7 @@ public sealed class ConfigurationFormInput
             }
         }
 
-        return new(
+        var configuration = new InvoiceConfiguration(
             new InvoiceConfigurationId(Id),
             integrationConfiguration,
             InvoiceDescription?.Trim() ?? "",
@@ -147,6 +136,12 @@ public sealed class ConfigurationFormInput
             folder,
             StartDate,
             DateToleranceDays);
+
+        var errors = InvoiceConfigurationValidation.Validate(configuration);
+        if (errors.Count > 0)
+            throw new ArgumentException(string.Join(" ", errors));
+
+        return configuration;
     }
 
     public static ConfigurationFormInput From(StoredInvoiceConfiguration stored)

@@ -73,7 +73,7 @@
                 {
                     <option value="@Model.Input.OriginalBillingAccountId">@Model.Input.OriginalBillingAccountId</option>
                 }
-                @foreach (var account in Model.BillingAccounts) { <option value="@account.Id">@account.Label</option> }
+                @foreach (var account in Model.BillingAccounts) { <option value="@account.Id">@(string.IsNullOrWhiteSpace(account.DisplayName) ? account.Id : $"{account.DisplayName} ({account.Id})")</option> }
             </select>
             <span id="billing-account-status" class="status-label"></span>
         </label>

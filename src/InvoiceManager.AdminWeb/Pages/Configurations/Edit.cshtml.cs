@@ -39,10 +39,21 @@ public sealed class EditModel(
         if (currentResult is not StoredInvoiceConfiguration current) return NotFound();
         if (!ModelState.IsValid) return Page();
 
+        var folder = await ResolveFolderAsync(current.Configuration.OneDriveFolder, HttpContext.RequestAborted);
+        if (folder is null)
+        {
+            ModelState.AddModelError(string.Empty, "Select a OneDrive folder returned by the picker.");
+            return Page();
+        }
+        var currentBillingAccountId =
+            current.Configuration.IntegrationConfiguration is MicrosoftBillingIntegrationConfiguration billing
+                ? billing.BillingAccountId
+                : null;
+
         try
         {
             var updated = Input.Build(
-                current.Configuration.IsActive, BillingAccounts, true);
+                current.Configuration.IsActive, BillingAccounts, currentBillingAccountId, folder);
             await service.UpdateAsync(
                 current.Configuration, updated, Input.ETag, User.ToConfigurationActor(), HttpContext.RequestAborted);
             TempData["StatusMessage"] = "Configuration updated. Existing expected records retain their snapshots.";

@@ -1,3 +1,4 @@
+using InvoiceManager.Core;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 
 namespace InvoiceManager.TestSupport;
@@ -7,7 +8,8 @@ namespace InvoiceManager.TestSupport;
 public sealed class FakeMicrosoftResourceDiscovery(
     IReadOnlyList<BillingAccountChoice>? billingAccounts = null,
     IReadOnlyList<OneDriveDriveChoice>? drives = null,
-    IReadOnlyList<OneDriveFolderEntry>? folderChildren = null) : IMicrosoftResourceDiscovery
+    IReadOnlyList<OneDriveFolderEntry>? folderChildren = null,
+    OneDriveFolder? verifiedFolder = null) : IMicrosoftResourceDiscovery
 {
     public Task<IReadOnlyList<BillingAccountChoice>> ListBillingAccountsAsync(
         CancellationToken cancellationToken = default) =>
@@ -20,4 +22,8 @@ public sealed class FakeMicrosoftResourceDiscovery(
     public Task<IReadOnlyList<OneDriveFolderEntry>> ListFolderChildrenAsync(
         string driveId, string? folderItemId, CancellationToken cancellationToken = default) =>
         Task.FromResult(folderChildren ?? []);
+
+    public Task<OneDriveFolder?> GetFolderAsync(
+        string driveId, string folderItemId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(verifiedFolder);
 }
