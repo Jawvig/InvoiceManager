@@ -134,7 +134,7 @@
                 { headers: { Accept: "application/json" } });
             if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
             const folders = await response.json();
-            setStatus(folders.length ? "" : "This folder has no subfolders.");
+            setStatus("");
             for (const folder of folders) {
                 listEl.appendChild(makeRow(folder.name, () => {
                     breadcrumb = [...breadcrumb, { id: folder.id, name: folder.name }];

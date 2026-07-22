@@ -31,7 +31,11 @@ public sealed class EditModel(
     {
         if (!await CanMutateAsync()) return RedirectToPage("Index");
         await LoadDiscoveryAsync(HttpContext.RequestAborted, required: false);
-        var currentResult = await service.GetAsync(new(Input.Id), Input.IntegrationType, HttpContext.RequestAborted);
+        // Edit always posts IntegrationType via a hidden input (see _ConfigurationForm.cshtml),
+        // so it should never actually be null here — but the property is nullable (Create's
+        // "please choose" placeholder), so guard defensively rather than assume.
+        if (Input.IntegrationType is null) return Page();
+        var currentResult = await service.GetAsync(new(Input.Id), Input.IntegrationType.Value, HttpContext.RequestAborted);
         if (currentResult is not StoredInvoiceConfiguration current) return NotFound();
         if (!ModelState.IsValid) return Page();
 

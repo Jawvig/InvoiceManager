@@ -13,9 +13,17 @@ public sealed class ConfigurationFormInput
     [Required, RegularExpression("^[a-z0-9]+(?:-[a-z0-9]+)*$")]
     public string Id { get; set; } = "";
 
+    // Nullable so Create's <select> can start on a genuine "please choose" placeholder rather
+    // than defaulting to MicrosoftBilling — an unselected placeholder that just happens to
+    // match a real value would be indistinguishable from an actual (accidental) choice.
     [Required]
-    public IntegrationType IntegrationType { get; set; } = IntegrationType.MicrosoftBilling;
+    public IntegrationType? IntegrationType { get; set; }
 
+    // Not required: an empty description is a valid, functioning configuration (the
+    // Configuration ID is what's actually unique/required) — see the seeded "azure-billing"
+    // example. [ValidateNever] opts this out of ASP.NET Core's implicit-required validation
+    // for non-nullable reference type properties.
+    [ValidateNever]
     public string InvoiceDescription { get; set; } = "";
 
     [Required]
@@ -50,9 +58,8 @@ public sealed class ConfigurationFormInput
     [Range(0, 365)]
     public int DateToleranceDays { get; set; } = 5;
 
-    // Manual-entry OneDrive folder fields. There is no discovery/picker source for
-    // these in this phase (see MicrosoftResourceDiscovery); an operator fills them
-    // in by hand until the OneDrive File Picker v8 integration replaces this.
+    // Populated by the OneDrive folder picker (see _OneDriveFolderPicker.cshtml /
+    // onedrive-picker.js) via hidden inputs, not typed in directly.
     [Required]
     public string DriveId { get; set; } = "";
 
@@ -80,8 +87,11 @@ public sealed class ConfigurationFormInput
         IReadOnlyList<BillingAccountChoice> billingAccounts,
         bool allowUnchangedMissingSelections)
     {
+        if (IntegrationType is null)
+            throw new ArgumentException("Select an integration.");
+
         IntegrationConfiguration integrationConfiguration;
-        if (IntegrationType == IntegrationType.GraphEmail)
+        if (IntegrationType == InvoiceManager.Core.IntegrationType.GraphEmail)
         {
             if (string.IsNullOrWhiteSpace(SenderEmailAddress))
                 throw new ArgumentException("Sender email address is required for Microsoft 365 email invoices.");

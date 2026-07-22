@@ -30,6 +30,8 @@ if (string.IsNullOrWhiteSpace(environment))
 {
     await Console.Error.WriteLineAsync(
         "The --environment option is required, e.g. --environment test or --environment production.");
+    Console.Out.Flush();
+    Console.Error.Flush();
     Environment.Exit(5);
 }
 
@@ -40,6 +42,8 @@ if (clearDatabase && isProduction && !force)
 {
     await Console.Error.WriteLineAsync(
         "Refusing --clear-database against the production environment. Pass --force to override.");
+    Console.Out.Flush();
+    Console.Error.Flush();
     Environment.Exit(4);
 }
 
@@ -107,6 +111,8 @@ catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forb
     await Console.Error.WriteLineAsync(
         $"Cosmos DB returned 403 Forbidden — the RBAC role assignment may not yet have " +
         $"propagated. ({ex.Message})");
+    Console.Out.Flush();
+    Console.Error.Flush();
     Environment.Exit(2);
 }
 
@@ -136,6 +142,7 @@ static string ReplaceSeedTokens(string json, IConfiguration configuration, bool 
         ("REPLACE_WITH_AZURE_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:AzureBillingAccountId", "InvoiceManager__Seed__AzureBillingAccountId"),
     };
 
+    var required = new List<(string EnvVar, bool IsSet)>();
     var missing = new List<string>();
     foreach (var (token, configKey, envVar) in tokens)
     {
@@ -147,26 +154,36 @@ static string ReplaceSeedTokens(string json, IConfiguration configuration, bool 
         }
 
         var value = configuration[configKey];
-        if (string.IsNullOrWhiteSpace(value))
+        var isSet = !string.IsNullOrWhiteSpace(value);
+        required.Add((envVar, isSet));
+        if (!isSet)
         {
             missing.Add(envVar);
             continue;
         }
 
-        json = json.Replace(token, value, StringComparison.Ordinal);
+        json = json.Replace(token, value!, StringComparison.Ordinal);
     }
 
     if (missing.Count > 0)
     {
+        // List every variable this seed file (for this --environment) needs, not just the
+        // missing ones, so a partially-configured environment doesn't leave the operator
+        // guessing at the full picture — and flush explicitly before Environment.Exit,
+        // since an abrupt process exit can otherwise truncate buffered console output when
+        // this process is launched by a host (e.g. the Aspire AppHost) rather than a
+        // directly-attached terminal.
         Console.Error.WriteLine(
-            "Seed file requires real values that are not configured. Set the following " +
-            "environment variable(s) before seeding:");
-        foreach (var envVar in missing)
+            $"Seed file requires {required.Count} environment variable(s) for --environment " +
+            $"{(isTest ? "test" : "production")}; {missing.Count} of them are not configured:");
+        foreach (var (envVar, isSet) in required)
         {
-            Console.Error.WriteLine($"  {envVar}");
+            Console.Error.WriteLine($"  [{(isSet ? "OK" : "MISSING")}] {envVar}");
         }
         Console.Error.WriteLine(
             "Run tools/dev-setup/Set-SeedEnvironment.ps1 to discover and set the required values.");
+        Console.Out.Flush();
+        Console.Error.Flush();
         Environment.Exit(3);
     }
 

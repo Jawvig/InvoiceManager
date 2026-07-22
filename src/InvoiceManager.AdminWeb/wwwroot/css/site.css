@@ -167,6 +167,13 @@ h1 {
   margin-bottom: 0;
 }
 
+/* asp-validation-summary always renders its wrapping element; ASP.NET Core's own convention
+   is to hide it via this class when there are no errors to show (validation-summary-errors is
+   added instead once there are). Without this rule the summary shows as an empty notice box. */
+.validation-summary-valid {
+  display: none;
+}
+
 .warning {
   border-color: var(--warning-line);
   background: var(--warning-bg);
@@ -218,7 +225,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 24px;
+  margin: 24px 0;
 }
 
 button {
@@ -233,13 +240,38 @@ button:disabled {
   opacity: 0.55;
 }
 
+/* Shared button-like appearance for both real <button> elements and <a> links styled as
+   actions (e.g. "Edit"/"History" on the configuration list) — box-model properties live here,
+   not just on the `button` element selector, so an <a class="primary-action"> renders
+   identically to a <button class="primary-action"> instead of looking like a plain text link. */
+.primary-action,
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 6px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary-action[disabled],
+.secondary-action[disabled],
+a.primary-action.disabled,
+a.secondary-action.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .primary-action {
   border: 1px solid var(--primary);
   background: var(--primary);
   color: #ffffff;
 }
 
-.primary-action:hover:not(:disabled) {
+.primary-action:hover:not(:disabled):not(.disabled) {
   background: var(--primary-hover);
 }
 
@@ -247,6 +279,10 @@ button:disabled {
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink);
+}
+
+.secondary-action:hover:not(:disabled):not(.disabled) {
+  background: var(--page);
 }
 
 @media (max-width: 720px) {
@@ -265,10 +301,69 @@ button:disabled {
   gap: .35rem;
 }
 
+.form-grid label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
 .form-grid input,
 .form-grid select {
   max-width: 38rem;
   padding: .55rem;
+}
+
+.configuration-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 720px) {
+  .configuration-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.configuration-list .status-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-list {
+  display: grid;
+  gap: .6rem;
+  margin: 0 0 1rem;
+  flex-grow: 1;
+}
+
+.field-list dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.field-list dd {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: .1rem 0 0;
+  font-weight: 600;
+}
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 700;
+  font-style: normal;
+  cursor: help;
 }
 
 .form-grid fieldset {

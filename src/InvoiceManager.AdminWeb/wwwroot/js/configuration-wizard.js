@@ -14,6 +14,10 @@
     const emailDetails = document.getElementById("email-details");
     const billingSelect = document.getElementById("Input_BillingAccountId");
     const billingStatus = document.getElementById("billing-account-status");
+    const hasExpectedAmountCheckbox = document.getElementById("Input_HasExpectedAmount");
+    const amountMatchingFields = document.getElementById("amount-matching-fields");
+    const bodyPatternInput = document.getElementById("Input_BodyPattern");
+    const bodyPatternStatus = document.getElementById("body-pattern-status");
 
     let billingAccountsRequested = false;
 
@@ -100,6 +104,35 @@
 
     integrationSelect?.addEventListener("change", () => applyVisibility(true));
     applyVisibility(isEdit);
+
+    // Expected amount / currency / amount tolerance are only meaningful (and only validated
+    // server-side) when "Match expected amount" is checked — hide them otherwise so an
+    // unchecked box can't be paired with stray leftover values.
+    function applyAmountMatchingVisibility() {
+        if (amountMatchingFields) amountMatchingFields.hidden = !hasExpectedAmountCheckbox?.checked;
+    }
+    hasExpectedAmountCheckbox?.addEventListener("change", applyAmountMatchingVisibility);
+    applyAmountMatchingVisibility();
+
+    // Give immediate feedback on an invalid body-pattern regex rather than waiting for a
+    // server round-trip on Save. JavaScript's RegExp syntax isn't identical to .NET's, so this
+    // is a best-effort early warning only — the server-side check in
+    // InvoiceConfigurationValidation.Validate remains authoritative.
+    function validateBodyPattern() {
+        if (!bodyPatternInput || !bodyPatternStatus) return;
+        if (!bodyPatternInput.value) {
+            bodyPatternStatus.textContent = "";
+            return;
+        }
+        try {
+            new RegExp(bodyPatternInput.value);
+            bodyPatternStatus.textContent = "";
+        } catch {
+            bodyPatternStatus.textContent = "This does not look like a valid regular expression.";
+        }
+    }
+    bodyPatternInput?.addEventListener("input", validateBodyPattern);
+    validateBodyPattern();
 
     window.InvoiceManagerConfigurationWizard = { buildHandlerUrl };
 })();

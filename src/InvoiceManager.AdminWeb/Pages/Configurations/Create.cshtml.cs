@@ -17,9 +17,11 @@ public sealed class CreateModel(
     public async Task<IActionResult> OnGetAsync()
     {
         if (!await CanMutateAsync()) return RedirectToPage("Index");
-        Input.Id = InvoiceConfigurationValidation.GenerateSlug(null, Input.IntegrationType);
-        // Billing-account discovery is fetched lazily by configuration-wizard.js once the
-        // Microsoft billing integration is selected, so page render is no longer blocked on it.
+        // The Configuration ID field is hidden until an integration is chosen, and
+        // configuration-wizard.js generates its value from GenerateSlug's JS mirror once the
+        // user picks one — no server-side pre-generation needed. Billing-account discovery is
+        // fetched lazily once the Microsoft billing integration is selected, so page render is
+        // no longer blocked on it either.
         return Page();
     }
 

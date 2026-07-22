@@ -21,23 +21,54 @@
         var configuration = item.Configuration;
         <section class="status-panel">
             <h2>@(string.IsNullOrWhiteSpace(configuration.InvoiceDescription) ? configuration.Id.Value : configuration.InvoiceDescription)</h2>
-            <p><strong>@configuration.IntegrationType</strong> · @(configuration.IsActive ? "Active" : "Inactive") · @configuration.Id</p>
-            <p>@configuration.OneDriveFolder.DriveName · @configuration.OneDriveFolder.FolderPath · @(configuration.IntegrationConfiguration switch {
-                InvoiceManager.Core.GraphEmailIntegrationConfiguration email => $"Sender {email.SenderEmailAddress}",
-                InvoiceManager.Core.MicrosoftBillingIntegrationConfiguration billing => $"Billing account {billing.BillingAccountId}",
-                _ => "",
-            })</p>
+            <dl class="field-list">
+                <div>
+                    <dt>Configuration ID</dt>
+                    <dd>@configuration.Id</dd>
+                </div>
+                <div>
+                    <dt>Integration</dt>
+                    <dd>@(configuration.IntegrationType == InvoiceManager.Core.IntegrationType.MicrosoftBilling ? "Microsoft billing" : "Microsoft 365 email")</dd>
+                </div>
+                <div>
+                    <dt>Status</dt>
+                    <dd>@(configuration.IsActive ? "Active" : "Inactive")</dd>
+                </div>
+                @switch (configuration.IntegrationConfiguration)
+                {
+                    case InvoiceManager.Core.MicrosoftBillingIntegrationConfiguration billing:
+                        <div>
+                            <dt>Billing account</dt>
+                            <dd>
+                                @(Model.BillingAccountLabels.GetValueOrDefault(billing.BillingAccountId, billing.BillingAccountId))
+                                <i class="info-icon" title="Billing account ID: @billing.BillingAccountId" aria-label="Billing account ID: @billing.BillingAccountId">i</i>
+                            </dd>
+                        </div>
+                        break;
+                    case InvoiceManager.Core.GraphEmailIntegrationConfiguration email:
+                        <div>
+                            <dt>Sender</dt>
+                            <dd>@email.SenderEmailAddress</dd>
+                        </div>
+                        break;
+                }
+                <div>
+                    <dt>OneDrive folder</dt>
+                    <dd>@configuration.OneDriveFolder.DriveName · @configuration.OneDriveFolder.FolderPath</dd>
+                </div>
+            </dl>
             <div class="actions">
-                <a asp-page="History" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType">History</a>
+                <a asp-page="History" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType" class="secondary-action">History</a>
                 @if (Model.EditingEnabled) {
-                    <a asp-page="Edit" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType">Edit</a>
+                    <a asp-page="Edit" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType" class="secondary-action">Edit</a>
                     <form method="post">
                         <input type="hidden" name="id" value="@configuration.Id.Value" /><input type="hidden" name="integrationType" value="@configuration.IntegrationType" />
                         <input type="hidden" name="etag" value="@item.ETag" /><input type="hidden" name="activate" value="@(!configuration.IsActive)" />
-                        <label><input type="checkbox" name="confirmed" value="true" /> Confirm</label>
-                        <button asp-page-handler="SetActive" class="secondary-action">@(configuration.IsActive ? "Deactivate" : "Activate")</button>
+                        <button asp-page-handler="SetActive" class="secondary-action"
+                            title="@(configuration.IsActive ? "Deactivation preserves history; outstanding records will be skipped until reactivated." : "Activation resumes processing on the next scheduled or manual workflow run.")">
+                            @(configuration.IsActive ? "Deactivate" : "Activate")
+                        </button>
                     </form>
-                    @if (configuration.IsActive) { <p class="status-label">Deactivation preserves history; outstanding records will be skipped until reactivated.</p> }
                 }
             </div>
         </section>

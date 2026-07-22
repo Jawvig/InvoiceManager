@@ -8,12 +8,19 @@ namespace InvoiceManager.AdminWeb.Pages.Configurations;
 
 public sealed class IndexModel(
     InvoiceConfigurationService service,
-    IMicrosoftAuthorizationStore authorizationStore) : PageModel
+    IMicrosoftAuthorizationStore authorizationStore,
+    IMicrosoftResourceDiscovery discovery) : PageModel
 {
     public IReadOnlyList<StoredInvoiceConfiguration> Configurations { get; private set; } = [];
     public bool HasWorkflowAuthorization { get; private set; }
     public string? StatusMessage { get; private set; }
     public bool EditingEnabled => HasWorkflowAuthorization;
+
+    // Billing account id -> friendly label ("Display name (id)"), so the list can show a name
+    // instead of a raw ID. Best-effort: falls back to displaying the raw ID (via
+    // GetValueOrDefault in the view) if discovery fails or an account isn't found.
+    public IReadOnlyDictionary<string, string> BillingAccountLabels { get; private set; } =
+        new Dictionary<string, string>();
 
     public async Task OnGetAsync()
     {
@@ -25,14 +32,8 @@ public sealed class IndexModel(
         string id,
         IntegrationType integrationType,
         string etag,
-        bool activate,
-        bool confirmed)
+        bool activate)
     {
-        if (!confirmed)
-        {
-            TempData["StatusMessage"] = "Confirm the activation-state change before continuing.";
-            return RedirectToPage();
-        }
         if (!await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted))
         {
             TempData["StatusMessage"] = "Capture workflow authorization before changing configuration state.";
@@ -60,5 +61,18 @@ public sealed class IndexModel(
     {
         Configurations = await service.ListAsync(HttpContext.RequestAborted);
         HasWorkflowAuthorization = await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted);
+
+        if (Configurations.Any(c => c.Configuration.IntegrationType == IntegrationType.MicrosoftBilling))
+        {
+            try
+            {
+                var accounts = await discovery.ListBillingAccountsAsync(HttpContext.RequestAborted);
+                BillingAccountLabels = accounts.ToDictionary(a => a.Id, a => a.Label);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Best-effort only: the list still renders with raw billing account IDs.
+            }
+        }
     }
 }
