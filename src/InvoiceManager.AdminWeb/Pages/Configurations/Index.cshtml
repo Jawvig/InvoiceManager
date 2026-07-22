@@ -63,7 +63,13 @@
                     <a asp-page="Edit" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType" class="secondary-action">Edit</a>
                     <form method="post">
                         <input type="hidden" name="id" value="@configuration.Id.Value" /><input type="hidden" name="integrationType" value="@configuration.IntegrationType" />
-                        <input type="hidden" name="etag" value="@item.ETag" /><input type="hidden" name="activate" value="@(!configuration.IsActive)" />
+                        @* .ToString() is required: Razor applies HTML5 boolean-attribute semantics
+                           (render "value=value" when true, omit the attribute when false) to ANY
+                           attribute whose expression type is bool, not just disabled/checked/etc.
+                           Without it, this posts a literally unparseable "value" string (or nothing
+                           at all) instead of "True"/"False", so `activate` always model-binds to
+                           its bool default (false) regardless of the actual intended direction. *@
+                        <input type="hidden" name="etag" value="@item.ETag" /><input type="hidden" name="activate" value="@((!configuration.IsActive).ToString())" />
                         <button asp-page-handler="SetActive" class="secondary-action"
                             title="@(configuration.IsActive ? "Deactivation preserves history; outstanding records will be skipped until reactivated." : "Activation resumes processing on the next scheduled or manual workflow run.")">
                             @(configuration.IsActive ? "Deactivate" : "Activate")

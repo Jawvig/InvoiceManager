@@ -319,6 +319,12 @@ a.secondary-action.disabled {
   gap: 16px;
 }
 
+.revision-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
 @media (max-width: 720px) {
   .configuration-list {
     grid-template-columns: 1fr;

@@ -17,10 +17,17 @@
         }
         else
         {
+            @* A disabled placeholder is only ever chosen by the browser's default "no option
+               marked selected" fallback if it's the sole disabled option AND nothing else is
+               explicitly selected — per the HTML spec, that fallback actually skips disabled
+               options and lands on the first *enabled* one instead. So an unselected
+               Input.IntegrationType (null) must mark the placeholder "selected" explicitly
+               rather than relying on asp-for's automatic value-matching, or it silently
+               defaults to "Microsoft billing". *@
             <select asp-for="Input.IntegrationType">
-                <option value="" disabled>Please choose an integration…</option>
-                <option value="MicrosoftBilling">Microsoft billing</option>
-                <option value="GraphEmail">Microsoft 365 email</option>
+                <option value="" selected="@(!Model.Input.IntegrationType.HasValue)" disabled>Please choose an integration…</option>
+                <option value="MicrosoftBilling" selected="@(Model.Input.IntegrationType == InvoiceManager.Core.IntegrationType.MicrosoftBilling)">Microsoft billing</option>
+                <option value="GraphEmail" selected="@(Model.Input.IntegrationType == InvoiceManager.Core.IntegrationType.GraphEmail)">Microsoft 365 email</option>
             </select>
         }
     </label>
