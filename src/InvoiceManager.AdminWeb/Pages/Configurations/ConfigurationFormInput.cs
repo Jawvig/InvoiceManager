@@ -39,11 +39,11 @@ public sealed class ConfigurationFormInput
     public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
 
     // BillingAccountId/SenderEmailAddress/BodyPattern are required only for one integration
-    // type each (see Build()'s explicit per-integration checks, which produce the real
-    // user-facing validation messages). [ValidateNever] opts them out of ASP.NET Core's
-    // implicit-required validation for non-nullable reference type properties, which would
-    // otherwise reject them as empty even when the other integration type is selected and
-    // their fieldset is hidden.
+    // type each; Build() constructs the matching IntegrationConfiguration case and hands it to
+    // InvoiceConfigurationValidation.Validate, which produces the real user-facing validation
+    // messages. [ValidateNever] opts them out of ASP.NET Core's implicit-required validation for
+    // non-nullable reference type properties, which would otherwise reject them as empty even
+    // when the other integration type is selected and their fieldset is hidden.
     [ValidateNever]
     public string BillingAccountId { get; set; } = "";
 
