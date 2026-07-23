@@ -68,7 +68,8 @@
                 billingSelect.appendChild(makeOption(previouslySelected, previouslySelected));
             }
             for (const account of accounts) {
-                billingSelect.appendChild(makeOption(account.id, account.label));
+                const label = account.displayName ? `${account.displayName} (${account.id})` : account.id;
+                billingSelect.appendChild(makeOption(account.id, label));
             }
             billingSelect.value = previouslySelected;
 
