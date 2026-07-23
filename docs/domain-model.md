@@ -9,27 +9,32 @@ on a recurring basis.
 
 Expected fields include:
 
-- Integration type.
+- Integration configuration (a union, keyed by integration type — see below).
 - Invoice name.
 - Expected frequency.
 - Expected amount and currency when needed for matching.
-- OneDrive destination.
+- OneDrive folder.
 - FreeAgent matching information.
 - Active/inactive state.
-- Sender email address and a body regular expression, used only by
-  `Microsoft365Email` configurations to find the candidate email (empty and
-  unused for other integration types).
+
+Integration-specific settings are modelled as `IntegrationConfiguration`, a union
+of `MicrosoftBillingIntegrationConfiguration` (a billing account ID) and
+`GraphEmailIntegrationConfiguration` (a sender email address and a body regular
+expression used to find the candidate email). A configuration cannot carry
+fields meaningful only to a different integration type — there is no
+always-present-but-sometimes-empty field. `IntegrationType` is a read-only value
+derived from which union case is present.
 
 The configuration ID and integration type are immutable after creation. New
 configurations are inactive drafts; activation changes state only and never runs
 invoice processing. Deactivation preserves configuration and invoice history and
 causes outstanding records to be skipped until reactivation.
 
-OneDrive destinations normally contain a stable drive ID, folder item ID, and a
-human-readable display path. Legacy path-only destinations remain supported and
-are upgraded to stable IDs on first edit. Configuration mutations append complete,
-immutable audit revisions. Restoring a revision restores editable business fields
-but retains identity, integration type, and the current activation state.
+The OneDrive folder (`OneDriveFolder`) always contains a stable drive ID, drive
+name, folder item ID, and a human-readable folder path — there is no legacy
+path-only mode. Configuration mutations append complete, immutable audit
+revisions. Restoring a revision restores editable business fields but retains
+identity, integration type, and the current activation state.
 
 Edits are future-only. Every newly generated expected invoice snapshots all values
 needed for matching and routing, so existing records never partially combine old
@@ -55,14 +60,16 @@ configuration.
 
 Examples:
 
-- `Azure`
-- `Microsoft365`
+- `MicrosoftBilling`
 - `OpenAI`
-- `Microsoft365Email`
+- `GraphEmail`
 
-`Azure`, `Microsoft365`, and `Microsoft365Email` are implemented
-(`IntegrationType`); `OpenAI` is blocked pending a provider API (see the
-tracking issue referenced from [product.md](product.md#invoice-sources)).
+`MicrosoftBilling` and `GraphEmail` are implemented (`IntegrationType`).
+`MicrosoftBilling` covers both personal (Microsoft 365) and company (Azure)
+billing accounts — they differ only in which billing account ID is configured,
+not in integration behaviour, so they share one integration type. `OpenAI` is
+blocked pending a provider API (see the tracking issue referenced from
+[product.md](product.md#invoice-sources)).
 
 ## Invoice Name
 
@@ -172,7 +179,7 @@ Provider-specific matching behavior is defined in
 ## PDF Field Extraction
 
 For sources that expose no reliable metadata before the invoice PDF is opened
-— currently `Microsoft365Email` — the invoice date and total are read from the
+— currently `GraphEmail` — the invoice date and total are read from the
 PDF's own content via `IInvoicePdfExtractor`, implemented using Azure AI
 Document Intelligence's prebuilt `invoice` model. This is a provider-boundary
 interface like the invoice source and OneDrive integrations: the core workflow

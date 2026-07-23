@@ -209,8 +209,7 @@ public sealed class AdminAuthorizationPageTests
 
     private static AuthorizationModel CreateAuthorizationModel(
         bool hasTokenCache,
-        bool isSignedIn,
-        IExpectedRecordGenerationTrigger? expectedRecordGenerationTrigger = null)
+        bool isSignedIn)
     {
         var model = new AuthorizationModel(
             new FakeMicrosoftAuthorizationStore(hasTokenCache),
@@ -220,8 +219,7 @@ public sealed class AdminAuthorizationPageTests
                 ClientId = "22222222-2222-2222-2222-222222222222",
                 ClientSecret = "client-secret",
                 KeyVaultUri = new Uri("https://example.vault.azure.net/")
-            }),
-            expectedRecordGenerationTrigger ?? new FakeExpectedRecordGenerationTrigger());
+            }));
 
         var identity = isSignedIn
             ? new ClaimsIdentity([new Claim(ClaimTypes.Name, "Admin User")], "Test")
@@ -237,55 +235,6 @@ public sealed class AdminAuthorizationPageTests
         model.TempData = new TempDataDictionary(httpContext, new FakeTempDataProvider());
 
         return model;
-    }
-
-    [Fact]
-    public async Task GenerateExpectedRecords_TriggersFunction_AndSurfacesResultAsStatusMessage()
-    {
-        var trigger = new FakeExpectedRecordGenerationTrigger(
-            new ExpectedRecordGenerationTriggered(207));
-        var model = CreateAuthorizationModel(hasTokenCache: true, isSignedIn: true, trigger);
-
-        var result = await model.OnPostGenerateExpectedRecordsAsync();
-
-        Assert.IsType<Microsoft.AspNetCore.Mvc.RedirectToPageResult>(result);
-        Assert.True(trigger.WasTriggered);
-        Assert.Equal(
-            "Expected record generation was triggered (HTTP 207).",
-            model.TempData["StatusMessage"]);
-    }
-
-    [Fact]
-    public async Task GenerateExpectedRecords_ReportsMissingConfiguration_WhenFunctionsUrlIsNotConfigured()
-    {
-        var trigger = new FakeExpectedRecordGenerationTrigger(
-            new ExpectedRecordGenerationNotConfigured());
-        var model = CreateAuthorizationModel(hasTokenCache: true, isSignedIn: true, trigger);
-
-        await model.OnPostGenerateExpectedRecordsAsync();
-
-        Assert.Equal(
-            "The Functions app URL is not configured, so expected record generation could not be triggered.",
-            model.TempData["StatusMessage"]);
-    }
-
-    private sealed class FakeExpectedRecordGenerationTrigger : IExpectedRecordGenerationTrigger
-    {
-        private readonly ExpectedRecordGenerationTriggerResult result;
-
-        public FakeExpectedRecordGenerationTrigger(
-            ExpectedRecordGenerationTriggerResult? result = null)
-        {
-            this.result = result ?? new ExpectedRecordGenerationTriggered(207);
-        }
-
-        public bool WasTriggered { get; private set; }
-
-        public Task<ExpectedRecordGenerationTriggerResult> TriggerAsync(CancellationToken cancellationToken)
-        {
-            WasTriggered = true;
-            return Task.FromResult(result);
-        }
     }
 
     private sealed class FakeTempDataProvider : ITempDataProvider
@@ -348,7 +297,7 @@ public sealed class AdminAuthorizationPageTests
         response.EnsureSuccessStatusCode();
         Assert.Contains("Test Invoice", body);
         Assert.Contains("Workflow authorization is not captured", body);
-        Assert.Contains("primary-action disabled", body);
+        Assert.Contains("<button type=\"button\" class=\"primary-action\" disabled", body);
     }
 
     private sealed class TestAuthenticationHandler(

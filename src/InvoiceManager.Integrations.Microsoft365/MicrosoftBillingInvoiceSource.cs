@@ -27,8 +27,7 @@ public sealed class MicrosoftBillingInvoiceSource(
     HttpClient httpClient,
     IMicrosoftTokenProvider tokenProvider,
     IOptions<MicrosoftBillingOptions> options,
-    ILogger<MicrosoftBillingInvoiceSource> logger,
-    IntegrationType integrationType) : IInvoiceSourceIntegration
+    ILogger<MicrosoftBillingInvoiceSource> logger) : IInvoiceSourceIntegration
 {
     private const string BillingBaseUrl = "https://management.azure.com/providers/Microsoft.Billing/billingAccounts";
     private const byte ZipMagic0 = 0x50; // 'P'
@@ -36,20 +35,24 @@ public sealed class MicrosoftBillingInvoiceSource(
 
     private readonly MicrosoftBillingOptions settings = options.Value;
 
-    public IntegrationType IntegrationType => integrationType;
+    public IntegrationType IntegrationType => IntegrationType.MicrosoftBilling;
 
     public async Task<InvoiceSourceResult> FindInvoiceAsync(
         InvoiceSearchCriteria criteria,
         CancellationToken cancellationToken = default)
     {
+        if (criteria.IntegrationConfiguration is not MicrosoftBillingIntegrationConfiguration billing)
+            throw new InvalidOperationException(
+                $"{nameof(MicrosoftBillingInvoiceSource)} received criteria for an unsupported integration configuration.");
+
         using var activity = Telemetry.ActivitySource.StartActivity($"find_invoice.{IntegrationType.ToString().ToLowerInvariant()}");
-        activity?.SetTag("invoice.billing_account_id", criteria.BillingAccountId);
+        activity?.SetTag("invoice.billing_account_id", billing.BillingAccountId);
         activity?.SetTag("invoice.expected_date", criteria.ExpectedDate.ToString("O"));
         activity?.SetTag("invoice.date_tolerance_days", criteria.DateToleranceDays);
 
         var token = await tokenProvider.AcquireTokenAsync([settings.Scope], cancellationToken);
 
-        var invoices = await ListInvoicesAsync(criteria, token, cancellationToken);
+        var invoices = await ListInvoicesAsync(billing.BillingAccountId, criteria, token, cancellationToken);
         activity?.SetTag("invoice.candidate_count", invoices.Count);
         if (SelectBestMatch(invoices, criteria) is not BillingInvoice match)
         {
@@ -58,7 +61,7 @@ public sealed class MicrosoftBillingInvoiceSource(
                 "No {IntegrationType} invoice matched criteria for billing account {BillingAccountId} around {ExpectedDate} " +
                 "({CandidateCount} candidate(s) considered).",
                 IntegrationType,
-                criteria.BillingAccountId, criteria.ExpectedDate, invoices.Count);
+                billing.BillingAccountId, criteria.ExpectedDate, invoices.Count);
             return new NoInvoiceMatch();
         }
 
@@ -69,13 +72,13 @@ public sealed class MicrosoftBillingInvoiceSource(
             ?? throw new InvalidOperationException(
                 $"Microsoft 365 invoice '{match.Name}' matched but has no document of kind 'Invoice'.");
 
-        var downloadUrl = await RequestDownloadUrlAsync(criteria.BillingAccountId, match.Name, document.Name, token, cancellationToken);
+        var downloadUrl = await RequestDownloadUrlAsync(billing.BillingAccountId, match.Name, document.Name, token, cancellationToken);
         var payload = await DownloadAsync(downloadUrl, cancellationToken);
         var pdf = ExtractPdf(payload);
         logger.LogInformation(
             "Retrieved {IntegrationType} invoice {InvoiceName} ({PdfBytes} bytes) for billing account {BillingAccountId}.",
             IntegrationType,
-            match.Name, pdf.Length, criteria.BillingAccountId);
+            match.Name, pdf.Length, billing.BillingAccountId);
 
         var details = new ActualInvoiceDetails(
             DateOnly.FromDateTime(match.Properties.InvoiceDate.UtcDateTime),
@@ -86,6 +89,7 @@ public sealed class MicrosoftBillingInvoiceSource(
     }
 
     private async Task<IReadOnlyList<BillingInvoice>> ListInvoicesAsync(
+        string billingAccountId,
         InvoiceSearchCriteria criteria,
         string token,
         CancellationToken cancellationToken)
@@ -98,7 +102,7 @@ public sealed class MicrosoftBillingInvoiceSource(
         var periodEnd = criteria.ExpectedDate.AddDays(criteria.DateToleranceDays);
 
         string? url =
-            $"{BillingBaseUrl}/{Uri.EscapeDataString(criteria.BillingAccountId)}/invoices" +
+            $"{BillingBaseUrl}/{Uri.EscapeDataString(billingAccountId)}/invoices" +
             $"?api-version={settings.ApiVersion}" +
             $"&periodStartDate={periodStart:yyyy-MM-dd}" +
             $"&periodEndDate={periodEnd:yyyy-MM-dd}";

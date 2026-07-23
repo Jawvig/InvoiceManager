@@ -199,9 +199,8 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
             expectedDate,
             state ?? new Expected(),
             new InvoiceProcessingSnapshot(
-                IntegrationType.Microsoft365,
-                "billing-id",
-                "/drives/test/root:/Bills/Test",
+                new MicrosoftBillingIntegrationConfiguration("billing-id"),
+                new OneDriveFolder("test-drive", "Test Drive", "test-folder-item", "/Bills/Test"),
                 invoiceDescription,
                 5,
                 new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0.50m),

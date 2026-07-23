@@ -10,7 +10,8 @@ namespace InvoiceManager.Infrastructure.Tests;
 
 public sealed class GraphOneDriveIntegrationTests
 {
-    private const string Folder = "/drives/drive-1/root:/Bills/Microsoft 365";
+    private static readonly OneDriveFolder Folder =
+        new("drive-1", "Drive One", "folder-1", "/Bills/Microsoft 365");
 
     private static readonly InvoiceFilename Filename = new(
         new InvoiceFilenameSettings { Culture = CultureInfo.GetCultureInfo("en-GB") });
@@ -35,7 +36,7 @@ public sealed class GraphOneDriveIntegrationTests
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Put, request.Method);
         Assert.StartsWith(
-            "https://graph.microsoft.com/v1.0/drives/drive-1/root:/Bills/Microsoft 365/",
+            "https://graph.microsoft.com/v1.0/drives/drive-1/items/folder-1:/",
             Uri.UnescapeDataString(request.RequestUri!.ToString()));
         Assert.EndsWith(":/content", request.RequestUri!.ToString());
     }
@@ -49,7 +50,7 @@ public sealed class GraphOneDriveIntegrationTests
         var tokenProvider = new FakeMicrosoftTokenProvider("graph-token");
         var integration = Build(httpClient, tokenProvider);
 
-        await integration.UploadAsync(new OneDriveUploadRequest("/drives/d/root:/Bills", "x.pdf", [9]));
+        await integration.UploadAsync(new OneDriveUploadRequest(Folder, "x.pdf", [9]));
 
         var request = Assert.Single(handler.Requests);
         Assert.Equal("Bearer graph-token", request.Authorization);
@@ -58,16 +59,16 @@ public sealed class GraphOneDriveIntegrationTests
     }
 
     [Fact]
-    public async Task StableFolderReference_UsesDriveItemEndpoints_ForUploadAndSearch()
+    public async Task UploadAsyncAndSearchAsync_UseStableDriveItemEndpoints()
     {
         var handler = new StubHttpMessageHandler((_, index) => index == 0
             ? Json(HttpStatusCode.Created, """{"id":"file","webUrl":"https://example/file"}""")
             : Json(HttpStatusCode.OK, Children(nextLink: null)));
         var integration = Build(new HttpClient(handler));
-        var destination = new OneDriveDestination("/Bills/Renamed", "drive-id", "folder-id");
+        var folder = new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills/Renamed");
 
-        await integration.UploadAsync(new OneDriveUploadRequest(destination, "invoice.pdf", [1]));
-        await integration.SearchAsync(new OneDriveSearchRequest(destination, Criteria()));
+        await integration.UploadAsync(new OneDriveUploadRequest(folder, "invoice.pdf", [1]));
+        await integration.SearchAsync(new OneDriveSearchRequest(folder, Criteria()));
 
         Assert.Contains("/drives/drive-id/items/folder-id:/invoice.pdf:/content", handler.Requests[0].RequestUri!.ToString());
         Assert.EndsWith("/drives/drive-id/items/folder-id/children", handler.Requests[1].RequestUri!.ToString());
@@ -81,7 +82,7 @@ public sealed class GraphOneDriveIntegrationTests
         var integration = Build(httpClient);
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
-            integration.UploadAsync(new OneDriveUploadRequest("/drives/d/root:/Bills", "x.pdf", [1])));
+            integration.UploadAsync(new OneDriveUploadRequest(Folder, "x.pdf", [1])));
     }
 
     [Fact]
@@ -104,7 +105,7 @@ public sealed class GraphOneDriveIntegrationTests
 
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.EndsWith(":/children", request.RequestUri!.ToString());
+        Assert.EndsWith("/children", request.RequestUri!.ToString());
     }
 
     [Theory]
@@ -246,20 +247,20 @@ public sealed class GraphOneDriveIntegrationTests
     }
 
     [Fact]
-    public async Task SearchAsync_ReturnsNoMatch_WhenDestinationFolderDoesNotExist()
+    public async Task SearchAsync_Throws_WhenDestinationFolderDoesNotExist()
     {
-        // Graph returns 404 itemNotFound when the folder has never been created. The upload
-        // path creates missing folders on demand, so a missing folder is "nothing to
-        // reconcile against yet", not a retrieval failure.
+        // Destinations are addressed by stable item ID, so a 404 means the configured folder
+        // was deleted or moved after the ID was captured — ID-based addressing cannot recreate
+        // it, unlike the old path-based behavior. This must surface as a retrieval failure, not
+        // be swallowed as "no match".
         var handler = new StubHttpMessageHandler((_, _) => Json(
             HttpStatusCode.NotFound,
             """{ "error": { "code": "itemNotFound", "message": "The resource could not be found." } }"""));
         using var httpClient = new HttpClient(handler);
         var integration = Build(httpClient);
 
-        var result = await integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria()));
-
-        Assert.True(result is NoOneDriveMatch, $"Expected NoOneDriveMatch but got {result}.");
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria())));
     }
 
     [Fact]

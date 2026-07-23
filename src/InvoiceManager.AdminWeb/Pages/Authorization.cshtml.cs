@@ -13,16 +13,13 @@ public class AuthorizationModel : PageModel
 {
     private readonly IMicrosoftAuthorizationStore authorizationStore;
     private readonly MicrosoftAuthorizationOptions authorizationOptions;
-    private readonly IExpectedRecordGenerationTrigger expectedRecordGenerationTrigger;
 
     public AuthorizationModel(
         IMicrosoftAuthorizationStore authorizationStore,
-        IOptions<MicrosoftAuthorizationOptions> authorizationOptions,
-        IExpectedRecordGenerationTrigger expectedRecordGenerationTrigger)
+        IOptions<MicrosoftAuthorizationOptions> authorizationOptions)
     {
         this.authorizationStore = authorizationStore;
         this.authorizationOptions = authorizationOptions.Value;
-        this.expectedRecordGenerationTrigger = expectedRecordGenerationTrigger;
     }
 
     public bool IsSignedIn { get; private set; }
@@ -88,21 +85,6 @@ public class AuthorizationModel : PageModel
         return SignOut(
             new AuthenticationProperties { RedirectUri = "/" },
             CookieAuthenticationDefaults.AuthenticationScheme);
-    }
-
-    public async Task<IActionResult> OnPostGenerateExpectedRecordsAsync()
-    {
-        var result = await expectedRecordGenerationTrigger.TriggerAsync(HttpContext.RequestAborted);
-        TempData["StatusMessage"] = result switch
-        {
-            ExpectedRecordGenerationTriggered triggered =>
-                $"Expected record generation was triggered (HTTP {triggered.StatusCode}).",
-            ExpectedRecordGenerationNotConfigured =>
-                "The Functions app URL is not configured, so expected record generation could not be triggered.",
-            ExpectedRecordGenerationFailed failed =>
-                $"Expected record generation could not be triggered. {failed.Message}",
-        };
-        return RedirectToPage();
     }
 
     private async Task LoadPageStateAsync(string? status)

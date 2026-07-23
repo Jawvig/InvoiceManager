@@ -1,43 +1,94 @@
 @model InvoiceManager.AdminWeb.Pages.Configurations.ConfigurationFormPageModel
+@{
+    var isBilling = Model.Input.IntegrationType == InvoiceManager.Core.IntegrationType.MicrosoftBilling;
+    var isEmail = Model.Input.IntegrationType == InvoiceManager.Core.IntegrationType.GraphEmail;
+}
 <div asp-validation-summary="All" class="notice warning"></div>
 @foreach (var warning in Model.DiscoveryWarnings) { <div class="notice warning">@warning</div> }
 <input asp-for="Input.ETag" type="hidden" />
 <input asp-for="Input.OriginalBillingAccountId" type="hidden" />
-<input asp-for="Input.OriginalFolderItemId" type="hidden" />
-<input asp-for="Input.OriginalDriveId" type="hidden" />
-<input asp-for="Input.OriginalDisplayPath" type="hidden" />
 @if (Model.IsEdit) { <input asp-for="Input.IntegrationType" type="hidden" /> }
+<div id="configuration-wizard" data-is-edit="@(Model.IsEdit ? "true" : "false")">
 <div class="form-grid">
-    <label>Configuration ID <input asp-for="Input.Id" readonly="@Model.IsEdit" /></label>
     <label>Integration
-        <select asp-for="Input.IntegrationType" disabled="@Model.IsEdit">
-            <option value="Microsoft365">Microsoft 365 billing</option><option value="Azure">Azure billing</option><option value="Microsoft365Email">Microsoft 365 email</option>
-        </select>
+        @if (Model.IsEdit)
+        {
+            <p class="status-value">@(isBilling ? "Microsoft billing" : "Microsoft 365 email")</p>
+        }
+        else
+        {
+            @* A disabled placeholder is only ever chosen by the browser's default "no option
+               marked selected" fallback if it's the sole disabled option AND nothing else is
+               explicitly selected — per the HTML spec, that fallback actually skips disabled
+               options and lands on the first *enabled* one instead. So an unselected
+               Input.IntegrationType (null) must mark the placeholder "selected" explicitly
+               rather than relying on asp-for's automatic value-matching, or it silently
+               defaults to "Microsoft billing". *@
+            <select asp-for="Input.IntegrationType">
+                <option value="" selected="@(!Model.Input.IntegrationType.HasValue)" disabled>Please choose an integration…</option>
+                <option value="MicrosoftBilling" selected="@(Model.Input.IntegrationType == InvoiceManager.Core.IntegrationType.MicrosoftBilling)">Microsoft billing</option>
+                <option value="GraphEmail" selected="@(Model.Input.IntegrationType == InvoiceManager.Core.IntegrationType.GraphEmail)">Microsoft 365 email</option>
+            </select>
+        }
     </label>
-    <label>Invoice description <input asp-for="Input.InvoiceDescription" /></label>
-    <label>Frequency <select asp-for="Input.Frequency"><option value="Monthly">Monthly</option></select></label>
-    <label><input asp-for="Input.HasExpectedAmount" /> Match expected amount</label>
-    <label>Expected amount <input asp-for="Input.ExpectedAmount" type="number" step="0.01" /></label>
-    <label>ISO 4217 currency <input asp-for="Input.Currency" maxlength="3" /></label>
-    <label>Amount tolerance <input asp-for="Input.AmountTolerance" type="number" min="0" step="0.01" /></label>
-    <label>Default VAT mode <select asp-for="Input.DefaultVatMode"><option value="Inclusive">Inclusive</option><option value="Exclusive">Exclusive</option></select></label>
-    <label>Start date <input asp-for="Input.StartDate" type="date" /></label>
-    <p class="status-label">Changing the start date does not alter records already generated. After the first record, recurrence follows invoice history.</p>
-    <label>Billing account (billing integrations only)
-        <select asp-for="Input.BillingAccountId">
-            @foreach (var account in Model.BillingAccounts) { <option value="@account.Id">@account.Label</option> }
-            @if (Model.ShowMissingBillingWarning) { <option value="@Model.Input.OriginalBillingAccountId">Unavailable: @Model.Input.OriginalBillingAccountId</option> }
-        </select>
-    </label>
-    <label>Sender email address (email integration only) <input asp-for="Input.SenderEmailAddress" type="email" /></label>
-    <label>Email body regex (email integration only) <input asp-for="Input.BodyPattern" /></label>
-    <label>Date tolerance (days) <input asp-for="Input.DateToleranceDays" type="number" min="0" max="365" /></label>
-    <label>Existing OneDrive folder
-        <select asp-for="Input.FolderItemId">
-            @foreach (var folder in Model.Folders) { <option value="@folder.Destination.FolderItemId">@folder.Destination.DisplayPath</option> }
-            @if (Model.ShowMissingFolderWarning) { <option value="@Model.Input.OriginalFolderItemId">Unavailable: @Model.Input.OriginalDisplayPath</option> }
-        </select>
-    </label>
+    @if (Model.IsEdit)
+    {
+        @* Not editable on Edit, so it shouldn't look like an editable text box — show it the
+           same label/value way the main configuration list does instead of a readonly input. *@
+        <dl id="configuration-id-field" class="field-list">
+            <div>
+                <dt>Configuration ID</dt>
+                <dd>@Model.Input.Id</dd>
+            </div>
+        </dl>
+        <input asp-for="Input.Id" type="hidden" />
+    }
+    else
+    {
+        <label id="configuration-id-field" hidden>Configuration ID <input asp-for="Input.Id" /></label>
+    }
+
+    <fieldset id="common-details" hidden="@(!Model.IsEdit)">
+        <legend>Common details</legend>
+        <label>Invoice description <input asp-for="Input.InvoiceDescription" /></label>
+        <label>Frequency <select asp-for="Input.Frequency"><option value="Monthly">Monthly</option></select></label>
+        <label><input asp-for="Input.HasExpectedAmount" /> Match expected amount</label>
+        <div id="amount-matching-fields" hidden="@(!Model.Input.HasExpectedAmount)">
+            <label>Expected amount <input asp-for="Input.ExpectedAmount" type="number" step="0.01" /></label>
+            <label>ISO 4217 currency <input asp-for="Input.Currency" maxlength="3" /></label>
+            <label>Amount tolerance <input asp-for="Input.AmountTolerance" type="number" min="0" step="0.01" /></label>
+        </div>
+        <label>VAT mode <select asp-for="Input.DefaultVatMode"><option value="Inclusive">Inclusive</option><option value="Exclusive">Exclusive</option></select></label>
+        <label>Start date <input asp-for="Input.StartDate" type="date" /></label>
+        <p class="status-label">Changing the start date does not alter records already generated. After the first record, recurrence follows invoice history.</p>
+        <label>Date tolerance (days) <input asp-for="Input.DateToleranceDays" type="number" min="0" max="365" step="1" /></label>
+        <partial name="_OneDriveFolderPicker" />
+    </fieldset>
+
+    <fieldset id="billing-details" data-integration="MicrosoftBilling" hidden="@(Model.IsEdit ? !isBilling : true)">
+        <legend>Microsoft billing details</legend>
+        <label>Billing account
+            <select asp-for="Input.BillingAccountId" id="Input_BillingAccountId">
+                @if (Model.IsEdit && !string.IsNullOrWhiteSpace(Model.Input.OriginalBillingAccountId))
+                {
+                    <option value="@Model.Input.OriginalBillingAccountId">@Model.Input.OriginalBillingAccountId</option>
+                }
+                @foreach (var account in Model.BillingAccounts) { <option value="@account.Id">@(string.IsNullOrWhiteSpace(account.DisplayName) ? account.Id : $"{account.DisplayName} ({account.Id})")</option> }
+            </select>
+            <span id="billing-account-status" class="status-label"></span>
+        </label>
+    </fieldset>
+
+    <fieldset id="email-details" data-integration="GraphEmail" hidden="@(Model.IsEdit ? !isEmail : true)">
+        <legend>Email details</legend>
+        <label>Sender email address <input asp-for="Input.SenderEmailAddress" type="email" /></label>
+        <label>Email body regex <input asp-for="Input.BodyPattern" id="Input_BodyPattern" />
+            <span id="body-pattern-status" class="status-label"></span>
+        </label>
+    </fieldset>
 </div>
-<button type="submit" class="primary-action">Save configuration</button>
-<a asp-page="Index" class="secondary-action">Cancel</a>
+<div class="actions">
+    <button type="submit" class="primary-action">Save configuration</button>
+    <a asp-page="Index" class="secondary-action">Cancel</a>
+</div>
+</div>

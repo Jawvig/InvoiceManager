@@ -44,32 +44,32 @@ Candidate fields:
 
 - `id`
 - `partitionKey`
-- `integrationType`
+- `integrationType` — kept flat for query/index filtering; derived and written
+  from `integrationConfiguration` on save, not read back into the domain type
+- `integrationConfiguration` — a discriminated object (`type` of
+  `microsoftBilling` or `graphEmail`) carrying only the fields relevant to that
+  integration type: `billingAccountId` for `microsoftBilling`;
+  `senderEmailAddress` and `bodyPattern` (a regular expression a candidate
+  email's plain-text body must match) for `graphEmail`
 - `invoiceName`
 - `expectedFrequency`
 - `amountMatchingCriteria` — optional object containing `amount`, `currency`,
   and `amountTolerance`; absent when the provider's amount is unpredictable
 - `defaultVatMode`
 - `isActive`
-- `oneDriveDestination`
-- `billingAccountId`
+- `oneDriveFolder` — a required object containing `driveId`, `driveName`,
+  `folderItemId`, and `folderPath` (no legacy path-only mode)
 - `dateToleranceDays`
-- `senderEmailAddress` — for `Microsoft365Email`, the exact sender a candidate
-  email must come from; empty and unused for other integration types
-- `bodyPattern` — for `Microsoft365Email`, a regular expression a candidate
-  email's plain-text body must match; empty and unused for other integration
-  types
 - `freeAgentMatching`
 - `createdAt`
 - `updatedAt`
 
-`oneDriveDestination` is either the backward-compatible legacy path string or an
-object containing `driveId`, `folderItemId`, and `displayPath`. Live documents
-carry the Cosmos `_etag` through edit/restore forms. Mutations use `If-Match` and
-a same-partition transactional batch to replace the live document and append the
-revision atomically. Revisions have no TTL and contain a unique ID, action,
-timestamp, actor object ID/display name, and the complete resulting snapshot. The
-first mutation of legacy unaudited data also appends a pre-audit baseline.
+Live documents carry the Cosmos `_etag` through edit/restore forms. Mutations
+use `If-Match` and a same-partition transactional batch to replace the live
+document and append the revision atomically. Revisions have no TTL and contain
+a unique ID, action, timestamp, actor object ID/display name, and the complete
+resulting snapshot. The first mutation of legacy unaudited data also appends a
+pre-audit baseline.
 
 Notes:
 

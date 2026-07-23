@@ -4,27 +4,18 @@ namespace InvoiceManager.Core;
 /// A configuration entry describing an invoice that the service expects to
 /// retrieve on a recurring basis.
 /// </summary>
-/// <param name="SenderEmailAddress">
-/// For <see cref="Core.IntegrationType.Microsoft365Email"/>, the exact sender
-/// address a candidate email must come from. Empty and unused for other
-/// integration types.
-/// </param>
-/// <param name="BodyPattern">
-/// For <see cref="Core.IntegrationType.Microsoft365Email"/>, a regular
-/// expression a candidate email's plain-text body must match. Empty and
-/// unused for other integration types.
-/// </param>
 public sealed record InvoiceConfiguration(
     InvoiceConfigurationId Id,
-    IntegrationType IntegrationType,
+    IntegrationConfiguration IntegrationConfiguration,
     string InvoiceDescription,
     InvoiceFrequency Frequency,
     Option<AmountMatchingCriteria> AmountMatchingCriteria,
     VatMode DefaultVatMode,
     bool IsActive,
-    OneDriveDestination OneDriveDestination,
+    OneDriveFolder OneDriveFolder,
     DateOnly StartDate,
-    string BillingAccountId,
-    int DateToleranceDays,
-    string SenderEmailAddress = "",
-    string BodyPattern = "");
+    int DateToleranceDays)
+{
+    /// <summary>The integration type this configuration uses, derived from <see cref="IntegrationConfiguration"/>.</summary>
+    public IntegrationType IntegrationType => IntegrationConfiguration.ToIntegrationType();
+}

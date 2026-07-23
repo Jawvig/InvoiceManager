@@ -94,9 +94,9 @@ public sealed class HistoryModel(
         Add("amount criteria", prior.AmountMatchingCriteria, current.AmountMatchingCriteria);
         Add("VAT mode", prior.DefaultVatMode, current.DefaultVatMode);
         Add("status", prior.IsActive ? "active" : "inactive", current.IsActive ? "active" : "inactive");
-        Add("OneDrive folder", prior.OneDriveDestination.DisplayPath, current.OneDriveDestination.DisplayPath);
+        Add("OneDrive folder", prior.OneDriveFolder.FolderPath, current.OneDriveFolder.FolderPath);
         Add("start date", prior.StartDate, current.StartDate);
-        Add("billing account", prior.BillingAccountId, current.BillingAccountId);
+        Add("integration configuration", prior.IntegrationConfiguration, current.IntegrationConfiguration);
         Add("date tolerance", prior.DateToleranceDays, current.DateToleranceDays);
         return changes.Count == 0 ? "No business-field changes" : string.Join("; ", changes);
 

@@ -112,9 +112,9 @@ public sealed class InvoiceRecordDocumentTests
               "configurationId": "config-1",
               "expectedDate": "2025-07-01",
               "processingSnapshot": {
-                "integrationType": "Microsoft365",
-                "billingAccountId": "billing-id",
-                "oneDriveDestination": "/Bills",
+                "integrationType": "MicrosoftBilling",
+                "integrationConfiguration": { "type": "microsoftBilling", "billingAccountId": "billing-id" },
+                "oneDriveFolder": { "driveId": "d", "driveName": "Drive", "folderItemId": "f", "folderPath": "/Bills" },
                 "invoiceDescription": "Test Invoice",
                 "dateToleranceDays": 5,
                 "amountMatchingCriteria": {
@@ -157,9 +157,19 @@ public sealed class InvoiceRecordDocumentTests
 
     private static InvoiceProcessingSnapshotDocument BuildSnapshot() => new()
     {
-        IntegrationType = "Microsoft365",
-        BillingAccountId = "billing-id",
-        OneDriveDestination = JsonSerializer.SerializeToElement("/Bills"),
+        IntegrationType = "MicrosoftBilling",
+        IntegrationConfiguration = new IntegrationConfigurationDocument
+        {
+            Type = "microsoftBilling",
+            BillingAccountId = "billing-id",
+        },
+        OneDriveFolder = new OneDriveFolderDocument
+        {
+            DriveId = "d",
+            DriveName = "Drive",
+            FolderItemId = "f",
+            FolderPath = "/Bills",
+        },
         InvoiceDescription = "Test Invoice",
         DateToleranceDays = 5,
         AmountMatchingCriteria = new()

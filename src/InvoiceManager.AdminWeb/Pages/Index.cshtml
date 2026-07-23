@@ -16,4 +16,21 @@
     <div class="notice">
         <p>Processing status for current invoices will appear here.</p>
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="notice">@Model.StatusMessage</div>
+    }
+
+    <section class="status-panel">
+        <h2>Invoice workflow</h2>
+        <p class="status-label">
+            Manually run expected record generation and due-invoice processing in the Functions app.
+        </p>
+        <form method="post" class="actions">
+            <button asp-page-handler="GenerateExpectedRecords" class="secondary-action">
+                Generate expected records
+            </button>
+        </form>
+    </section>
 </section>

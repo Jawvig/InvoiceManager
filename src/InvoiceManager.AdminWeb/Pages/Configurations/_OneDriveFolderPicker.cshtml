@@ -1,0 +1,28 @@
+@model InvoiceManager.AdminWeb.Pages.Configurations.ConfigurationFormPageModel
+<input asp-for="Input.DriveId" id="Input_DriveId" type="hidden" />
+<input asp-for="Input.DriveName" id="Input_DriveName" type="hidden" />
+<input asp-for="Input.FolderItemId" id="Input_FolderItemId" type="hidden" />
+<input asp-for="Input.FolderPath" id="Input_FolderPath" type="hidden" />
+<div class="onedrive-picker-field">
+    <span class="status-label">OneDrive destination folder</span>
+    <p id="onedrive-picker-summary" class="onedrive-picker-summary">
+        @(string.IsNullOrWhiteSpace(Model.Input.DriveId)
+            ? "No folder selected"
+            : $"{Model.Input.DriveName} · {Model.Input.FolderPath}")
+    </p>
+    <button type="button" id="onedrive-picker-open" class="secondary-action">Choose folder…</button>
+</div>
+
+<dialog id="onedrive-picker-dialog" class="onedrive-picker-dialog">
+    <div class="onedrive-picker-header">
+        <h2>Choose a OneDrive folder</h2>
+        <button type="button" id="onedrive-picker-close" class="secondary-action" aria-label="Close">Close</button>
+    </div>
+    <nav id="onedrive-picker-breadcrumb" class="onedrive-picker-breadcrumb" aria-label="Folder path"></nav>
+    <div id="onedrive-picker-status" class="status-label" role="status"></div>
+    <ul id="onedrive-picker-list" class="onedrive-picker-list"></ul>
+    <div class="actions">
+        <button type="button" id="onedrive-picker-select" class="primary-action">Select this folder</button>
+        <button type="button" id="onedrive-picker-cancel" class="secondary-action">Cancel</button>
+    </div>
+</dialog>

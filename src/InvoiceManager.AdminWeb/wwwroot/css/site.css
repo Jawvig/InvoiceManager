@@ -167,6 +167,13 @@ h1 {
   margin-bottom: 0;
 }
 
+/* asp-validation-summary always renders its wrapping element; ASP.NET Core's own convention
+   is to hide it via this class when there are no errors to show (validation-summary-errors is
+   added instead once there are). Without this rule the summary shows as an empty notice box. */
+.validation-summary-valid {
+  display: none;
+}
+
 .warning {
   border-color: var(--warning-line);
   background: var(--warning-bg);
@@ -218,7 +225,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 24px;
+  margin: 24px 0;
 }
 
 button {
@@ -233,13 +240,38 @@ button:disabled {
   opacity: 0.55;
 }
 
+/* Shared button-like appearance for both real <button> elements and <a> links styled as
+   actions (e.g. "Edit"/"History" on the configuration list) — box-model properties live here,
+   not just on the `button` element selector, so an <a class="primary-action"> renders
+   identically to a <button class="primary-action"> instead of looking like a plain text link. */
+.primary-action,
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 6px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary-action[disabled],
+.secondary-action[disabled],
+a.primary-action.disabled,
+a.secondary-action.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .primary-action {
   border: 1px solid var(--primary);
   background: var(--primary);
   color: #ffffff;
 }
 
-.primary-action:hover:not(:disabled) {
+.primary-action:hover:not(:disabled):not(.disabled) {
   background: var(--primary-hover);
 }
 
@@ -247,6 +279,10 @@ button:disabled {
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink);
+}
+
+.secondary-action:hover:not(:disabled):not(.disabled) {
+  background: var(--page);
 }
 
 @media (max-width: 720px) {
@@ -265,15 +301,188 @@ button:disabled {
   gap: .35rem;
 }
 
+.form-grid label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
 .form-grid input,
 .form-grid select {
   max-width: 38rem;
   padding: .55rem;
 }
 
-.disabled {
-  opacity: .5;
-  pointer-events: none;
+.configuration-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.revision-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+@media (max-width: 720px) {
+  .configuration-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.configuration-list .status-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-list {
+  display: grid;
+  gap: .6rem;
+  margin: 0 0 1rem;
+  flex-grow: 1;
+}
+
+.field-list dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.field-list dd {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: .1rem 0 0;
+  font-weight: 600;
+}
+
+.billing-id-details summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.billing-id-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.billing-id-details .show-id-toggle {
+  margin-left: .35rem;
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--primary);
+}
+
+.billing-id-details .billing-id-value {
+  display: block;
+  margin-top: .25rem;
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.form-grid fieldset {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 1rem 1.25rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.form-grid legend {
+  padding: 0 .4rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.onedrive-picker-field {
+  display: grid;
+  gap: .35rem;
+}
+
+.onedrive-picker-summary {
+  margin: 0;
+  color: var(--ink);
+}
+
+.onedrive-picker-dialog {
+  width: min(32rem, 92vw);
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.onedrive-picker-dialog::backdrop {
+  background: rgba(0, 0, 0, .45);
+}
+
+.onedrive-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .75rem;
+}
+
+.onedrive-picker-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.onedrive-picker-breadcrumb {
+  margin-bottom: .5rem;
+  color: var(--muted);
+}
+
+.onedrive-picker-breadcrumb button {
+  min-height: unset;
+  padding: 0;
+  border: none;
+  background: none;
+  font-weight: 650;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.onedrive-picker-breadcrumb button:disabled {
+  color: var(--ink);
+  cursor: default;
+  opacity: 1;
+}
+
+.onedrive-picker-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.onedrive-picker-row {
+  display: block;
+  width: 100%;
+  min-height: unset;
+  padding: .55rem .75rem;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.onedrive-picker-list li:last-child .onedrive-picker-row {
+  border-bottom: none;
+}
+
+.onedrive-picker-row:hover {
+  background: var(--warning-bg);
 }
 
 pre {

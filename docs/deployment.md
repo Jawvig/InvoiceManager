@@ -85,7 +85,7 @@ Terraform manages all Azure infrastructure including:
   redirect URIs (local admin plus the deployed Container Apps callback) used for
   delegated authorization capture.
 - **Document Intelligence**: An `azurerm_cognitive_account` (kind
-  `FormRecognizer`) used by the `Microsoft365Email` invoice source to read
+  `FormRecognizer`) used by the `GraphEmail` invoice source to read
   invoice date/total out of PDF attachments via the prebuilt `invoice` model.
   RBAC-only (`local_auth_enabled = false`); the Functions managed identity
   holds `Cognitive Services User` on it, and its endpoint is passed to the
@@ -116,7 +116,7 @@ The initial Terraform configuration creates the Microsoft identity foundation:
 - The tenant-local service principal / Enterprise Application.
 - Required delegated API permissions for Azure Resource Manager
   `user_impersonation` and Microsoft Graph `User.Read` and `Mail.Read` (the
-  latter used by the `Microsoft365Email` invoice source to search the same
+  latter used by the `GraphEmail` invoice source to search the same
   delegated mailbox already used for OneDrive uploads).
 - An environment Key Vault used by the admin website to store its client secret
   and captured Microsoft authorization token-cache material.
@@ -259,10 +259,14 @@ environment-aware (it exits non-zero when the flag is absent), and optionally
 folder described below.
 
 Seed values include `InvoiceManager__Seed__DriveId`,
+`InvoiceManager__Seed__DriveName`, `InvoiceManager__Seed__Microsoft365FolderItemId`,
+`InvoiceManager__Seed__AzureFolderItemId`,
+`InvoiceManager__Seed__Microsoft365TestFolderItemId`,
+`InvoiceManager__Seed__AzureTestFolderItemId`,
 `InvoiceManager__Seed__BillingAccountId`, and
-`InvoiceManager__Seed__AzureBillingAccountId`. For local development, sign in to
-the Azure CLI as the user that owns the target OneDrive and has billing-account
-access, then run:
+`InvoiceManager__Seed__AzureBillingAccountId` — eight values in total. For local
+development, sign in to the Azure CLI as the user that owns the target OneDrive
+and has billing-account access, then run:
 
 ```powershell
 ./tools/dev-setup/Set-SeedEnvironment.ps1
@@ -270,19 +274,23 @@ access, then run:
 
 The script uses Microsoft Graph PowerShell to discover the signed-in user's
 default OneDrive and installs the `Microsoft.Graph.Authentication` module at
-CurrentUser scope when it is not already available. It uses the Azure Billing
-`billingAccounts` REST endpoint and requires exactly one account of each expected
-type, mapping the `Business` account to
+CurrentUser scope when it is not already available. It resolves the stable Graph
+item IDs for the `Bills/Microsoft 365`, `Bills/Azure + Visual Studio`,
+`Test/Bills/Microsoft 365`, and `Test/Bills/Azure + Visual Studio` folders (which
+must already exist in the target OneDrive) via path-based lookup. It uses the
+Azure Billing `billingAccounts` REST endpoint and requires exactly one account of
+each expected type, mapping the `Business` account to
 `InvoiceManager__Seed__BillingAccountId` and the `Individual` account to
-`InvoiceManager__Seed__AzureBillingAccountId`. It sets all three values in the
+`InvoiceManager__Seed__AzureBillingAccountId`. It sets all eight values in the
 current process and persistent User environment. Authentication prompts may
 appear. Restart Visual Studio afterward so its AppHost process inherits the new
 User values.
 
-- **Test folder isolation**: when the environment is `test`, every configuration's
-  OneDrive destination is nested under a single root `Test` folder (inserted after
-  `root:/`, mirroring the production tree inside it) so test downloads never
-  collide with production files.
+- **Test folder isolation**: test configurations address the distinct
+  `Test/Bills/...` folder item IDs resolved above (real, separate Graph items from
+  their production `Bills/...` counterparts), not a `Test` prefix inserted into a
+  shared path at request time — so test downloads never collide with production
+  files even though item-ID addressing has no path to prefix.
 - **`-ClearDatabase`**: deletes all items from the Cosmos containers (data-plane
   deletes only) before seeding, for a clean re-seed. It is **refused against
   `production`** unless the seeder is also passed `--force`.
@@ -321,7 +329,7 @@ The scopes requested on sign-in are hard-coded in
 `MicrosoftOpenIdConnectOptionsSetup` (`src/InvoiceManager.AdminWeb/Program.cs`),
 not derived from the app registration's declared `required_resource_access`.
 Terraform can add a new delegated permission (e.g. `Mail.Read` for the
-`Microsoft365Email` source) to the app registration, but that alone changes
+`GraphEmail` source) to the app registration, but that alone changes
 nothing about what the interactive sign-in actually asks for or what the
 admin has consented to — the scope must also be added here, and the admin
 must sign in again afterward, before a new scope takes effect.
@@ -361,7 +369,7 @@ dotnet user-secrets set "AdminAuthorization:GroupObjectId" "<admin-group-object-
 
 The AppHost (`src/InvoiceManager.AppHost`, `UserSecretsId` `InvoiceManager.AppHost`) needs its own copies of the
 `MicrosoftAuthorization` values above, plus the Document Intelligence endpoint used by the
-`Microsoft365Email` invoice source — there is no local emulator for Document Intelligence, so this
+`GraphEmail` invoice source — there is no local emulator for Document Intelligence, so this
 must point at a real resource already provisioned by Terraform:
 
 ```bash

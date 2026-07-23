@@ -29,20 +29,24 @@ public sealed class GraphEmailInvoiceSource(
     private static readonly string[] Scopes = ["https://graph.microsoft.com/Mail.Read"];
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
-    public IntegrationType IntegrationType => IntegrationType.Microsoft365Email;
+    public IntegrationType IntegrationType => IntegrationType.GraphEmail;
 
     public async Task<InvoiceSourceResult> FindInvoiceAsync(
         InvoiceSearchCriteria criteria,
         CancellationToken cancellationToken = default)
     {
+        if (criteria.IntegrationConfiguration is not GraphEmailIntegrationConfiguration email)
+            throw new InvalidOperationException(
+                $"{nameof(GraphEmailInvoiceSource)} received criteria for an unsupported integration configuration.");
+
         using var activity = Telemetry.ActivitySource.StartActivity("find_invoice.microsoft365email");
-        activity?.SetTag("invoice.sender_email_address", criteria.SenderEmailAddress);
+        activity?.SetTag("invoice.sender_email_address", email.SenderEmailAddress);
         activity?.SetTag("invoice.expected_date", criteria.ExpectedDate.ToString("O"));
         activity?.SetTag("invoice.date_tolerance_days", criteria.DateToleranceDays);
 
         var token = await tokenProvider.AcquireTokenAsync(Scopes, cancellationToken);
 
-        var candidates = await ListCandidateMessagesAsync(criteria, token, cancellationToken);
+        var candidates = await ListCandidateMessagesAsync(email, criteria, token, cancellationToken);
         activity?.SetTag("invoice.candidate_count", candidates.Count);
 
         // A technical inability to read a PDF is only escalated to a failure (mapped
@@ -61,7 +65,7 @@ public sealed class GraphEmailInvoiceSource(
                 activity?.AddEvent(new ActivityEvent("matched_email_has_no_pdf"));
                 logger.LogWarning(
                     "Email {MessageId} from {Sender} matched criteria but has no PDF attachment; skipping.",
-                    message.Id, criteria.SenderEmailAddress);
+                    message.Id, email.SenderEmailAddress);
                 continue;
             }
 
@@ -79,7 +83,7 @@ public sealed class GraphEmailInvoiceSource(
             activity?.SetTag("invoice.matched_message_id", message.Id);
             activity?.AddEvent(new ActivityEvent("match_selected"));
             logger.LogInformation(
-                "Retrieved Microsoft365Email invoice from message {MessageId} ({PdfBytes} bytes).",
+                "Retrieved GraphEmail invoice from message {MessageId} ({PdfBytes} bytes).",
                 message.Id, found.PdfContent.Length);
 
             var details = new ActualInvoiceDetails(
@@ -100,7 +104,7 @@ public sealed class GraphEmailInvoiceSource(
         activity?.AddEvent(new ActivityEvent("no_match"));
         logger.LogInformation(
             "No email matched criteria for sender {Sender} around {ExpectedDate} ({CandidateCount} candidate(s) considered).",
-            criteria.SenderEmailAddress, criteria.ExpectedDate, candidates.Count);
+            email.SenderEmailAddress, criteria.ExpectedDate, candidates.Count);
         return new NoInvoiceMatch();
     }
 
@@ -145,6 +149,7 @@ public sealed class GraphEmailInvoiceSource(
     }
 
     private async Task<IReadOnlyList<GraphMessage>> ListCandidateMessagesAsync(
+        GraphEmailIntegrationConfiguration email,
         InvoiceSearchCriteria criteria,
         string token,
         CancellationToken cancellationToken)
@@ -155,7 +160,7 @@ public sealed class GraphEmailInvoiceSource(
         var filter =
             $"receivedDateTime ge {windowStart:yyyy-MM-ddTHH:mm:ssZ} " +
             $"and receivedDateTime le {windowEnd:yyyy-MM-ddTHH:mm:ssZ} " +
-            $"and from/emailAddress/address eq '{EscapeODataStringLiteral(criteria.SenderEmailAddress)}' " +
+            $"and from/emailAddress/address eq '{EscapeODataStringLiteral(email.SenderEmailAddress)}' " +
             $"and hasAttachments eq true";
 
         string? url =
@@ -179,7 +184,7 @@ public sealed class GraphEmailInvoiceSource(
             var page = await response.Content.ReadFromJsonAsync<GraphMessageListResponse>(cancellationToken);
             foreach (var message in page?.Value ?? [])
             {
-                if (MatchesBodyPattern(message, criteria.BodyPattern))
+                if (MatchesBodyPattern(message, email.BodyPattern))
                     messages.Add(message);
             }
 

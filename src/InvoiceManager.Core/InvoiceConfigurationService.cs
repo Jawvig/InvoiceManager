@@ -75,7 +75,6 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         var restored = revision.Snapshot with
         {
             Id = current.Configuration.Id,
-            IntegrationType = current.Configuration.IntegrationType,
             IsActive = current.Configuration.IsActive,
         };
         EnsureValid(restored);
