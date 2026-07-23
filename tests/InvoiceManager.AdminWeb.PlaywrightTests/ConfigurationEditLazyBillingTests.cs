@@ -46,9 +46,17 @@ public sealed class ConfigurationEditLazyBillingTests(AdminWebAppHostFixture app
         } while (DateTime.UtcNow < deadline);
         Assert.True(optionCount > 0, "Expected at least one billing account option to have loaded.");
 
+        // The option's rendered label must actually come from account.displayName — this would
+        // still pass with just an option-count assertion even if the client read a field that no
+        // longer exists (e.g. the old "label" property) and rendered "undefined" text.
+        var firstOption = page.Locator("#Input_BillingAccountId option").First;
+        var firstLabel = await firstOption.TextContentAsync();
+        Assert.False(string.IsNullOrWhiteSpace(firstLabel), "Expected the loaded option to have a non-empty label.");
+        Assert.DoesNotContain("undefined", firstLabel);
+
         // Loaded options replace the (previously empty) selection, so the user must actively
         // pick one before submitting — mirrors real usage.
-        var firstValue = await page.Locator("#Input_BillingAccountId option").First.GetAttributeAsync("value");
+        var firstValue = await firstOption.GetAttributeAsync("value");
         await page.Locator("#Input_BillingAccountId").SelectOptionAsync(new[] { firstValue! });
 
         await page.Locator("button[type=submit]", new PageLocatorOptions { HasText = "Save configuration" }).ClickAsync();
