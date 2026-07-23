@@ -24,9 +24,11 @@ public sealed class ConfigurationEditLazyBillingTests(AdminWebAppHostFixture app
         await page.GotoAsync(new Uri(appHost.AdminWebUrl, "/Configurations/Create").ToString());
         await page.Locator("#Input_IntegrationType").SelectOptionAsync("MicrosoftBilling");
         await page.Locator("#Input_InvoiceDescription").FillAsync(description);
-        await page.EvalOnSelectorAsync("#Input_DriveId", "el => el.value = 'drive-test'");
-        await page.EvalOnSelectorAsync("#Input_DriveName", "el => el.value = 'Test Drive'");
-        await page.EvalOnSelectorAsync("#Input_FolderItemId", "el => el.value = 'folder-test'");
+        // Create verifies the submitted folder against Microsoft Graph, so this must be a real,
+        // resolvable drive/item ID rather than a fabricated one — see TestOneDriveFolder.
+        await page.EvalOnSelectorAsync("#Input_DriveId", "(el, v) => el.value = v", TestOneDriveFolder.DriveId);
+        await page.EvalOnSelectorAsync("#Input_DriveName", "(el, v) => el.value = v", TestOneDriveFolder.DriveName);
+        await page.EvalOnSelectorAsync("#Input_FolderItemId", "(el, v) => el.value = v", TestOneDriveFolder.FolderItemId);
         await page.EvalOnSelectorAsync("#Input_FolderPath", "el => el.value = '/Bills'");
 
         // Build() requires a billing account returned by discovery, so wait for the

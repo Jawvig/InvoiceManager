@@ -26,9 +26,11 @@ public sealed class ConfigurationActivateDeactivateTests(AdminWebAppHostFixture 
         await page.Locator("#Input_InvoiceDescription").FillAsync(description);
         await page.Locator("#Input_SenderEmailAddress").FillAsync("billing@example.com");
         await page.Locator("#Input_BodyPattern").FillAsync("Invoice \\d+");
-        await page.EvalOnSelectorAsync("#Input_DriveId", "el => el.value = 'drive-test'");
-        await page.EvalOnSelectorAsync("#Input_DriveName", "el => el.value = 'Test Drive'");
-        await page.EvalOnSelectorAsync("#Input_FolderItemId", "el => el.value = 'folder-test'");
+        // Create verifies the submitted folder against Microsoft Graph, so this must be a real,
+        // resolvable drive/item ID rather than a fabricated one — see TestOneDriveFolder.
+        await page.EvalOnSelectorAsync("#Input_DriveId", "(el, v) => el.value = v", TestOneDriveFolder.DriveId);
+        await page.EvalOnSelectorAsync("#Input_DriveName", "(el, v) => el.value = v", TestOneDriveFolder.DriveName);
+        await page.EvalOnSelectorAsync("#Input_FolderItemId", "(el, v) => el.value = v", TestOneDriveFolder.FolderItemId);
         await page.EvalOnSelectorAsync("#Input_FolderPath", "el => el.value = '/Bills'");
         await page.Locator("button[type=submit]", new PageLocatorOptions { HasText = "Save configuration" }).ClickAsync();
         await Assertions.Expect(page).ToHaveURLAsync(new Regex("/Configurations$"));

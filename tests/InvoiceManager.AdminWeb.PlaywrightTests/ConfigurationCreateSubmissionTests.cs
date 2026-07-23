@@ -6,8 +6,8 @@ namespace InvoiceManager.AdminWeb.PlaywrightTests;
 // End-to-end coverage that the reworked wizard form (progressive disclosure + hidden OneDrive
 // fields populated by the picker) still round-trips through a real save. The OneDrive folder
 // selection itself is set directly (mirroring what onedrive-picker.js's commitSelection() does)
-// rather than drilling through live Graph folders, so this test doesn't depend on what folders
-// happen to exist in the test tenant's OneDrive.
+// rather than drilling through the live picker UI — but it still names a real folder (see
+// TestOneDriveFolder), since Create verifies the selection against Microsoft Graph.
 [Collection("AdminWebAppHost")]
 [Trait("Category", "Integration")]
 public sealed class ConfigurationCreateSubmissionTests(AdminWebAppHostFixture appHost)
@@ -31,10 +31,13 @@ public sealed class ConfigurationCreateSubmissionTests(AdminWebAppHostFixture ap
         await page.Locator("#Input_SenderEmailAddress").FillAsync("billing@example.com");
         await page.Locator("#Input_BodyPattern").FillAsync("Invoice \\d+");
 
-        // Simulate the picker's commit step directly instead of driving live Graph folders.
-        await page.EvalOnSelectorAsync("#Input_DriveId", "el => el.value = 'drive-test'");
-        await page.EvalOnSelectorAsync("#Input_DriveName", "el => el.value = 'Test Drive'");
-        await page.EvalOnSelectorAsync("#Input_FolderItemId", "el => el.value = 'folder-test'");
+        // Simulate the picker's commit step directly instead of drilling through the live picker
+        // UI — but Create still verifies the submitted DriveId/FolderItemId against Microsoft
+        // Graph, so these must be real, resolvable values (see TestOneDriveFolder), not fabricated
+        // "drive-test"/"folder-test" placeholders.
+        await page.EvalOnSelectorAsync("#Input_DriveId", "(el, v) => el.value = v", TestOneDriveFolder.DriveId);
+        await page.EvalOnSelectorAsync("#Input_DriveName", "(el, v) => el.value = v", TestOneDriveFolder.DriveName);
+        await page.EvalOnSelectorAsync("#Input_FolderItemId", "(el, v) => el.value = v", TestOneDriveFolder.FolderItemId);
         await page.EvalOnSelectorAsync("#Input_FolderPath", "el => el.value = '/Bills'");
 
         await page.Locator("button[type=submit]", new PageLocatorOptions { HasText = "Save configuration" }).ClickAsync();
