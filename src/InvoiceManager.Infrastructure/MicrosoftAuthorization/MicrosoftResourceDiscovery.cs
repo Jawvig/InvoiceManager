@@ -145,7 +145,7 @@ public sealed class MicrosoftResourceDiscovery(
         var itemUrl = $"{GraphBaseUrl}/drives/{Uri.EscapeDataString(driveId)}/items/{Uri.EscapeDataString(folderItemId)}" +
             "?$select=id,name,folder,parentReference";
         using var itemResponse = await SendAsync(itemUrl, token, cancellationToken);
-        if (itemResponse.StatusCode == HttpStatusCode.NotFound)
+        if (IsInvalidSelection(itemResponse.StatusCode))
             return null;
         await itemResponse.EnsureSuccessAsync("Microsoft Graph", "verifying a OneDrive folder selection", cancellationToken);
         var item = await itemResponse.Content.ReadFromJsonAsync<FolderItemResource>(cancellationToken);
@@ -154,7 +154,7 @@ public sealed class MicrosoftResourceDiscovery(
 
         var driveUrl = $"{GraphBaseUrl}/drives/{Uri.EscapeDataString(driveId)}?$select=name";
         using var driveResponse = await SendAsync(driveUrl, token, cancellationToken);
-        if (driveResponse.StatusCode == HttpStatusCode.NotFound)
+        if (IsInvalidSelection(driveResponse.StatusCode))
             return null;
         await driveResponse.EnsureSuccessAsync("Microsoft Graph", "verifying a OneDrive folder selection", cancellationToken);
         var drive = await driveResponse.Content.ReadFromJsonAsync<DriveResource>(cancellationToken);
@@ -168,6 +168,14 @@ public sealed class MicrosoftResourceDiscovery(
 
         return new OneDriveFolder(driveId, driveName, item.Id, folderPath);
     }
+
+    // A malformed or forged drive/item ID commonly comes back as 400 (Graph rejects the ID
+    // syntax before it can even look anything up), not 404 — both mean "not a valid selection"
+    // from this caller's point of view. Genuine auth/server failures (401/403/5xx) still fall
+    // through to EnsureSuccessAsync and throw, since those aren't the caller's fault to fix by
+    // picking a different folder.
+    private static bool IsInvalidSelection(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest;
 
     // parentReference.path looks like "/drives/{id}/root:/Bills" (or "/drives/{id}/root:" at
     // the drive root, with no trailing segment) — strip everything up to and including "root:".

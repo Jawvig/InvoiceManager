@@ -130,6 +130,32 @@ public sealed class MicrosoftResourceDiscoveryTests
     }
 
     [Fact]
+    public async Task GetFolderAsync_ReturnsNull_WhenItemIdIsMalformed()
+    {
+        // A forged/malformed drive or item ID commonly comes back as 400 from Graph (rejected
+        // before it can even be looked up), not 404 — this must not surface as an unhandled
+        // exception (which would 500 the Create/Edit page) but as an invalid selection, same as
+        // a genuine 404.
+        var handler = new StubHttpMessageHandler((_, _) => new HttpResponseMessage(HttpStatusCode.BadRequest));
+        var discovery = Build(handler);
+
+        var result = await discovery.GetFolderAsync("drive-1", "not-a-real-id");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetFolderAsync_Throws_WhenGraphReturnsAGenuineServerError()
+    {
+        // Unlike 400/404, a 5xx (or 401/403) is not the caller's fault to fix by picking a
+        // different folder, so it must still surface as a failure rather than a silent null.
+        var handler = new StubHttpMessageHandler((_, _) => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var discovery = Build(handler);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => discovery.GetFolderAsync("drive-1", "folder-1"));
+    }
+
+    [Fact]
     public async Task GetFolderAsync_ReturnsNull_WhenItemIsNotAFolder()
     {
         // A file (no "folder" facet) is a real Graph item but not a valid selection.
