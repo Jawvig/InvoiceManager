@@ -160,8 +160,11 @@ public sealed class MicrosoftResourceDiscovery(
         var drive = await driveResponse.Content.ReadFromJsonAsync<DriveResource>(cancellationToken);
         var driveName = string.IsNullOrWhiteSpace(drive?.Name) ? "OneDrive" : drive!.Name!;
 
+        // Leading "/" matches the canonical format used elsewhere (onedrive-picker.js's
+        // commitSelection() and the seed data), so a freshly verified selection displays/audits
+        // identically to the same folder already stored on a configuration.
         var relativePath = ExtractRelativePath(item.ParentReference?.Path);
-        var folderPath = string.IsNullOrEmpty(relativePath) ? item.Name : $"{relativePath}/{item.Name}";
+        var folderPath = string.IsNullOrEmpty(relativePath) ? $"/{item.Name}" : $"/{relativePath}/{item.Name}";
 
         return new OneDriveFolder(driveId, driveName, item.Id, folderPath);
     }

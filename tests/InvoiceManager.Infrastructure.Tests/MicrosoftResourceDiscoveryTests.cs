@@ -71,6 +71,91 @@ public sealed class MicrosoftResourceDiscoveryTests
         Assert.Contains("/drives/drive-1/items/folder-1/children", handler.Requests[0].RequestUri!.ToString());
     }
 
+    [Fact]
+    public async Task GetFolderAsync_ReturnsResolvedFolder_WithCanonicalLeadingSlashPath()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/items/")
+                ? Json("""{"id":"folder-1","name":"Microsoft 365","folder":{},"parentReference":{"path":"/drives/drive-1/root:/Bills"}}""")
+                : Json("""{"name":"Company OneDrive"}"""));
+        var discovery = Build(handler);
+
+        var result = await discovery.GetFolderAsync("drive-1", "folder-1");
+
+        Assert.NotNull(result);
+        Assert.Equal("drive-1", result!.DriveId);
+        Assert.Equal("Company OneDrive", result.DriveName);
+        Assert.Equal("folder-1", result.FolderItemId);
+        Assert.Equal("/Bills/Microsoft 365", result.FolderPath);
+    }
+
+    [Fact]
+    public async Task GetFolderAsync_ReturnsRootLevelPath_WithLeadingSlash_WhenFolderIsAtDriveRoot()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/items/")
+                ? Json("""{"id":"folder-1","name":"Bills","folder":{},"parentReference":{"path":"/drives/drive-1/root:"}}""")
+                : Json("""{"name":"OneDrive"}"""));
+        var discovery = Build(handler);
+
+        var result = await discovery.GetFolderAsync("drive-1", "folder-1");
+
+        Assert.NotNull(result);
+        Assert.Equal("/Bills", result!.FolderPath);
+    }
+
+    [Fact]
+    public async Task GetFolderAsync_FallsBackToOneDriveName_WhenDriveNameIsBlank()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/items/")
+                ? Json("""{"id":"folder-1","name":"Bills","folder":{},"parentReference":{"path":"/drives/drive-1/root:"}}""")
+                : Json("""{"name":""}"""));
+        var discovery = Build(handler);
+
+        var result = await discovery.GetFolderAsync("drive-1", "folder-1");
+
+        Assert.Equal("OneDrive", result!.DriveName);
+    }
+
+    [Fact]
+    public async Task GetFolderAsync_ReturnsNull_WhenItemDoesNotExist()
+    {
+        var handler = new StubHttpMessageHandler((_, _) => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var discovery = Build(handler);
+
+        var result = await discovery.GetFolderAsync("drive-1", "missing-item");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetFolderAsync_ReturnsNull_WhenItemIsNotAFolder()
+    {
+        // A file (no "folder" facet) is a real Graph item but not a valid selection.
+        var handler = new StubHttpMessageHandler((_, _) => Json(
+            """{"id":"file-1","name":"invoice.pdf","parentReference":{"path":"/drives/drive-1/root:/Bills"}}"""));
+        var discovery = Build(handler);
+
+        var result = await discovery.GetFolderAsync("drive-1", "file-1");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetFolderAsync_ReturnsNull_WhenDriveNoLongerExists()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.ToString().Contains("/items/")
+                ? Json("""{"id":"folder-1","name":"Bills","folder":{},"parentReference":{"path":"/drives/drive-1/root:"}}""")
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var discovery = Build(handler);
+
+        var result = await discovery.GetFolderAsync("drive-1", "folder-1");
+
+        Assert.Null(result);
+    }
+
     private static MicrosoftResourceDiscovery Build(HttpMessageHandler handler) =>
         new(new HttpClient(handler), new FakeMicrosoftTokenProvider());
 
