@@ -8,7 +8,6 @@ namespace InvoiceManager.Core;
 [JsonConverter(typeof(JsonStringEnumConverter<IntegrationType>))]
 public enum IntegrationType
 {
-    Microsoft365,
-    Azure,
-    Microsoft365Email,
+    MicrosoftBilling,
+    GraphEmail,
 }

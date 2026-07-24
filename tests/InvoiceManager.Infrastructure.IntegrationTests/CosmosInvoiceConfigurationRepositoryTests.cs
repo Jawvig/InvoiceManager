@@ -100,7 +100,10 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
         var actor = new InvoiceConfigurationActor("actor-1", "Admin User");
         var original = BuildConfiguration(new("duplicate-id"), isActive: false);
         await repository!.CreateAsync(original, actor);
-        var duplicate = original with { IntegrationType = IntegrationType.Azure };
+        var duplicate = original with
+        {
+            IntegrationConfiguration = new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice"),
+        };
 
         await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
             repository.CreateAsync(duplicate, actor));
@@ -148,14 +151,13 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
         bool isActive = true) =>
         new(
             id,
-            IntegrationType.Microsoft365,
+            new MicrosoftBillingIntegrationConfiguration("test:billing:account"),
             invoiceDescription,
             InvoiceFrequency.Monthly,
             new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0m),
             VatMode.Exclusive,
             IsActive: isActive,
-            OneDriveDestination: "/drives/test/root:/Bills/Test",
+            OneDriveFolder: new OneDriveFolder("test-drive", "Test Drive", "test-folder-item", "/Bills/Test"),
             StartDate: new DateOnly(2025, 1, 1),
-            BillingAccountId: "test:billing:account",
             DateToleranceDays: 5);
 }

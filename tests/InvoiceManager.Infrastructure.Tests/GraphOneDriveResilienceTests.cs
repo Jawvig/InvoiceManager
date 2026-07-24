@@ -21,7 +21,8 @@ namespace InvoiceManager.Infrastructure.Tests;
 /// </summary>
 public sealed class GraphOneDriveResilienceTests
 {
-    private const string Folder = "/drives/drive-1/root:/Bills/Microsoft 365";
+    private static readonly OneDriveFolder Folder =
+        new("drive-1", "Drive One", "folder-1", "/Bills/Microsoft 365");
 
     [Theory]
     [InlineData(HttpStatusCode.TooManyRequests)]

@@ -13,7 +13,7 @@ public sealed class FakeInvoiceSourceIntegration : IInvoiceSourceIntegration
 
     public FakeInvoiceSourceIntegration(
         InvoiceSourceResult result,
-        IntegrationType integrationType = IntegrationType.Microsoft365)
+        IntegrationType integrationType = IntegrationType.MicrosoftBilling)
     {
         this.result = result;
         IntegrationType = integrationType;

@@ -138,12 +138,10 @@ public sealed class DueInvoiceProcessor(
         }
 
         var criteria = new InvoiceSearchCriteria(
-            snapshot.BillingAccountId,
+            snapshot.IntegrationConfiguration,
             record.ExpectedDate,
             snapshot.DateToleranceDays,
-            snapshot.AmountMatchingCriteria,
-            snapshot.SenderEmailAddress,
-            snapshot.BodyPattern);
+            snapshot.AmountMatchingCriteria);
 
         // Reconcile first: a file already in OneDrive (a manual download or an
         // earlier partial run) is used as-is, skipping the source call and upload.
@@ -159,7 +157,7 @@ public sealed class DueInvoiceProcessor(
         try
         {
             search = await oneDriveIntegration.SearchAsync(
-                new OneDriveSearchRequest(snapshot.OneDriveDestination, oneDriveCriteria), cancellationToken);
+                new OneDriveSearchRequest(snapshot.OneDriveFolder, oneDriveCriteria), cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -202,7 +200,7 @@ public sealed class DueInvoiceProcessor(
             snapshot.VatMode);
 
         var oneDriveDetails = await oneDriveIntegration.UploadAsync(
-            new OneDriveUploadRequest(snapshot.OneDriveDestination, fileName, match.PdfContent),
+            new OneDriveUploadRequest(snapshot.OneDriveFolder, fileName, match.PdfContent),
             cancellationToken);
 
         // Saved to OneDrive: persist before creating the next expected record.

@@ -85,7 +85,7 @@ Terraform manages all Azure infrastructure including:
   redirect URIs (local admin plus the deployed Container Apps callback) used for
   delegated authorization capture.
 - **Document Intelligence**: An `azurerm_cognitive_account` (kind
-  `FormRecognizer`) used by the `Microsoft365Email` invoice source to read
+  `FormRecognizer`) used by the `GraphEmail` invoice source to read
   invoice date/total out of PDF attachments via the prebuilt `invoice` model.
   RBAC-only (`local_auth_enabled = false`); the Functions managed identity
   holds `Cognitive Services User` on it, and its endpoint is passed to the
@@ -116,7 +116,7 @@ The initial Terraform configuration creates the Microsoft identity foundation:
 - The tenant-local service principal / Enterprise Application.
 - Required delegated API permissions for Azure Resource Manager
   `user_impersonation` and Microsoft Graph `User.Read` and `Mail.Read` (the
-  latter used by the `Microsoft365Email` invoice source to search the same
+  latter used by the `GraphEmail` invoice source to search the same
   delegated mailbox already used for OneDrive uploads).
 - An environment Key Vault used by the admin website to store its client secret
   and captured Microsoft authorization token-cache material.
@@ -259,10 +259,14 @@ environment-aware (it exits non-zero when the flag is absent), and optionally
 folder described below.
 
 Seed values include `InvoiceManager__Seed__DriveId`,
+`InvoiceManager__Seed__DriveName`, `InvoiceManager__Seed__Microsoft365FolderItemId`,
+`InvoiceManager__Seed__AzureFolderItemId`,
+`InvoiceManager__Seed__Microsoft365TestFolderItemId`,
+`InvoiceManager__Seed__AzureTestFolderItemId`,
 `InvoiceManager__Seed__BillingAccountId`, and
-`InvoiceManager__Seed__AzureBillingAccountId`. For local development, sign in to
-the Azure CLI as the user that owns the target OneDrive and has billing-account
-access, then run:
+`InvoiceManager__Seed__AzureBillingAccountId` — eight values in total. For local
+development, sign in to the Azure CLI as the user that owns the target OneDrive
+and has billing-account access, then run:
 
 ```powershell
 ./tools/dev-setup/Set-SeedEnvironment.ps1
@@ -270,19 +274,23 @@ access, then run:
 
 The script uses Microsoft Graph PowerShell to discover the signed-in user's
 default OneDrive and installs the `Microsoft.Graph.Authentication` module at
-CurrentUser scope when it is not already available. It uses the Azure Billing
-`billingAccounts` REST endpoint and requires exactly one account of each expected
-type, mapping the `Business` account to
+CurrentUser scope when it is not already available. It resolves the stable Graph
+item IDs for the `Bills/Microsoft 365`, `Bills/Azure + Visual Studio`,
+`Test/Bills/Microsoft 365`, and `Test/Bills/Azure + Visual Studio` folders (which
+must already exist in the target OneDrive) via path-based lookup. It uses the
+Azure Billing `billingAccounts` REST endpoint and requires exactly one account of
+each expected type, mapping the `Business` account to
 `InvoiceManager__Seed__BillingAccountId` and the `Individual` account to
-`InvoiceManager__Seed__AzureBillingAccountId`. It sets all three values in the
+`InvoiceManager__Seed__AzureBillingAccountId`. It sets all eight values in the
 current process and persistent User environment. Authentication prompts may
 appear. Restart Visual Studio afterward so its AppHost process inherits the new
 User values.
 
-- **Test folder isolation**: when the environment is `test`, every configuration's
-  OneDrive destination is nested under a single root `Test` folder (inserted after
-  `root:/`, mirroring the production tree inside it) so test downloads never
-  collide with production files.
+- **Test folder isolation**: test configurations address the distinct
+  `Test/Bills/...` folder item IDs resolved above (real, separate Graph items from
+  their production `Bills/...` counterparts), not a `Test` prefix inserted into a
+  shared path at request time — so test downloads never collide with production
+  files even though item-ID addressing has no path to prefix.
 - **`-ClearDatabase`**: deletes all items from the Cosmos containers (data-plane
   deletes only) before seeding, for a clean re-seed. It is **refused against
   `production`** unless the seeder is also passed `--force`.
@@ -321,7 +329,7 @@ The scopes requested on sign-in are hard-coded in
 `MicrosoftOpenIdConnectOptionsSetup` (`src/InvoiceManager.AdminWeb/Program.cs`),
 not derived from the app registration's declared `required_resource_access`.
 Terraform can add a new delegated permission (e.g. `Mail.Read` for the
-`Microsoft365Email` source) to the app registration, but that alone changes
+`GraphEmail` source) to the app registration, but that alone changes
 nothing about what the interactive sign-in actually asks for or what the
 admin has consented to — the scope must also be added here, and the admin
 must sign in again afterward, before a new scope takes effect.
@@ -361,7 +369,7 @@ dotnet user-secrets set "AdminAuthorization:GroupObjectId" "<admin-group-object-
 
 The AppHost (`src/InvoiceManager.AppHost`, `UserSecretsId` `InvoiceManager.AppHost`) needs its own copies of the
 `MicrosoftAuthorization` values above, plus the Document Intelligence endpoint used by the
-`Microsoft365Email` invoice source — there is no local emulator for Document Intelligence, so this
+`GraphEmail` invoice source — there is no local emulator for Document Intelligence, so this
 must point at a real resource already provisioned by Terraform:
 
 ```bash
@@ -382,6 +390,56 @@ The admin website administers invoice configurations and append-only history.
 Every invoice record is created with a required routing snapshot, so no record
 migration gate is needed. The website still does not own invoice matching,
 reconciliation, filename generation, or FreeAgent behavior.
+
+### Local Playwright auth state for the admin website
+
+The admin website's fallback authorization policy requires a real Entra sign-in
+on every page, so AI coding agents (Claude, Codex, Copilot) and Playwright test
+projects need a captured browser session to interact with it without prompting
+for credentials each time. `tools/InvoiceManager.PlaywrightAuth` (a standalone
+console app, not part of the test suite) drives this once:
+
+```bash
+dotnet run --project tools/InvoiceManager.PlaywrightAuth
+```
+
+It starts `src/InvoiceManager.AdminWeb` standalone on `https://localhost:5001`,
+opens Edge, and waits for you to complete Microsoft sign-in. The resulting
+storage state is saved to `playwright/.auth/adminweb.json` (gitignored). The
+local user secrets set in the block above must already be configured on the
+`InvoiceManager.AdminWeb` project for the standalone app to start — the AppHost
+copy alone is not enough, since AppHost is not launched here.
+
+The tool only waits for AdminWeb's Kestrel process to start listening on
+`/health`, not for a healthy result — `/health` also aggregates Cosmos and
+Functions app checks, and neither is reachable (or expected to be) in this
+standalone launch, so it always reports `503`. Seeing "Cosmos DB is not
+reachable" and "Functions:BaseUrl is not configured" in the AdminWeb console
+output while the tool runs is expected and does not affect sign-in; only a
+`ValidateOnStart` failure for the `MicrosoftAuthorization`/`AdminAuthorization`
+options (missing user secrets) actually stops the app from starting.
+
+`tests/InvoiceManager.AdminWeb.PlaywrightTests` reuses the saved storage state
+but, unlike the capture tool, starts AdminWeb through the real AppHost
+orchestration (`AdminWebAppHostFixture`, an `Aspire.Hosting.Testing`
+collection fixture also usable by future Playwright tests) — Cosmos emulator,
+seeder, and Functions all come up too, and the AdminWeb URL is read from the
+running orchestration (`DistributedApplication.GetEndpoint("adminweb",
+"https")`) rather than assumed to be `https://localhost:5001`. This needs
+Docker running and AppHost's own user secrets configured (the `dotnet
+user-secrets ... --project src/InvoiceManager.AppHost` copies above), and
+takes noticeably longer than the capture tool's standalone launch.
+
+The `playwright` MCP server (`.mcp.json`) loads that file automatically via
+`--storage-state`, so once it exists, MCP-driven browser sessions start already
+signed in. `tests/InvoiceManager.AdminWeb.PlaywrightTests` reuses the same file
+for automated Playwright tests; it is tagged `Category=Integration` (like the
+Cosmos emulator integration tests) so CI's `--filter "Category!=Integration"`
+skips it, since it needs a real signed-in session and a running AdminWeb
+instance.
+
+Re-run the tool whenever the saved session expires (an Entra sign-in prompt
+reappearing is the signal).
 
 ## GitHub Actions Workflow
 

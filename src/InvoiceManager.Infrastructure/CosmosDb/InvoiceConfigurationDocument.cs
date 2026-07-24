@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
-using System.Text.Json;
 using InvoiceManager.Core;
 using NodaMoney;
 
@@ -27,8 +26,16 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("_etag")]
     public string ETag { get; init; } = "";
 
+    /// <summary>
+    /// Retained for Cosmos query/index filtering. Written from the configuration's
+    /// (derived) <see cref="Core.IntegrationType"/> on save, but not read back on
+    /// load — the integration type is instead derived from <see cref="IntegrationConfiguration"/>.
+    /// </summary>
     [JsonPropertyName("integrationType")]
     public required string IntegrationType { get; init; }
+
+    [JsonPropertyName("integrationConfiguration")]
+    public required IntegrationConfigurationDocument IntegrationConfiguration { get; init; }
 
     [JsonPropertyName("invoiceDescription")]
     public required string InvoiceDescription { get; init; }
@@ -45,62 +52,39 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("isActive")]
     public required bool IsActive { get; init; }
 
-    [JsonPropertyName("oneDriveDestination")]
-    public required JsonElement OneDriveDestination { get; init; }
+    [JsonPropertyName("oneDriveFolder")]
+    public required OneDriveFolderDocument OneDriveFolder { get; init; }
 
     [JsonPropertyName("startDate")]
     public required string StartDate { get; init; }
 
-    [JsonPropertyName("billingAccountId")]
-    public required string BillingAccountId { get; init; }
-
     [JsonPropertyName("dateToleranceDays")]
     public required int DateToleranceDays { get; init; }
-
-    /// <summary>For <c>Microsoft365Email</c>, the sender a candidate email must come from. Empty for other types.</summary>
-    [JsonPropertyName("senderEmailAddress")]
-    public string SenderEmailAddress { get; init; } = "";
-
-    /// <summary>For <c>Microsoft365Email</c>, a regex a candidate email's plain-text body must match. Empty for other types.</summary>
-    [JsonPropertyName("bodyPattern")]
-    public string BodyPattern { get; init; } = "";
 
     public InvoiceConfiguration ToConfiguration() =>
         new(
             new InvoiceConfigurationId(Id),
-            Enum.Parse<Core.IntegrationType>(IntegrationType, ignoreCase: true),
+            IntegrationConfiguration.ToConfiguration(),
             InvoiceDescription,
             Enum.Parse<InvoiceFrequency>(Frequency, ignoreCase: true),
             ToAmountMatchingCriteria(),
             Enum.Parse<VatMode>(DefaultVatMode, ignoreCase: true),
             IsActive,
-            ToOneDriveDestination(),
+            OneDriveFolder.ToFolder(),
             DateOnly.ParseExact(StartDate, "O", CultureInfo.InvariantCulture),
-            BillingAccountId,
-            DateToleranceDays,
-            SenderEmailAddress,
-            BodyPattern);
+            DateToleranceDays);
 
     private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
         AmountMatchingCriteria is { } criteria
             ? criteria.ToCriteria()
             : Option.None;
 
-    private OneDriveDestination ToOneDriveDestination()
-    {
-        if (OneDriveDestination.ValueKind == JsonValueKind.String)
-            return new(OneDriveDestination.GetString() ?? string.Empty);
-
-        var destination = OneDriveDestination.Deserialize<OneDriveDestinationDocument>()
-            ?? throw new InvalidOperationException($"Configuration '{Id}' has an invalid OneDrive destination.");
-        return destination.ToDestination();
-    }
-
     public static InvoiceConfigurationDocument FromConfiguration(InvoiceConfiguration config) =>
         new()
         {
             Id = config.Id.Value,
             IntegrationType = config.IntegrationType.ToString(),
+            IntegrationConfiguration = IntegrationConfigurationDocument.FromConfiguration(config.IntegrationConfiguration),
             InvoiceDescription = config.InvoiceDescription,
             Frequency = config.Frequency.ToString(),
             AmountMatchingCriteria = config.AmountMatchingCriteria switch
@@ -110,35 +94,86 @@ internal sealed class InvoiceConfigurationDocument
             },
             DefaultVatMode = config.DefaultVatMode.ToString(),
             IsActive = config.IsActive,
-            OneDriveDestination = config.OneDriveDestination.IsLegacyPath
-                ? JsonSerializer.SerializeToElement(config.OneDriveDestination.DisplayPath)
-                : JsonSerializer.SerializeToElement(OneDriveDestinationDocument.FromDestination(config.OneDriveDestination)),
+            OneDriveFolder = OneDriveFolderDocument.FromFolder(config.OneDriveFolder),
             StartDate = config.StartDate.ToString("O", CultureInfo.InvariantCulture),
-            BillingAccountId = config.BillingAccountId,
             DateToleranceDays = config.DateToleranceDays,
-            SenderEmailAddress = config.SenderEmailAddress,
-            BodyPattern = config.BodyPattern,
         };
 }
 
-internal sealed class OneDriveDestinationDocument
+/// <summary>
+/// The discriminated JSON shape for <see cref="Core.IntegrationConfiguration"/>. The
+/// <see cref="Type"/> discriminator selects which of the other (nullable) fields apply.
+/// </summary>
+internal sealed class IntegrationConfigurationDocument
+{
+    private const string MicrosoftBillingType = "microsoftBilling";
+    private const string GraphEmailType = "graphEmail";
+
+    [JsonPropertyName("type")]
+    public required string Type { get; init; }
+
+    [JsonPropertyName("billingAccountId")]
+    public string? BillingAccountId { get; init; }
+
+    [JsonPropertyName("senderEmailAddress")]
+    public string? SenderEmailAddress { get; init; }
+
+    [JsonPropertyName("bodyPattern")]
+    public string? BodyPattern { get; init; }
+
+    public IntegrationConfiguration ToConfiguration() =>
+        Type switch
+        {
+            MicrosoftBillingType => new MicrosoftBillingIntegrationConfiguration(
+                BillingAccountId ?? throw new InvalidOperationException(
+                    "Integration configuration of type 'microsoftBilling' is missing billingAccountId.")),
+            GraphEmailType => new GraphEmailIntegrationConfiguration(
+                SenderEmailAddress ?? throw new InvalidOperationException(
+                    "Integration configuration of type 'graphEmail' is missing senderEmailAddress."),
+                BodyPattern ?? throw new InvalidOperationException(
+                    "Integration configuration of type 'graphEmail' is missing bodyPattern.")),
+            _ => throw new InvalidOperationException($"Unrecognized integration configuration type '{Type}'."),
+        };
+
+    public static IntegrationConfigurationDocument FromConfiguration(IntegrationConfiguration configuration) =>
+        configuration switch
+        {
+            MicrosoftBillingIntegrationConfiguration billing => new()
+            {
+                Type = MicrosoftBillingType,
+                BillingAccountId = billing.BillingAccountId,
+            },
+            GraphEmailIntegrationConfiguration email => new()
+            {
+                Type = GraphEmailType,
+                SenderEmailAddress = email.SenderEmailAddress,
+                BodyPattern = email.BodyPattern,
+            },
+        };
+}
+
+internal sealed class OneDriveFolderDocument
 {
     [JsonPropertyName("driveId")]
     public required string DriveId { get; init; }
 
+    [JsonPropertyName("driveName")]
+    public required string DriveName { get; init; }
+
     [JsonPropertyName("folderItemId")]
     public required string FolderItemId { get; init; }
 
-    [JsonPropertyName("displayPath")]
-    public required string DisplayPath { get; init; }
+    [JsonPropertyName("folderPath")]
+    public required string FolderPath { get; init; }
 
-    public OneDriveDestination ToDestination() => new(DisplayPath, DriveId, FolderItemId);
+    public OneDriveFolder ToFolder() => new(DriveId, DriveName, FolderItemId, FolderPath);
 
-    public static OneDriveDestinationDocument FromDestination(OneDriveDestination destination) => new()
+    public static OneDriveFolderDocument FromFolder(OneDriveFolder folder) => new()
     {
-        DriveId = destination.DriveId!,
-        FolderItemId = destination.FolderItemId!,
-        DisplayPath = destination.DisplayPath,
+        DriveId = folder.DriveId,
+        DriveName = folder.DriveName,
+        FolderItemId = folder.FolderItemId,
+        FolderPath = folder.FolderPath,
     };
 }
 

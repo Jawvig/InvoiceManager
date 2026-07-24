@@ -10,10 +10,11 @@ public sealed class InvoiceConfigurationDocumentTests
     public void FromConfiguration_PersistsCompleteAmountMatchingCriteria()
     {
         var configuration = new InvoiceConfiguration(
-            new InvoiceConfigurationId("azure-test"), IntegrationType.Microsoft365, "Test",
+            new InvoiceConfigurationId("azure-test"),
+            new MicrosoftBillingIntegrationConfiguration("account"), "Test",
             InvoiceFrequency.Monthly,
             new AmountMatchingCriteria(new Money(10m, "GBP"), 0.25m), VatMode.Inclusive,
-            true, "/drives/test/root:/Bills", new DateOnly(2026, 1, 1), "account", 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         var roundTripped = document.ToConfiguration();
@@ -25,9 +26,10 @@ public sealed class InvoiceConfigurationDocumentTests
     public void FromConfiguration_LeavesAmountMatchingCriteriaAbsent()
     {
         var configuration = new InvoiceConfiguration(
-            new InvoiceConfigurationId("azure-test"), IntegrationType.Azure, "",
+            new InvoiceConfigurationId("azure-test"),
+            new MicrosoftBillingIntegrationConfiguration("account"), "",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
-            true, "/drives/test/root:/Bills", new DateOnly(2026, 1, 1), "account", 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
 
@@ -36,53 +38,73 @@ public sealed class InvoiceConfigurationDocumentTests
     }
 
     [Fact]
-    public void FromConfiguration_RoundTripsStableOneDriveDestination()
+    public void FromConfiguration_RoundTripsStableOneDriveFolder()
     {
         var configuration = new InvoiceConfiguration(
-            new("stable-folder"), IntegrationType.Azure, "Azure",
+            new("stable-folder"),
+            new MicrosoftBillingIntegrationConfiguration("account"), "Azure",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive, true,
-            new OneDriveDestination("/Bills/Azure", "drive-id", "folder-id"),
-            new DateOnly(2026, 1, 1), "account", 5);
+            new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills/Azure"),
+            new DateOnly(2026, 1, 1), 5);
 
         var roundTripped = InvoiceConfigurationDocument.FromConfiguration(configuration).ToConfiguration();
 
-        Assert.Equal(configuration.OneDriveDestination, roundTripped.OneDriveDestination);
-        Assert.Equal("/drives/drive-id/items/folder-id", roundTripped.OneDriveDestination.GraphPath);
+        Assert.Equal(configuration.OneDriveFolder, roundTripped.OneDriveFolder);
+        Assert.Equal("/drives/drive-id/items/folder-id", roundTripped.OneDriveFolder.GraphPath);
     }
 
     [Fact]
-    public void FromConfiguration_RoundTripsEmailMatchingFields()
+    public void FromConfiguration_RoundTripsGraphEmailIntegrationConfiguration()
     {
         var configuration = new InvoiceConfiguration(
-            new InvoiceConfigurationId("email-test"), IntegrationType.Microsoft365Email, "Test",
+            new InvoiceConfigurationId("email-test"),
+            new GraphEmailIntegrationConfiguration("billing@contoso.com", "Invoice for account \\d+"), "Test",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
-            true, "/drives/test/root:/Bills", new DateOnly(2026, 1, 1), "", 5,
-            SenderEmailAddress: "billing@contoso.com",
-            BodyPattern: "Invoice for account \\d+");
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         var roundTripped = document.ToConfiguration();
 
-        Assert.Equal("billing@contoso.com", document.SenderEmailAddress);
-        Assert.Equal("Invoice for account \\d+", document.BodyPattern);
-        Assert.Equal(configuration.SenderEmailAddress, roundTripped.SenderEmailAddress);
-        Assert.Equal(configuration.BodyPattern, roundTripped.BodyPattern);
+        Assert.Equal("graphEmail", document.IntegrationConfiguration.Type);
+        Assert.Equal("billing@contoso.com", document.IntegrationConfiguration.SenderEmailAddress);
+        Assert.Equal("Invoice for account \\d+", document.IntegrationConfiguration.BodyPattern);
+        Assert.True(roundTripped.IntegrationConfiguration is GraphEmailIntegrationConfiguration);
+        Assert.Equal(configuration.IntegrationConfiguration, roundTripped.IntegrationConfiguration);
+        Assert.Equal(IntegrationType.GraphEmail, roundTripped.IntegrationType);
     }
 
     [Fact]
-    public void ToConfiguration_DefaultsEmailMatchingFields_WhenAbsentFromJson()
+    public void FromConfiguration_RoundTripsMicrosoftBillingIntegrationConfiguration()
+    {
+        var configuration = new InvoiceConfiguration(
+            new InvoiceConfigurationId("billing-test"),
+            new MicrosoftBillingIntegrationConfiguration("account-123"), "Test",
+            InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+
+        var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
+        var roundTripped = document.ToConfiguration();
+
+        Assert.Equal("microsoftBilling", document.IntegrationConfiguration.Type);
+        Assert.Equal("account-123", document.IntegrationConfiguration.BillingAccountId);
+        Assert.Equal(configuration.IntegrationConfiguration, roundTripped.IntegrationConfiguration);
+        Assert.Equal(IntegrationType.MicrosoftBilling, roundTripped.IntegrationType);
+    }
+
+    [Fact]
+    public void ToConfiguration_IgnoresStoredIntegrationTypeField_DerivingFromIntegrationConfiguration()
     {
         var json = """
             {
-              "id": "azure-test",
-              "integrationType": "Azure",
+              "id": "billing-test",
+              "integrationType": "graphEmail",
+              "integrationConfiguration": { "type": "microsoftBilling", "billingAccountId": "account" },
               "invoiceDescription": "",
               "frequency": "Monthly",
               "defaultVatMode": "Inclusive",
               "isActive": true,
-              "oneDriveDestination": "/drives/test/root:/Bills",
+              "oneDriveFolder": { "driveId": "d", "driveName": "Drive", "folderItemId": "f", "folderPath": "/Bills" },
               "startDate": "2026-01-01",
-              "billingAccountId": "account",
               "dateToleranceDays": 5
             }
             """;
@@ -90,7 +112,6 @@ public sealed class InvoiceConfigurationDocumentTests
         var document = System.Text.Json.JsonSerializer.Deserialize<InvoiceConfigurationDocument>(json)!;
         var configuration = document.ToConfiguration();
 
-        Assert.Equal("", configuration.SenderEmailAddress);
-        Assert.Equal("", configuration.BodyPattern);
+        Assert.Equal(IntegrationType.MicrosoftBilling, configuration.IntegrationType);
     }
 }

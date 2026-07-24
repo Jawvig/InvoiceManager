@@ -199,14 +199,19 @@ internal sealed class InvoiceRecordDocument
 
 internal sealed class InvoiceProcessingSnapshotDocument
 {
+    /// <summary>
+    /// Retained for Cosmos query/index filtering. Written from the snapshot's
+    /// (derived) <see cref="Core.IntegrationType"/> on save, but not read back on
+    /// load — the integration type is instead derived from <see cref="IntegrationConfiguration"/>.
+    /// </summary>
     [JsonPropertyName("integrationType")]
     public required string IntegrationType { get; init; }
 
-    [JsonPropertyName("billingAccountId")]
-    public required string BillingAccountId { get; init; }
+    [JsonPropertyName("integrationConfiguration")]
+    public required IntegrationConfigurationDocument IntegrationConfiguration { get; init; }
 
-    [JsonPropertyName("oneDriveDestination")]
-    public required JsonElement OneDriveDestination { get; init; }
+    [JsonPropertyName("oneDriveFolder")]
+    public required OneDriveFolderDocument OneDriveFolder { get; init; }
 
     [JsonPropertyName("invoiceDescription")]
     public required string InvoiceDescription { get; init; }
@@ -220,30 +225,19 @@ internal sealed class InvoiceProcessingSnapshotDocument
     [JsonPropertyName("vatMode")]
     public required string VatMode { get; init; }
 
-    [JsonPropertyName("senderEmailAddress")]
-    public string SenderEmailAddress { get; init; } = "";
-
-    [JsonPropertyName("bodyPattern")]
-    public string BodyPattern { get; init; } = "";
-
     public InvoiceProcessingSnapshot ToSnapshot() => new(
-        Enum.Parse<IntegrationType>(IntegrationType, true),
-        BillingAccountId,
-        ToDestination(),
+        IntegrationConfiguration.ToConfiguration(),
+        OneDriveFolder.ToFolder(),
         InvoiceDescription,
         DateToleranceDays,
         AmountMatchingCriteria is { } criteria ? criteria.ToCriteria() : Option.None,
-        Enum.Parse<VatMode>(VatMode, true),
-        SenderEmailAddress,
-        BodyPattern);
+        Enum.Parse<VatMode>(VatMode, true));
 
     public static InvoiceProcessingSnapshotDocument FromSnapshot(InvoiceProcessingSnapshot snapshot) => new()
     {
         IntegrationType = snapshot.IntegrationType.ToString(),
-        BillingAccountId = snapshot.BillingAccountId,
-        OneDriveDestination = snapshot.OneDriveDestination.IsLegacyPath
-            ? JsonSerializer.SerializeToElement(snapshot.OneDriveDestination.DisplayPath)
-            : JsonSerializer.SerializeToElement(OneDriveDestinationDocument.FromDestination(snapshot.OneDriveDestination)),
+        IntegrationConfiguration = IntegrationConfigurationDocument.FromConfiguration(snapshot.IntegrationConfiguration),
+        OneDriveFolder = OneDriveFolderDocument.FromFolder(snapshot.OneDriveFolder),
         InvoiceDescription = snapshot.InvoiceDescription,
         DateToleranceDays = snapshot.DateToleranceDays,
         AmountMatchingCriteria = snapshot.AmountMatchingCriteria switch
@@ -252,12 +246,5 @@ internal sealed class InvoiceProcessingSnapshotDocument
             None => null,
         },
         VatMode = snapshot.VatMode.ToString(),
-        SenderEmailAddress = snapshot.SenderEmailAddress,
-        BodyPattern = snapshot.BodyPattern,
     };
-
-    private OneDriveDestination ToDestination() => OneDriveDestination.ValueKind == JsonValueKind.String
-        ? new(OneDriveDestination.GetString() ?? string.Empty)
-        : OneDriveDestination.Deserialize<OneDriveDestinationDocument>()?.ToDestination()
-          ?? throw new InvalidOperationException("Invoice record has an invalid OneDrive destination snapshot.");
 }

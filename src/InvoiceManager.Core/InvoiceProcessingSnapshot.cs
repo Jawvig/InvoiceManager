@@ -5,25 +5,21 @@ namespace InvoiceManager.Core;
 /// This keeps later configuration edits future-only.
 /// </summary>
 public sealed record InvoiceProcessingSnapshot(
-    IntegrationType IntegrationType,
-    string BillingAccountId,
-    OneDriveDestination OneDriveDestination,
+    IntegrationConfiguration IntegrationConfiguration,
+    OneDriveFolder OneDriveFolder,
     string InvoiceDescription,
     int DateToleranceDays,
     Option<AmountMatchingCriteria> AmountMatchingCriteria,
-    VatMode VatMode,
-    string SenderEmailAddress = "",
-    string BodyPattern = "")
+    VatMode VatMode)
 {
+    public IntegrationType IntegrationType => IntegrationConfiguration.ToIntegrationType();
+
     public static InvoiceProcessingSnapshot FromConfiguration(InvoiceConfiguration configuration) =>
         new(
-            configuration.IntegrationType,
-            configuration.BillingAccountId,
-            configuration.OneDriveDestination,
+            configuration.IntegrationConfiguration,
+            configuration.OneDriveFolder,
             configuration.InvoiceDescription,
             configuration.DateToleranceDays,
             configuration.AmountMatchingCriteria,
-            configuration.DefaultVatMode,
-            configuration.SenderEmailAddress,
-            configuration.BodyPattern);
+            configuration.DefaultVatMode);
 }

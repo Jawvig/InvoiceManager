@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -39,15 +38,13 @@ public sealed class GraphOneDriveIntegration(
     {
         using var activity = Telemetry.ActivitySource.StartActivity("upload_onedrive");
         activity?.SetTag("onedrive.file_name", request.FileName);
-        activity?.SetTag("onedrive.destination", request.Destination.DisplayPath);
+        activity?.SetTag("onedrive.destination", request.Destination.FolderPath);
 
         var token = await tokenProvider.AcquireTokenAsync(Scopes, cancellationToken);
 
         // Graph simple upload: PUT {drivePath}/{filename}:/content. The destination
-        // path already ends at the folder (e.g. /drives/{id}/root:/Bills/Microsoft 365).
-        var uploadUrl = request.Destination.HasStableIds
-            ? $"{GraphBaseUrl}{request.DestinationPath}:/{Uri.EscapeDataString(request.FileName)}:/content"
-            : $"{GraphBaseUrl}{request.DestinationPath}/{Uri.EscapeDataString(request.FileName)}:/content";
+        // path already ends at the folder (e.g. /drives/{id}/items/{id}).
+        var uploadUrl = $"{GraphBaseUrl}{request.DestinationPath}:/{Uri.EscapeDataString(request.FileName)}:/content";
 
         using var message = new HttpRequestMessage(HttpMethod.Put, uploadUrl);
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -83,16 +80,14 @@ public sealed class GraphOneDriveIntegration(
         CancellationToken cancellationToken = default)
     {
         using var activity = Telemetry.ActivitySource.StartActivity("search_onedrive");
-        activity?.SetTag("onedrive.destination", request.Destination.DisplayPath);
+        activity?.SetTag("onedrive.destination", request.Destination.FolderPath);
         activity?.SetTag("invoice.expected_date", request.Criteria.ExpectedDate.ToString("O"));
 
         var token = await tokenProvider.AcquireTokenAsync(Scopes, cancellationToken);
 
-        // Graph children listing: GET {folderPath}:/children. The destination path
-        // already ends at the folder, so append ":/children".
-        var next = request.Destination.HasStableIds
-            ? $"{GraphBaseUrl}{request.DestinationPath}/children"
-            : $"{GraphBaseUrl}{request.DestinationPath}:/children";
+        // Graph children listing: GET {folderPath}/children. The destination path
+        // already ends at the folder (a stable drive/item ID path).
+        var next = $"{GraphBaseUrl}{request.DestinationPath}/children";
         var candidateCount = 0;
         DriveChild? best = null;
         ParsedInvoiceFilename? bestParsed = null;
@@ -103,21 +98,10 @@ public sealed class GraphOneDriveIntegration(
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await httpClient.SendAsync(message, cancellationToken);
 
-            // A missing destination folder (Graph returns 404 itemNotFound) means no invoice
-            // has ever been written there. The upload path silently creates the folder on the
-            // first save, so a folder that doesn't exist yet is simply "nothing to reconcile
-            // against" — a warning and a no-match, not a retrieval failure that would strand
-            // the record in RetrievalError.
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                activity?.AddEvent(new ActivityEvent("destination_not_found"));
-                logger.LogWarning(
-                    "OneDrive destination folder {Destination} does not exist yet; treating as no match. " +
-                    "It will be created when an invoice is first saved there.",
-                    request.DestinationPath);
-                return new NoOneDriveMatch();
-            }
-
+            // Destinations are addressed by stable item ID, so a 404 here means the configured
+            // folder was deleted or moved after the ID was captured — unlike upload, ID-based
+            // addressing cannot recreate it. Treat this the same as any other Graph fault: throw
+            // and let the caller record RetrievalError, rather than silently returning "no match".
             await response.EnsureSuccessAsync("Microsoft Graph", "listing OneDrive files", cancellationToken);
 
             var page = await response.Content.ReadFromJsonAsync<DriveChildrenResponse>(cancellationToken);
