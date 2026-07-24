@@ -1,0 +1,37 @@
+@page
+@model ServiceStatusModel
+@using Microsoft.Extensions.Diagnostics.HealthChecks
+@{
+    ViewData["Title"] = "Health Status";
+}
+
+<section class="admin-shell">
+    <div class="page-heading">
+        <p class="eyebrow">Operations</p>
+        <h1>Health status</h1>
+        <p class="summary">
+            Checks connectivity to Cosmos DB and the Functions app.
+        </p>
+    </div>
+
+    <form method="get" class="actions">
+        <button class="secondary-action">Refresh</button>
+    </form>
+
+    <div class="status-grid">
+        @foreach (var check in Model.Checks)
+        {
+            var statusClass = check.Status switch
+            {
+                HealthStatus.Healthy => "status-healthy",
+                HealthStatus.Degraded => "status-degraded",
+                _ => "status-unhealthy",
+            };
+            <section class="status-panel @statusClass">
+                <h2>@check.Name</h2>
+                <p class="status-value">@check.Status</p>
+                <p class="status-label">@(check.Description ?? check.ExceptionMessage ?? "No additional details.")</p>
+            </section>
+        }
+    </div>
+</section>

@@ -109,12 +109,50 @@ if (-not (Test-GraphContext `
 
 $drive = Invoke-MgGraphRequest `
     -Method GET `
-    -Uri 'https://graph.microsoft.com/v1.0/me/drive?$select=id'
+    -Uri 'https://graph.microsoft.com/v1.0/me/drive?$select=id,name'
 $driveId = [string]$drive.id
+$driveName = [string]$drive.name
+if ([string]::IsNullOrWhiteSpace($driveName)) {
+    $driveName = 'OneDrive'
+}
 
 if ([string]::IsNullOrWhiteSpace($driveId)) {
     throw 'Microsoft Graph did not return an ID for the signed-in user''s default OneDrive.'
 }
+
+function Get-OneDriveFolderItemId {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Path
+    )
+
+    # Escape each path segment individually so structural "/" separators survive —
+    # escaping the whole path (e.g. via [Uri]::EscapeDataString($Path)) turns them into
+    # "%2F", which Graph's root:/{path} addressing does not treat as a separator.
+    $encodedPath = ($Path -split '/' | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'
+    try {
+        $item = Invoke-MgGraphRequest `
+            -Method GET `
+            -Uri "https://graph.microsoft.com/v1.0/me/drive/root:/$($encodedPath)`?`$select=id"
+    }
+    catch {
+        throw "Could not find a OneDrive folder at '/$Path'. Create it (or ask whoever owns the real Bills folders to) before seeding. ($($_.Exception.Message))"
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$item.id)) {
+        throw "Microsoft Graph did not return an item ID for '/$Path'."
+    }
+
+    return [string]$item.id
+}
+
+# Production configurations address the real "Bills" folders directly; test configurations
+# address a separate, isolated "Test/Bills" tree in the same drive so a test seed/run never
+# reads or writes the real production files (see tools/InvoiceManager.Seeder/Program.cs).
+$microsoft365FolderItemId = Get-OneDriveFolderItemId -Path 'Bills/Microsoft 365'
+$azureFolderItemId = Get-OneDriveFolderItemId -Path 'Bills/Azure + Visual Studio'
+$microsoft365TestFolderItemId = Get-OneDriveFolderItemId -Path 'Test/Bills/Microsoft 365'
+$azureTestFolderItemId = Get-OneDriveFolderItemId -Path 'Test/Bills/Azure + Visual Studio'
 
 $billingAccountsUrl =
     'https://management.azure.com/providers/Microsoft.Billing/billingAccounts?api-version=2024-04-01'
@@ -154,9 +192,14 @@ $microsoft365BillingAccountId = Get-SingleBillingAccountName -AccountType 'Busin
 $azureBillingAccountId = Get-SingleBillingAccountName -AccountType 'Individual'
 
 $values = [ordered]@{
-    InvoiceManager__Seed__DriveId              = $driveId
-    InvoiceManager__Seed__BillingAccountId     = $microsoft365BillingAccountId
-    InvoiceManager__Seed__AzureBillingAccountId = $azureBillingAccountId
+    InvoiceManager__Seed__DriveId                        = $driveId
+    InvoiceManager__Seed__DriveName                      = $driveName
+    InvoiceManager__Seed__Microsoft365FolderItemId       = $microsoft365FolderItemId
+    InvoiceManager__Seed__AzureFolderItemId              = $azureFolderItemId
+    InvoiceManager__Seed__Microsoft365TestFolderItemId   = $microsoft365TestFolderItemId
+    InvoiceManager__Seed__AzureTestFolderItemId          = $azureTestFolderItemId
+    InvoiceManager__Seed__BillingAccountId               = $microsoft365BillingAccountId
+    InvoiceManager__Seed__AzureBillingAccountId          = $azureBillingAccountId
 }
 
 foreach ($entry in $values.GetEnumerator()) {

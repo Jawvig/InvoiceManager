@@ -21,23 +21,9 @@ public sealed class EditModel(
         if (current is not StoredInvoiceConfiguration stored) return NotFound();
         Input = ConfigurationFormInput.From(stored);
 
-        if (stored.Configuration.OneDriveDestination.IsLegacyPath)
-        {
-            var resolved = await Discovery.ResolveLegacyOneDrivePathAsync(
-                stored.Configuration.OneDriveDestination.DisplayPath, HttpContext.RequestAborted);
-            if (resolved is OneDriveDestination destination)
-            {
-                Input.FolderItemId = Input.OriginalFolderItemId = destination.FolderItemId!;
-                Input.OriginalDriveId = destination.DriveId!;
-                Input.OriginalDisplayPath = destination.DisplayPath;
-            }
-            else
-            {
-                ModelState.AddModelError("Input.FolderItemId",
-                    "The legacy OneDrive path could not be resolved. Restore access to that folder before editing.");
-            }
-        }
-        await LoadDiscoveryAsync(HttpContext.RequestAborted, required: false);
+        // Render immediately with the stored billing-account value pre-populated (see
+        // ConfigurationFormInput.From); the full list is fetched in the background by
+        // configuration-wizard.js via OnGetBillingAccountsAsync rather than blocking here.
         return Page();
     }
 
@@ -45,14 +31,29 @@ public sealed class EditModel(
     {
         if (!await CanMutateAsync()) return RedirectToPage("Index");
         await LoadDiscoveryAsync(HttpContext.RequestAborted, required: false);
-        var currentResult = await service.GetAsync(new(Input.Id), Input.IntegrationType, HttpContext.RequestAborted);
+        // Edit always posts IntegrationType via a hidden input (see _ConfigurationForm.cshtml),
+        // so it should never actually be null here — but the property is nullable (Create's
+        // "please choose" placeholder), so guard defensively rather than assume.
+        if (Input.IntegrationType is null) return Page();
+        var currentResult = await service.GetAsync(new(Input.Id), Input.IntegrationType.Value, HttpContext.RequestAborted);
         if (currentResult is not StoredInvoiceConfiguration current) return NotFound();
         if (!ModelState.IsValid) return Page();
+
+        var folder = await ResolveFolderAsync(current.Configuration.OneDriveFolder, HttpContext.RequestAborted);
+        if (folder is null)
+        {
+            ModelState.AddModelError(string.Empty, "Select a OneDrive folder returned by the picker.");
+            return Page();
+        }
+        var currentBillingAccountId =
+            current.Configuration.IntegrationConfiguration is MicrosoftBillingIntegrationConfiguration billing
+                ? billing.BillingAccountId
+                : null;
 
         try
         {
             var updated = Input.Build(
-                current.Configuration.IsActive, BillingAccounts, Folders, true);
+                current.Configuration.IsActive, BillingAccounts, currentBillingAccountId, folder);
             await service.UpdateAsync(
                 current.Configuration, updated, Input.ETag, User.ToConfigurationActor(), HttpContext.RequestAborted);
             TempData["StatusMessage"] = "Configuration updated. Existing expected records retain their snapshots.";
@@ -69,6 +70,6 @@ public sealed class EditModel(
         return Page();
     }
 
-    private Task<bool> CanMutateAsync() =>
+    protected override Task<bool> CanMutateAsync() =>
         authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted);
 }

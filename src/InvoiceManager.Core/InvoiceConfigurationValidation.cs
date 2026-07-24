@@ -39,31 +39,42 @@ public static partial class InvoiceConfigurationValidation
 
         if (configuration.DateToleranceDays is < 0 or > 365)
             errors.Add("Date tolerance must be between 0 and 365 days.");
-        if (configuration.IntegrationType != IntegrationType.Microsoft365Email &&
-            string.IsNullOrWhiteSpace(configuration.BillingAccountId))
-            errors.Add("Billing account is required.");
-        if (configuration.IntegrationType == IntegrationType.Microsoft365Email)
+
+        switch (configuration.IntegrationConfiguration)
         {
-            if (string.IsNullOrWhiteSpace(configuration.SenderEmailAddress))
-                errors.Add("Sender email address is required.");
-            else if (!MailAddress.TryCreate(configuration.SenderEmailAddress, out _))
-                errors.Add("Sender email address must be valid.");
-            if (string.IsNullOrWhiteSpace(configuration.BodyPattern))
-                errors.Add("Email body pattern is required.");
-            else
-            {
-                try
+            case MicrosoftBillingIntegrationConfiguration billing:
+                if (string.IsNullOrWhiteSpace(billing.BillingAccountId))
+                    errors.Add("Billing account is required.");
+                break;
+            case GraphEmailIntegrationConfiguration email:
+                if (string.IsNullOrWhiteSpace(email.SenderEmailAddress))
+                    errors.Add("Sender email address is required.");
+                else if (!MailAddress.TryCreate(email.SenderEmailAddress, out _))
+                    errors.Add("Sender email address must be valid.");
+                if (string.IsNullOrWhiteSpace(email.BodyPattern))
+                    errors.Add("Email body pattern is required.");
+                else
                 {
-                    _ = new Regex(configuration.BodyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+                    try
+                    {
+                        _ = new Regex(email.BodyPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+                    }
+                    catch (ArgumentException)
+                    {
+                        errors.Add("Email body pattern must be a valid regular expression.");
+                    }
                 }
-                catch (ArgumentException)
-                {
-                    errors.Add("Email body pattern must be a valid regular expression.");
-                }
-            }
+                break;
         }
-        if (string.IsNullOrWhiteSpace(configuration.OneDriveDestination.DisplayPath))
-            errors.Add("OneDrive destination is required.");
+
+        if (string.IsNullOrWhiteSpace(configuration.OneDriveFolder.DriveId))
+            errors.Add("OneDrive drive ID is required.");
+        if (string.IsNullOrWhiteSpace(configuration.OneDriveFolder.DriveName))
+            errors.Add("OneDrive drive name is required.");
+        if (string.IsNullOrWhiteSpace(configuration.OneDriveFolder.FolderItemId))
+            errors.Add("OneDrive folder item ID is required.");
+        if (string.IsNullOrWhiteSpace(configuration.OneDriveFolder.FolderPath))
+            errors.Add("OneDrive folder path is required.");
 
         return errors;
     }

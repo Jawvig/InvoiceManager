@@ -30,6 +30,8 @@ if (string.IsNullOrWhiteSpace(environment))
 {
     await Console.Error.WriteLineAsync(
         "The --environment option is required, e.g. --environment test or --environment production.");
+    Console.Out.Flush();
+    Console.Error.Flush();
     Environment.Exit(5);
 }
 
@@ -40,6 +42,8 @@ if (clearDatabase && isProduction && !force)
 {
     await Console.Error.WriteLineAsync(
         "Refusing --clear-database against the production environment. Pass --force to override.");
+    Console.Out.Flush();
+    Console.Error.Flush();
     Environment.Exit(4);
 }
 
@@ -62,7 +66,7 @@ var json = await File.ReadAllTextAsync(seedFilePath);
 // OneDrive drive id lives inside a path, the M365 billing account id is a whole
 // field). Substitute the real values from configuration before deserializing so a
 // single string replace covers both the embedded and standalone cases.
-json = ReplaceSeedTokens(json, configuration);
+json = ReplaceSeedTokens(json, configuration, isTest);
 
 var records = JsonSerializer.Deserialize<List<SeedInvoiceConfigurationRecord>>(
     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
@@ -72,7 +76,7 @@ Console.WriteLine($"Loaded {records.Count} configuration(s) from seed file.");
 
 var configurations = records.Select(r => new InvoiceConfiguration(
     new InvoiceConfigurationId(r.Id),
-    Enum.Parse<IntegrationType>(r.IntegrationType, ignoreCase: true),
+    ToIntegrationConfiguration(r),
     r.InvoiceDescription,
     Enum.Parse<InvoiceFrequency>(r.Frequency, ignoreCase: true),
     r.AmountMatchingCriteria is { } amountCriteria
@@ -80,12 +84,9 @@ var configurations = records.Select(r => new InvoiceConfiguration(
         : Option.None,
     Enum.Parse<VatMode>(r.DefaultVatMode, ignoreCase: true),
     r.IsActive,
-    InjectEnvironmentFolder(r.OneDriveDestination, isTest),
+    ToOneDriveFolder(r.OneDriveFolder, isTest),
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
-    r.BillingAccountId,
-    r.DateToleranceDays,
-    r.SenderEmailAddress,
-    r.BodyPattern)).ToList();
+    r.DateToleranceDays)).ToList();
 
 var cosmosClient = CosmosClientFactory.Create(configuration);
 
@@ -110,21 +111,38 @@ catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forb
     await Console.Error.WriteLineAsync(
         $"Cosmos DB returned 403 Forbidden — the RBAC role assignment may not yet have " +
         $"propagated. ({ex.Message})");
+    Console.Out.Flush();
+    Console.Error.Flush();
     Environment.Exit(2);
 }
 
 Console.WriteLine("Seeding complete.");
 
-static string ReplaceSeedTokens(string json, IConfiguration configuration)
+static string ReplaceSeedTokens(string json, IConfiguration configuration, bool isTest)
 {
     // token in seed file  ->  config key (env var: InvoiceManager__Seed__<name>)
+    //
+    // The two folder-item-id tokens resolve to different config keys depending on
+    // environment: production configurations must address the real production
+    // "/Bills/<name>" folders, while test configurations must address a separate,
+    // isolated "/Test/Bills/<name>" folder tree in the same drive (a real, distinct
+    // Graph item, not a cosmetic path prefix) so test runs never read or write the
+    // production files that live at a different, unrelated item id.
     var tokens = new (string Token, string ConfigKey, string EnvVar)[]
     {
         ("REPLACE_WITH_DRIVE_ID", "InvoiceManager:Seed:DriveId", "InvoiceManager__Seed__DriveId"),
+        ("REPLACE_WITH_DRIVE_NAME", "InvoiceManager:Seed:DriveName", "InvoiceManager__Seed__DriveName"),
+        ("REPLACE_WITH_MICROSOFT365_FOLDER_ITEM_ID",
+            isTest ? "InvoiceManager:Seed:Microsoft365TestFolderItemId" : "InvoiceManager:Seed:Microsoft365FolderItemId",
+            isTest ? "InvoiceManager__Seed__Microsoft365TestFolderItemId" : "InvoiceManager__Seed__Microsoft365FolderItemId"),
+        ("REPLACE_WITH_AZURE_FOLDER_ITEM_ID",
+            isTest ? "InvoiceManager:Seed:AzureTestFolderItemId" : "InvoiceManager:Seed:AzureFolderItemId",
+            isTest ? "InvoiceManager__Seed__AzureTestFolderItemId" : "InvoiceManager__Seed__AzureFolderItemId"),
         ("REPLACE_WITH_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:BillingAccountId", "InvoiceManager__Seed__BillingAccountId"),
         ("REPLACE_WITH_AZURE_BILLING_ACCOUNT_ID", "InvoiceManager:Seed:AzureBillingAccountId", "InvoiceManager__Seed__AzureBillingAccountId"),
     };
 
+    var required = new List<(string EnvVar, bool IsSet)>();
     var missing = new List<string>();
     foreach (var (token, configKey, envVar) in tokens)
     {
@@ -136,26 +154,36 @@ static string ReplaceSeedTokens(string json, IConfiguration configuration)
         }
 
         var value = configuration[configKey];
-        if (string.IsNullOrWhiteSpace(value))
+        var isSet = !string.IsNullOrWhiteSpace(value);
+        required.Add((envVar, isSet));
+        if (!isSet)
         {
             missing.Add(envVar);
             continue;
         }
 
-        json = json.Replace(token, value, StringComparison.Ordinal);
+        json = json.Replace(token, value!, StringComparison.Ordinal);
     }
 
     if (missing.Count > 0)
     {
+        // List every variable this seed file (for this --environment) needs, not just the
+        // missing ones, so a partially-configured environment doesn't leave the operator
+        // guessing at the full picture — and flush explicitly before Environment.Exit,
+        // since an abrupt process exit can otherwise truncate buffered console output when
+        // this process is launched by a host (e.g. the Aspire AppHost) rather than a
+        // directly-attached terminal.
         Console.Error.WriteLine(
-            "Seed file requires real values that are not configured. Set the following " +
-            "environment variable(s) before seeding:");
-        foreach (var envVar in missing)
+            $"Seed file requires {required.Count} environment variable(s) for --environment " +
+            $"{(isTest ? "test" : "production")}; {missing.Count} of them are not configured:");
+        foreach (var (envVar, isSet) in required)
         {
-            Console.Error.WriteLine($"  {envVar}");
+            Console.Error.WriteLine($"  [{(isSet ? "OK" : "MISSING")}] {envVar}");
         }
         Console.Error.WriteLine(
             "Run tools/dev-setup/Set-SeedEnvironment.ps1 to discover and set the required values.");
+        Console.Out.Flush();
+        Console.Error.Flush();
         Environment.Exit(3);
     }
 
@@ -210,30 +238,21 @@ static async Task ClearDatabaseAsync(CosmosClient client, string databaseName)
     }
 }
 
-// For the test environment, nest every OneDrive destination under a single root "Test"
-// folder (inserted immediately after the drive "root:/" marker), mirroring the production
-// tree inside it so test downloads never collide with production files.
-static string InjectEnvironmentFolder(string oneDriveDestination, bool isTest)
-{
-    if (!isTest)
+static IntegrationConfiguration ToIntegrationConfiguration(SeedInvoiceConfigurationRecord record) =>
+    Enum.Parse<IntegrationType>(record.IntegrationType, ignoreCase: true) switch
     {
-        return oneDriveDestination;
-    }
+        IntegrationType.GraphEmail => new GraphEmailIntegrationConfiguration(record.SenderEmailAddress, record.BodyPattern),
+        IntegrationType.MicrosoftBilling => new MicrosoftBillingIntegrationConfiguration(record.BillingAccountId),
+        var other => throw new InvalidOperationException($"Unrecognised integration type '{other}' in seed file."),
+    };
 
-    const string rootMarker = "root:/";
-    var markerIndex = oneDriveDestination.IndexOf(rootMarker, StringComparison.Ordinal);
-    if (markerIndex < 0)
-    {
-        // Unrecognised path shape; leave it untouched rather than corrupt it.
-        return oneDriveDestination;
-    }
-
-    var insertionPoint = markerIndex + rootMarker.Length;
-    return string.Concat(
-        oneDriveDestination.AsSpan(0, insertionPoint),
-        "Test/",
-        oneDriveDestination.AsSpan(insertionPoint));
-}
+// driveId comes from its own (placeholder-token) field; folderItemId was already resolved
+// to the environment-correct real item (production vs. the separate Test/Bills/<name> tree)
+// by ReplaceSeedTokens above. Only the display-only folderPath needs an explicit "/Test"
+// prefix here, purely so an operator reading the stored configuration can see which
+// environment it belongs to — it plays no part in addressing the folder on Graph.
+static OneDriveFolder ToOneDriveFolder(SeedOneDriveFolder folder, bool isTest) =>
+    new(folder.DriveId, folder.DriveName, folder.FolderItemId, isTest ? $"/Test{folder.FolderPath}" : folder.FolderPath);
 
 static (bool EnsureSchema, bool ClearDatabase, bool Force, string? Environment, string[] Positional) ParseArgs(string[] args)
 {

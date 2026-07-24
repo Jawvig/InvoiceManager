@@ -254,7 +254,7 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
     }
 }
 
-internal sealed class CosmosHealthCheck(CosmosClient cosmosClient, ILogger<CosmosHealthCheck> logger)
+internal sealed class CosmosHealthCheck(IServiceProvider serviceProvider, ILogger<CosmosHealthCheck> logger)
     : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(
@@ -263,6 +263,11 @@ internal sealed class CosmosHealthCheck(CosmosClient cosmosClient, ILogger<Cosmo
     {
         try
         {
+            // Resolved here rather than via constructor injection: CosmosClientFactory.Create
+            // throws synchronously when Cosmos configuration is missing, and constructor
+            // injection would let that throw during health-check activation itself, turning a
+            // missing/unreachable Cosmos into an unhandled 500 instead of a clean Unhealthy result.
+            var cosmosClient = serviceProvider.GetRequiredService<CosmosClient>();
             await cosmosClient.ReadAccountAsync().WaitAsync(cancellationToken);
             return HealthCheckResult.Healthy();
         }

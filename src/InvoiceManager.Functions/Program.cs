@@ -93,28 +93,20 @@ var host = new HostBuilder()
         // Named HttpClient so handler lifetimes rotate; auth is applied per request.
         services.AddHttpClient(nameof(MicrosoftBillingInvoiceSource));
         services.AddTransient<IInvoiceSourceIntegration>(sp =>
-            CreateMicrosoftBillingInvoiceSource(sp, IntegrationType.Microsoft365));
-        services.AddTransient<IInvoiceSourceIntegration>(sp =>
-            CreateMicrosoftBillingInvoiceSource(sp, IntegrationType.Azure));
-
-        static MicrosoftBillingInvoiceSource CreateMicrosoftBillingInvoiceSource(
-            IServiceProvider serviceProvider,
-            IntegrationType integrationType)
         {
-            var factory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
             return new MicrosoftBillingInvoiceSource(
                 factory.CreateClient(nameof(MicrosoftBillingInvoiceSource)),
-                serviceProvider.GetRequiredService<IMicrosoftTokenProvider>(),
-                serviceProvider.GetRequiredService<IOptions<MicrosoftBillingOptions>>(),
-                serviceProvider.GetRequiredService<ILogger<MicrosoftBillingInvoiceSource>>(),
-                integrationType);
-        }
+                sp.GetRequiredService<IMicrosoftTokenProvider>(),
+                sp.GetRequiredService<IOptions<MicrosoftBillingOptions>>(),
+                sp.GetRequiredService<ILogger<MicrosoftBillingInvoiceSource>>());
+        });
 
         // Graph client gets the standard resilience handler (429/503 + Retry-After, timeouts).
         services.AddGraphOneDriveIntegration();
 
         // Document Intelligence PDF extraction (app-only via managed identity, unrelated to
-        // the delegated MSAL cache used above) and the Microsoft365Email source that uses it.
+        // the delegated MSAL cache used above) and the GraphEmail source that uses it.
         services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
         services.AddOptions<DocumentIntelligenceOptions>()
             .Bind(context.Configuration.GetSection(DocumentIntelligenceOptions.SectionName))
