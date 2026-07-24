@@ -108,7 +108,7 @@ jobs:
 
       - name: Download Functions package
         if: steps.check.outputs.ready == 'true'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: functions-package
           path: ./functions_publish
@@ -168,7 +168,7 @@ jobs:
 
       - name: Download Functions package
         if: steps.check.outputs.ready == 'true'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: functions-package
           path: ./functions_publish
