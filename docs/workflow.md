@@ -174,8 +174,10 @@ matched PDF attachment's filename (without its extension) becomes
 `SourceInvoiceId` — no mailbox mutation (no move/flag/mark-as-read) is used
 for deduplication. This assumes the sender's attachment naming is well
 behaved: the basename must be unique per period for the given invoice
-configuration (so distinct periods don't collide in OneDrive or in
-`InvoiceRecord` identity) and must contain no whitespace (so the canonical
+configuration (`InvoiceRecord` identity is derived from configuration ID and
+expected date alone, not `SourceInvoiceId`, but a duplicate basename within
+one period would still produce two indistinguishable OneDrive filenames for
+that configuration) and must contain no whitespace (so the canonical
 OneDrive filename stays a parseable, single-space-separated token — see
 `InvoiceFilename.TryParse`). An attachment whose basename contains whitespace
 is treated the same as an unreadable PDF: the source keeps trying other
