@@ -170,7 +170,7 @@ public sealed class DocumentIntelligencePdfExtractorTests
             if (uri.Contains(":analyze"))
             {
                 var response = new HttpResponseMessage(HttpStatusCode.Accepted);
-                response.Headers.Location = new Uri(OperationUrl);
+                response.Headers.Add("Operation-Location", OperationUrl);
                 return response;
             }
 

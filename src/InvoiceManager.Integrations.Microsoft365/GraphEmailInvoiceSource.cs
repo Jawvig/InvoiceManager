@@ -89,7 +89,7 @@ public sealed class GraphEmailInvoiceSource(
             var details = new ActualInvoiceDetails(
                 found.Extraction.InvoiceDate,
                 found.Extraction.Total,
-                new SourceInvoiceId(message.Id));
+                new SourceInvoiceId(Path.GetFileNameWithoutExtension(found.AttachmentName)));
 
             return new InvoiceMatch(found.PdfContent, details);
         }
@@ -132,10 +132,20 @@ public sealed class GraphEmailInvoiceSource(
 
             if (result is PdfExtractionSucceeded succeeded)
             {
-                if (criteria.Matches(succeeded.InvoiceDate, succeeded.Total))
-                    return new EmailInvoiceFound(content, succeeded);
+                if (!criteria.Matches(succeeded.InvoiceDate, succeeded.Total))
+                    continue;
 
-                continue;
+                var sourceInvoiceId = Path.GetFileNameWithoutExtension(attachment.Name);
+                if (!IsValidSourceInvoiceId(sourceInvoiceId))
+                {
+                    readFailures.Add(
+                        $"{attachment.Name}: attachment name '{sourceInvoiceId}' cannot be used as a " +
+                        "SourceInvoiceId (it contains whitespace, so the canonical OneDrive filename " +
+                        "would not round-trip through parsing)");
+                    continue;
+                }
+
+                return new EmailInvoiceFound(content, succeeded, attachment.Name);
             }
 
             var reason = result is PdfExtractionFailed failed ? failed.Reason : "unknown extraction failure";
@@ -201,6 +211,15 @@ public sealed class GraphEmailInvoiceSource(
     /// </summary>
     private static string EscapeODataStringLiteral(string value) => value.Replace("'", "''");
 
+    /// <summary>
+    /// <see cref="InvoiceFilename"/> reads the canonical OneDrive filename back as
+    /// single-space-separated tokens, so a <c>SourceInvoiceId</c> containing whitespace
+    /// (or empty) would fail to round-trip through <see cref="InvoiceFilename.TryParse"/>
+    /// and break later reconciliation.
+    /// </summary>
+    private static bool IsValidSourceInvoiceId(string candidate) =>
+        !string.IsNullOrWhiteSpace(candidate) && !candidate.Any(char.IsWhiteSpace);
+
     private bool MatchesBodyPattern(GraphMessage message, string bodyPattern)
     {
         if (string.IsNullOrEmpty(bodyPattern))
@@ -222,7 +241,7 @@ public sealed class GraphEmailInvoiceSource(
         string messageId, string token, CancellationToken cancellationToken)
     {
         string? url = $"{GraphBaseUrl}/me/messages/{messageId}/attachments" +
-            "?$select=id,name,contentType,contentBytes,isInline";
+            "?$select=id,name,contentType,isInline,microsoft.graph.fileAttachment/contentBytes";
 
         var attachments = new List<GraphAttachment>();
         while (url is not null)
@@ -259,7 +278,7 @@ public sealed class GraphEmailInvoiceSource(
     }
 
     /// <summary>A PDF attachment extracted successfully and satisfied the search criteria.</summary>
-    private sealed record EmailInvoiceFound(byte[] PdfContent, PdfExtractionSucceeded Extraction);
+    private sealed record EmailInvoiceFound(byte[] PdfContent, PdfExtractionSucceeded Extraction, string AttachmentName);
 
     /// <summary>Every PDF attachment extracted fine but none satisfied the date/amount criteria — the wrong invoice, not an error.</summary>
     private sealed record EmailInvoiceCriteriaMismatch;

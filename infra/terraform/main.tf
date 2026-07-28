@@ -254,6 +254,11 @@ resource "azurerm_cognitive_account" "document_intelligence" {
   kind                = "FormRecognizer"
   sku_name            = "S0"
 
+  # AAD token auth requires a custom subdomain - without one, Entra ID auth always
+  # fails with 401 regardless of role assignments, even though the endpoint hostname
+  # looks subdomain-shaped by default.
+  custom_subdomain_name = local.document_intelligence_name
+
   # RBAC-only data-plane access (see role assignment below); no key-based auth needed.
   local_auth_enabled = false
 }
@@ -547,4 +552,13 @@ resource "azurerm_role_assignment" "functions_document_intelligence_user" {
   scope                = azurerm_cognitive_account.document_intelligence.id
   role_definition_name = "Cognitive Services User"
   principal_id         = azurerm_user_assigned_identity.functions.principal_id
+}
+
+# Grants the deploying identity data-plane access so local development (which
+# authenticates via DefaultAzureCredential's developer credential fallback,
+# not the Functions managed identity) can call Document Intelligence too.
+resource "azurerm_role_assignment" "deployer_document_intelligence_user" {
+  scope                = azurerm_cognitive_account.document_intelligence.id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = data.azurerm_client_config.current.object_id
 }

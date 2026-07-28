@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -56,8 +57,13 @@ public sealed class DocumentIntelligencePdfExtractor(
         if (analyzeResponse.StatusCode != HttpStatusCode.Accepted)
             return await FailedAsync(analyzeResponse, "starting document analysis", activity, cancellationToken);
 
-        var operationLocation = analyzeResponse.Headers.Location
-            ?? throw new InvalidOperationException("Document analysis did not return an Operation-Location header.");
+        // Document Intelligence returns the poll URL in a custom Operation-Location header,
+        // not the standard Location header that HttpResponseMessage.Headers.Location parses.
+        if (!analyzeResponse.Headers.TryGetValues("Operation-Location", out var operationLocationValues) ||
+            !Uri.TryCreate(operationLocationValues.FirstOrDefault(), UriKind.Absolute, out var operationLocation))
+        {
+            throw new InvalidOperationException("Document analysis did not return an Operation-Location header.");
+        }
 
         var result = await PollUntilCompleteAsync(operationLocation, token.Token, activity, cancellationToken);
         return result;

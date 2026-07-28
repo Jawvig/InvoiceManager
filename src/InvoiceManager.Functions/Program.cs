@@ -33,7 +33,13 @@ var host = new HostBuilder()
             ?? throw new InvalidOperationException(
                 "MicrosoftAuthorization:KeyVaultUri is required. Set it in user-secrets or as an " +
                 "environment variable so the Functions app can load MicrosoftAuthorization secrets.");
-        config.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+        // ExcludeVisualStudioCredential: VisualStudioCredential can resolve to a cached
+        // account that differs from the developer's actual signed-in identity (and thus
+        // lack RBAC roles granted to that identity), producing confusing 401s that look
+        // like a permissions gap. Azure CLI login is the reliable local fallback.
+        config.AddAzureKeyVault(
+            keyVaultUri,
+            new DefaultAzureCredential(new DefaultAzureCredentialOptions { ExcludeVisualStudioCredential = true }));
     })
     .ConfigureServices((context, services) =>
     {
@@ -107,7 +113,9 @@ var host = new HostBuilder()
 
         // Document Intelligence PDF extraction (app-only via managed identity, unrelated to
         // the delegated MSAL cache used above) and the GraphEmail source that uses it.
-        services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
+        // See the ExcludeVisualStudioCredential comment above; same rationale applies here.
+        services.AddSingleton<TokenCredential>(
+            new DefaultAzureCredential(new DefaultAzureCredentialOptions { ExcludeVisualStudioCredential = true }));
         services.AddOptions<DocumentIntelligenceOptions>()
             .Bind(context.Configuration.GetSection(DocumentIntelligenceOptions.SectionName))
             .ValidateOnStart();
