@@ -51,33 +51,61 @@ public sealed record InvoiceConfigurationExport
     };
 
     /// <summary>
+    /// Throws <see cref="JsonException"/> when the file doesn't represent a fully valid,
+    /// currently-understood configuration, so the caller can report it the same way as a
+    /// malformed/unparsable file rather than letting bad data through silently or crashing.
+    /// Two gaps this closes that <c>required</c> and <c>Enum.TryParse</c> don't catch on their
+    /// own: System.Text.Json's <c>required</c> check only verifies a property was *present* in
+    /// the JSON, so an explicit <c>"oneDriveFolder": null</c> still satisfies it and leaves
+    /// <see cref="OneDriveFolder"/> null; and <c>Enum.TryParse</c> happily accepts numeric
+    /// strings with no corresponding named member (e.g. "999"), so a value must also pass
+    /// <see cref="Enum.IsDefined{TEnum}(TEnum)"/> to be accepted.
+    /// </summary>
+    public void Validate()
+    {
+        if (OneDriveFolder is null)
+            throw new JsonException("The file is missing its OneDrive folder.");
+        if (!Enum.TryParse<Core.IntegrationType>(IntegrationType, out var integrationType) || !Enum.IsDefined(integrationType))
+            throw new JsonException($"'{IntegrationType}' is not a recognized integration type.");
+        if (!Enum.TryParse<InvoiceFrequency>(Frequency, out var frequency) || !Enum.IsDefined(frequency))
+            throw new JsonException($"'{Frequency}' is not a recognized frequency.");
+        if (!Enum.TryParse<VatMode>(DefaultVatMode, out var vatMode) || !Enum.IsDefined(vatMode))
+            throw new JsonException($"'{DefaultVatMode}' is not a recognized VAT mode.");
+    }
+
+    /// <summary>
     /// Pre-fills a fresh <see cref="ConfigurationFormInput"/> for review on the Create-style
     /// import form. Nothing here bypasses validation: the OneDrive folder is re-verified against
     /// Graph and the billing account against the live discovery list the same way a manually
     /// entered value would be, via the normal <see cref="ConfigurationFormInput.Build"/> /
-    /// folder-resolution path, when the user saves.
+    /// folder-resolution path, when the user saves. Calls <see cref="Validate"/> first, so an
+    /// invalid file is reported rather than reaching this dereference/parse.
     /// </summary>
-    public ConfigurationFormInput ToFormInput() => new()
+    public ConfigurationFormInput ToFormInput()
     {
-        Id = Id,
-        IntegrationType = Enum.TryParse<Core.IntegrationType>(IntegrationType, out var type) ? type : null,
-        InvoiceDescription = InvoiceDescription,
-        Frequency = Enum.TryParse<InvoiceFrequency>(Frequency, out var frequency) ? frequency : InvoiceFrequency.Monthly,
-        HasExpectedAmount = ExpectedAmount is not null,
-        ExpectedAmount = ExpectedAmount,
-        Currency = Currency ?? "GBP",
-        AmountTolerance = AmountTolerance ?? 0,
-        DefaultVatMode = Enum.TryParse<VatMode>(DefaultVatMode, out var vatMode) ? vatMode : VatMode.Exclusive,
-        StartDate = StartDate,
-        DateToleranceDays = DateToleranceDays,
-        BillingAccountId = BillingAccountId ?? "",
-        SenderEmailAddress = SenderEmailAddress ?? "",
-        BodyPattern = BodyPattern ?? "",
-        DriveId = OneDriveFolder.DriveId,
-        DriveName = OneDriveFolder.DriveName,
-        FolderItemId = OneDriveFolder.FolderItemId,
-        FolderPath = OneDriveFolder.FolderPath,
-    };
+        Validate();
+        return new()
+        {
+            Id = Id,
+            IntegrationType = Enum.Parse<Core.IntegrationType>(IntegrationType),
+            InvoiceDescription = InvoiceDescription,
+            Frequency = Enum.Parse<InvoiceFrequency>(Frequency),
+            HasExpectedAmount = ExpectedAmount is not null,
+            ExpectedAmount = ExpectedAmount,
+            Currency = Currency ?? "GBP",
+            AmountTolerance = AmountTolerance ?? 0,
+            DefaultVatMode = Enum.Parse<VatMode>(DefaultVatMode),
+            StartDate = StartDate,
+            DateToleranceDays = DateToleranceDays,
+            BillingAccountId = BillingAccountId ?? "",
+            SenderEmailAddress = SenderEmailAddress ?? "",
+            BodyPattern = BodyPattern ?? "",
+            DriveId = OneDriveFolder.DriveId,
+            DriveName = OneDriveFolder.DriveName,
+            FolderItemId = OneDriveFolder.FolderItemId,
+            FolderPath = OneDriveFolder.FolderPath,
+        };
+    }
 }
 
 public sealed record OneDriveFolderExport

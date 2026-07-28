@@ -19,6 +19,8 @@ public sealed class ImportModel(
     // are served by this same page so the review step can reuse _ConfigurationForm.cshtml as-is.
     public bool HasImportedFile { get; private set; }
 
+    public override bool RequiresImportConfirmation => HasImportedFile;
+
     public async Task<IActionResult> OnGetAsync()
     {
         if (!await CanMutateAsync()) return RedirectToPage("Index");
@@ -39,13 +41,17 @@ public sealed class ImportModel(
             return Page();
         }
 
-        InvoiceConfigurationExport export;
         try
         {
             await using var stream = file.OpenReadStream();
-            export = await JsonSerializer.DeserializeAsync<InvoiceConfigurationExport>(
+            var export = await JsonSerializer.DeserializeAsync<InvoiceConfigurationExport>(
                 stream, InvoiceConfigurationExportJson.Options, HttpContext.RequestAborted)
                 ?? throw new JsonException("The file does not contain a configuration.");
+            // ToFormInput() validates the deserialized shape (e.g. an explicit JSON null for the
+            // OneDrive folder, or an enum value with no matching named member) and throws
+            // JsonException too, so it belongs inside this same try — otherwise an invalid but
+            // parsable file would crash instead of showing the message below.
+            Input = export.ToFormInput();
         }
         catch (JsonException ex)
         {
@@ -53,7 +59,6 @@ public sealed class ImportModel(
             return Page();
         }
 
-        Input = export.ToFormInput();
         HasImportedFile = true;
         return Page();
     }
@@ -68,6 +73,14 @@ public sealed class ImportModel(
         if (!await CanMutateAsync()) return RedirectToPage("Index");
         HasImportedFile = true;
         await LoadDiscoveryAsync(HttpContext.RequestAborted);
+        if (!ConfirmedFolderSelection)
+        {
+            ModelState.AddModelError(string.Empty, "Confirm the OneDrive folder is correct for this environment before saving.");
+        }
+        if (Input.IntegrationType == IntegrationType.MicrosoftBilling && !ConfirmedBillingAccountSelection)
+        {
+            ModelState.AddModelError(string.Empty, "Confirm the billing account is correct for this environment before saving.");
+        }
         if (!ModelState.IsValid) return Page();
         var folder = await ResolveFolderAsync(storedFolder: null, HttpContext.RequestAborted);
         if (folder is null)

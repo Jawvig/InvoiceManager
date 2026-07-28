@@ -97,4 +97,52 @@ public sealed class InvoiceConfigurationExportTests
         Assert.Throws<JsonException>(() =>
             JsonSerializer.Deserialize<InvoiceConfigurationExport>(incomplete, InvoiceConfigurationExportJson.Options));
     }
+
+    [Fact]
+    public void ToFormInput_ThrowsJsonException_WhenOneDriveFolderIsExplicitNull()
+    {
+        // System.Text.Json's `required` only checks a property was present in the JSON, so an
+        // explicit "oneDriveFolder": null still satisfies it and leaves the property null despite
+        // its non-nullable type - this must be caught rather than reaching a null dereference.
+        var withNullFolder = ValidExportJsonWith("\"oneDriveFolder\": null");
+        var export = JsonSerializer.Deserialize<InvoiceConfigurationExport>(withNullFolder, InvoiceConfigurationExportJson.Options)!;
+
+        Assert.Throws<JsonException>(() => export.ToFormInput());
+    }
+
+    [Theory]
+    [InlineData("\"integrationType\": \"999\"")]
+    [InlineData("\"frequency\": \"NotARealFrequency\"")]
+    [InlineData("\"defaultVatMode\": \"NotARealVatMode\"")]
+    public void ToFormInput_ThrowsJsonException_ForUndefinedEnumValues(string fieldOverride)
+    {
+        // Enum.TryParse alone would accept an undefined numeric value like "999" outright, and
+        // silently fall back to a default (Monthly/Exclusive) for a genuinely unrecognized name -
+        // both let a malformed or newer-format export apply with different semantics than the
+        // file actually contains.
+        var withInvalidEnum = ValidExportJsonWith(fieldOverride);
+        var export = JsonSerializer.Deserialize<InvoiceConfigurationExport>(withInvalidEnum, InvoiceConfigurationExportJson.Options)!;
+
+        Assert.Throws<JsonException>(() => export.ToFormInput());
+    }
+
+    private static string ValidExportJsonWith(string fieldOverride) => $$"""
+        {
+          "id": "imported-config",
+          "integrationType": "MicrosoftBilling",
+          "billingAccountId": "billing-account-1",
+          "invoiceDescription": "Imported invoice",
+          "frequency": "Monthly",
+          "defaultVatMode": "Exclusive",
+          "oneDriveFolder": {
+            "driveId": "drive-1",
+            "driveName": "Drive One",
+            "folderItemId": "folder-1",
+            "folderPath": "/Bills/Imported"
+          },
+          "startDate": "2025-01-01",
+          "dateToleranceDays": 5,
+          {{fieldOverride}}
+        }
+        """;
 }

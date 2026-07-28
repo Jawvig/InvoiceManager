@@ -65,7 +65,10 @@ public sealed class ConfigurationExportImportTests(AdminWebAppHostFixture appHos
         await page.EvalOnSelectorAsync("#Input_Id", "(el, v) => el.value = v", importedId);
         // The imported OneDrive folder happens to still verify against Graph (same test folder),
         // so no re-pick is required here for the save to succeed — Build()/ResolveFolderAsync
-        // re-verify it regardless.
+        // re-verify it regardless. The confirmation checkbox is still required though: it exists
+        // precisely so a folder that merely *resolves* in this environment (but is the wrong one,
+        // e.g. carried over from dev/staging) can't be saved without an explicit human check.
+        await page.Locator("#ConfirmedFolderSelection").CheckAsync();
         await page.Locator("button[type=submit]", new PageLocatorOptions { HasText = "Save configuration" }).ClickAsync();
 
         await Assertions.Expect(page).ToHaveURLAsync(new Regex("/Configurations$"));

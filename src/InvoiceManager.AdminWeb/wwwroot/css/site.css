@@ -402,6 +402,13 @@ a.secondary-action.disabled {
   gap: .35rem;
 }
 
+.import-confirmation {
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+  font-weight: normal;
+}
+
 .onedrive-picker-summary {
   margin: 0;
   color: var(--ink);

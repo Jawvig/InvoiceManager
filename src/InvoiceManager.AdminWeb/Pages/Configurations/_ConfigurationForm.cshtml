@@ -87,6 +87,16 @@
             </select>
             <span id="billing-account-status" class="status-label"></span>
         </label>
+        @if (Model.RequiresImportConfirmation)
+        {
+            @* No native `required`: this fieldset is hidden for a GraphEmail import, and a hidden
+               required field's exemption from constraint validation isn't reliable across
+               browsers. ImportModel.OnPostAsync enforces this server-side instead. *@
+            <label class="import-confirmation">
+                <input asp-for="ConfirmedBillingAccountSelection" />
+                Confirm this billing account is correct for this environment
+            </label>
+        }
     </fieldset>
 
     <fieldset id="email-details" data-integration="GraphEmail" hidden="@(Model.IsEdit ? !isEmail : true)">

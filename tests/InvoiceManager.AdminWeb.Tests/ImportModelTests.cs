@@ -100,6 +100,8 @@ public sealed class ImportModelTests
             billingAccounts: [new BillingAccountChoice("billing-account-1", "Account", "Business")],
             verifiedFolder: verifiedFolder);
         await model.OnPostUploadAsync(MakeFile(ValidExportJson));
+        model.ConfirmedFolderSelection = true;
+        model.ConfirmedBillingAccountSelection = true;
 
         var result = await model.OnPostAsync();
 
@@ -122,6 +124,8 @@ public sealed class ImportModelTests
         // discovery list, so the save must fail rather than trust the file outright.
         var model = CreateModel(billingAccounts: [], verifiedFolder: new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Imported"));
         await model.OnPostUploadAsync(MakeFile(ValidExportJson));
+        model.ConfirmedFolderSelection = true;
+        model.ConfirmedBillingAccountSelection = true;
 
         var result = await model.OnPostAsync();
 
@@ -138,11 +142,82 @@ public sealed class ImportModelTests
             billingAccounts: [new BillingAccountChoice("billing-account-1", "Account", "Business")],
             verifiedFolder: null);
         await model.OnPostUploadAsync(MakeFile(ValidExportJson));
+        model.ConfirmedFolderSelection = true;
+        model.ConfirmedBillingAccountSelection = true;
 
         var result = await model.OnPostAsync();
 
         Assert.IsType<PageResult>(result);
         Assert.False(model.ModelState.IsValid);
+    }
+
+    [Fact]
+    public async Task OnPostAsync_RejectsUnconfirmedFolder_EvenWhenFolderAndBillingVerify()
+    {
+        // The reviewed folder/billing account must be actively confirmed, not just left as
+        // pre-filled: an imported ID resolving successfully in this environment (e.g. dev and
+        // prod sharing a tenant) doesn't mean it's the *correct* destination for this environment.
+        var verifiedFolder = new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Imported");
+        var model = CreateModel(
+            billingAccounts: [new BillingAccountChoice("billing-account-1", "Account", "Business")],
+            verifiedFolder: verifiedFolder);
+        await model.OnPostUploadAsync(MakeFile(ValidExportJson));
+        model.ConfirmedBillingAccountSelection = true;
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<PageResult>(result);
+        Assert.False(model.ModelState.IsValid);
+    }
+
+    [Fact]
+    public async Task OnPostAsync_RejectsUnconfirmedBillingAccount_EvenWhenFolderAndBillingVerify()
+    {
+        var verifiedFolder = new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Imported");
+        var model = CreateModel(
+            billingAccounts: [new BillingAccountChoice("billing-account-1", "Account", "Business")],
+            verifiedFolder: verifiedFolder);
+        await model.OnPostUploadAsync(MakeFile(ValidExportJson));
+        model.ConfirmedFolderSelection = true;
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<PageResult>(result);
+        Assert.False(model.ModelState.IsValid);
+    }
+
+    [Fact]
+    public async Task OnPostAsync_DoesNotRequireBillingConfirmation_ForGraphEmailImport()
+    {
+        // A GraphEmail import has no billing account at all, so only the folder confirmation
+        // applies - the billing checkbox must not block a save that never shows it.
+        const string graphEmailExportJson = """
+            {
+              "id": "imported-email-config",
+              "integrationType": "GraphEmail",
+              "senderEmailAddress": "billing@example.com",
+              "bodyPattern": "Invoice \\d+",
+              "invoiceDescription": "Imported invoice",
+              "frequency": "Monthly",
+              "defaultVatMode": "Exclusive",
+              "oneDriveFolder": {
+                "driveId": "drive-1",
+                "driveName": "Drive One",
+                "folderItemId": "folder-1",
+                "folderPath": "/Bills/Imported"
+              },
+              "startDate": "2025-01-01",
+              "dateToleranceDays": 5
+            }
+            """;
+        var verifiedFolder = new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Imported");
+        var model = CreateModel(verifiedFolder: verifiedFolder);
+        await model.OnPostUploadAsync(MakeFile(graphEmailExportJson));
+        model.ConfirmedFolderSelection = true;
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<RedirectToPageResult>(result);
     }
 
     private static IFormFile MakeFile(string content)
