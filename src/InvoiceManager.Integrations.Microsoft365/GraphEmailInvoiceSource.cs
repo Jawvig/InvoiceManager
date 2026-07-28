@@ -89,7 +89,7 @@ public sealed class GraphEmailInvoiceSource(
             var details = new ActualInvoiceDetails(
                 found.Extraction.InvoiceDate,
                 found.Extraction.Total,
-                new SourceInvoiceId(message.Id));
+                new SourceInvoiceId(Path.GetFileNameWithoutExtension(found.AttachmentName)));
 
             return new InvoiceMatch(found.PdfContent, details);
         }
@@ -133,7 +133,7 @@ public sealed class GraphEmailInvoiceSource(
             if (result is PdfExtractionSucceeded succeeded)
             {
                 if (criteria.Matches(succeeded.InvoiceDate, succeeded.Total))
-                    return new EmailInvoiceFound(content, succeeded);
+                    return new EmailInvoiceFound(content, succeeded, attachment.Name);
 
                 continue;
             }
@@ -222,7 +222,7 @@ public sealed class GraphEmailInvoiceSource(
         string messageId, string token, CancellationToken cancellationToken)
     {
         string? url = $"{GraphBaseUrl}/me/messages/{messageId}/attachments" +
-            "?$select=id,name,contentType,contentBytes,isInline";
+            "?$select=id,name,contentType,isInline,microsoft.graph.fileAttachment/contentBytes";
 
         var attachments = new List<GraphAttachment>();
         while (url is not null)
@@ -259,7 +259,7 @@ public sealed class GraphEmailInvoiceSource(
     }
 
     /// <summary>A PDF attachment extracted successfully and satisfied the search criteria.</summary>
-    private sealed record EmailInvoiceFound(byte[] PdfContent, PdfExtractionSucceeded Extraction);
+    private sealed record EmailInvoiceFound(byte[] PdfContent, PdfExtractionSucceeded Extraction, string AttachmentName);
 
     /// <summary>Every PDF attachment extracted fine but none satisfied the date/amount criteria — the wrong invoice, not an error.</summary>
     private sealed record EmailInvoiceCriteriaMismatch;

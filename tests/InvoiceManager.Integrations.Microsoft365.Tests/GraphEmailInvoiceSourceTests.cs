@@ -39,7 +39,7 @@ public sealed class GraphEmailInvoiceSourceTests
         Assert.Equal(SinglePdfBytes, match.PdfContent);
         Assert.Equal(new DateOnly(2025, 7, 12), match.Details.ActualInvoiceDate);
         Assert.Equal(new Money(11.59m, "GBP"), match.Details.ActualAmount);
-        Assert.Equal(new SourceInvoiceId("msg-1"), match.Details.SourceInvoiceId);
+        Assert.Equal(new SourceInvoiceId("att-1"), match.Details.SourceInvoiceId);
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public sealed class GraphEmailInvoiceSourceTests
             return;
         }
 
-        Assert.Equal(new SourceInvoiceId("msg-2"), match.Details.SourceInvoiceId);
+        Assert.Equal(new SourceInvoiceId("att-2"), match.Details.SourceInvoiceId);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public sealed class GraphEmailInvoiceSourceTests
             return;
         }
 
-        Assert.Equal(new SourceInvoiceId("msg-2"), match.Details.SourceInvoiceId);
+        Assert.Equal(new SourceInvoiceId("att-2"), match.Details.SourceInvoiceId);
     }
 
     [Fact]
