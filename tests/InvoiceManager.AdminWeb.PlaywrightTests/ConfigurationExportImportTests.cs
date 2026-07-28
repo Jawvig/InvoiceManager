@@ -25,8 +25,11 @@ public sealed class ConfigurationExportImportTests(AdminWebAppHostFixture appHos
         // Create the configuration to be exported.
         await page.GotoAsync(new Uri(appHost.AdminWebUrl, "/Configurations/Create").ToString());
         await page.Locator("#Input_IntegrationType").SelectOptionAsync("GraphEmail");
-        await page.EvalOnSelectorAsync("#Input_Id", "(el, v) => el.value = v", sourceId);
         await page.Locator("#Input_InvoiceDescription").FillAsync(sourceDescription);
+        // Set after the description fill: site.js auto-slugs #Input_Id from the description on
+        // every "input" event until the Id field itself fires a "change" (i.e. a real edit), so
+        // setting it any earlier would just get silently overwritten by the description fill above.
+        await page.EvalOnSelectorAsync("#Input_Id", "(el, v) => el.value = v", sourceId);
         await page.Locator("#Input_SenderEmailAddress").FillAsync("billing@example.com");
         await page.Locator("#Input_BodyPattern").FillAsync("Invoice \\d+");
         await page.EvalOnSelectorAsync("#Input_DriveId", "(el, v) => el.value = v", TestOneDriveFolder.DriveId);

@@ -20,6 +20,9 @@
 }
 else
 {
-    <form method="post">@await Html.PartialAsync("_ConfigurationForm", Model)</form>
+    @* Explicit asp-page (with no handler) so the action is "/Configurations/Import" rather than
+       inheriting the browser's current URL — which, after the Upload step, still carries
+       "?handler=Upload" and would otherwise resubmit this save form to the upload handler. *@
+    <form method="post" asp-page="Import">@await Html.PartialAsync("_ConfigurationForm", Model)</form>
 }
 </section>
