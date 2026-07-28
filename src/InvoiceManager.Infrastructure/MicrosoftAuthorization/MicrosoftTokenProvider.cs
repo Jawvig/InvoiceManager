@@ -50,7 +50,13 @@ public sealed class MicrosoftTokenProvider : IMicrosoftTokenProvider
         using var activity = Telemetry.ActivitySource.StartActivity("acquire_token");
         activity?.SetTag("auth.scopes", string.Join(' ', scopes));
 
+        // GetAccountsAsync() is obsolete in favor of GetAccountAsync(identifier), but there is
+        // no identifier to look up: the cache is expected to hold exactly one delegated
+        // account (the admin who signed in through the admin website), discovered by
+        // enumeration rather than by a known key.
+#pragma warning disable CS0618
         var accounts = await application.Value.GetAccountsAsync();
+#pragma warning restore CS0618
         var account = accounts.FirstOrDefault();
         if (account is null)
         {
