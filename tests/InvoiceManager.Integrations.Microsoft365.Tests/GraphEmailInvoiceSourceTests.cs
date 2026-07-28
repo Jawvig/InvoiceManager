@@ -261,6 +261,63 @@ public sealed class GraphEmailInvoiceSourceTests
     }
 
     [Fact]
+    public async Task FindInvoiceAsync_RequestsAttachmentContentBytes_ViaTypeCastSelect()
+    {
+        // Attachments come back as the base attachment type unless contentBytes is
+        // requested via the fileAttachment type-cast; a bare "contentBytes" in $select
+        // is rejected by Graph with a 400. This regression-tests the fixed query so a
+        // revert to the bare form fails loudly instead of silently reintroducing the 400.
+        var handler = MessagesThenAttachments(
+            Messages(("msg-1", "2025-07-12", "Your invoice is attached.")),
+            ("msg-1", Attachments(("att-1", SinglePdfBytes))));
+        var extractor = new FakePdfExtractor(_ => new PdfExtractionSucceeded(new DateOnly(2025, 7, 12), new Money(11.59m, "GBP")));
+        var source = Build(handler, extractor);
+
+        await source.FindInvoiceAsync(Criteria());
+
+        var attachmentsRequest = Assert.Single(
+            handler.Requests, r => r.RequestUri!.ToString().Contains("/messages/msg-1/attachments"));
+        var decodedQuery = Uri.UnescapeDataString(attachmentsRequest.RequestUri!.Query);
+        Assert.Contains("microsoft.graph.fileAttachment/contentBytes", decodedQuery);
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_TreatsAttachmentNameWithWhitespace_AsUnreadable_AndTriesFurtherCandidates()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(
+                ("msg-1", "2025-07-10", "Your invoice is attached."),
+                ("msg-2", "2025-07-13", "Your invoice is attached.")),
+            ("msg-1", Attachments(("Invoice July", SinglePdfBytes))),
+            ("msg-2", Attachments(("att-2", SecondPdfBytes))));
+        var extractor = new FakePdfExtractor(_ => new PdfExtractionSucceeded(new DateOnly(2025, 7, 12), new Money(11.59m, "GBP")));
+        var source = Build(handler, extractor);
+
+        var result = await source.FindInvoiceAsync(Criteria());
+
+        if (result is not InvoiceMatch match)
+        {
+            Assert.Fail($"Expected InvoiceMatch but got {result}.");
+            return;
+        }
+
+        Assert.Equal(new SourceInvoiceId("att-2"), match.Details.SourceInvoiceId);
+    }
+
+    [Fact]
+    public async Task FindInvoiceAsync_Throws_WhenOnlyMatchingAttachmentNameContainsWhitespace()
+    {
+        var handler = MessagesThenAttachments(
+            Messages(("msg-1", "2025-07-12", "Your invoice is attached.")),
+            ("msg-1", Attachments(("Invoice July", SinglePdfBytes))));
+        var extractor = new FakePdfExtractor(_ => new PdfExtractionSucceeded(new DateOnly(2025, 7, 12), new Money(11.59m, "GBP")));
+        var source = Build(handler, extractor);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => source.FindInvoiceAsync(Criteria()));
+        Assert.Contains("whitespace", exception.Message);
+    }
+
+    [Fact]
     public async Task FindInvoiceAsync_SendsBearerToken_ForMailReadScope()
     {
         var handler = new StubHttpMessageHandler((request, _) =>

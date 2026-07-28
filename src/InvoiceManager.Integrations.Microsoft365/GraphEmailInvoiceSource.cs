@@ -132,10 +132,20 @@ public sealed class GraphEmailInvoiceSource(
 
             if (result is PdfExtractionSucceeded succeeded)
             {
-                if (criteria.Matches(succeeded.InvoiceDate, succeeded.Total))
-                    return new EmailInvoiceFound(content, succeeded, attachment.Name);
+                if (!criteria.Matches(succeeded.InvoiceDate, succeeded.Total))
+                    continue;
 
-                continue;
+                var sourceInvoiceId = Path.GetFileNameWithoutExtension(attachment.Name);
+                if (!IsValidSourceInvoiceId(sourceInvoiceId))
+                {
+                    readFailures.Add(
+                        $"{attachment.Name}: attachment name '{sourceInvoiceId}' cannot be used as a " +
+                        "SourceInvoiceId (it contains whitespace, so the canonical OneDrive filename " +
+                        "would not round-trip through parsing)");
+                    continue;
+                }
+
+                return new EmailInvoiceFound(content, succeeded, attachment.Name);
             }
 
             var reason = result is PdfExtractionFailed failed ? failed.Reason : "unknown extraction failure";
@@ -200,6 +210,15 @@ public sealed class GraphEmailInvoiceSource(
     /// only percent-encodes for URL transport and does not do this.
     /// </summary>
     private static string EscapeODataStringLiteral(string value) => value.Replace("'", "''");
+
+    /// <summary>
+    /// <see cref="InvoiceFilename"/> reads the canonical OneDrive filename back as
+    /// single-space-separated tokens, so a <c>SourceInvoiceId</c> containing whitespace
+    /// (or empty) would fail to round-trip through <see cref="InvoiceFilename.TryParse"/>
+    /// and break later reconciliation.
+    /// </summary>
+    private static bool IsValidSourceInvoiceId(string candidate) =>
+        !string.IsNullOrWhiteSpace(candidate) && !candidate.Any(char.IsWhiteSpace);
 
     private bool MatchesBodyPattern(GraphMessage message, string bodyPattern)
     {
