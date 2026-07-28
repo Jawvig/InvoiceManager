@@ -1,0 +1,25 @@
+@page
+@model InvoiceManager.AdminWeb.Pages.Configurations.ImportModel
+@{ ViewData["Title"] = "Import invoice configuration"; }
+<section class="admin-shell">
+<div class="page-heading"><h1>Import invoice configuration</h1>
+    <p class="summary">Import a configuration exported from another environment. It is saved as an inactive draft, and the OneDrive folder and billing account below must be confirmed here before saving — imported values are re-verified, not trusted outright.</p>
+</div>
+@if (!Model.HasImportedFile)
+{
+    <div asp-validation-summary="All" class="notice warning"></div>
+    <form method="post" asp-page-handler="Upload" enctype="multipart/form-data">
+        <label>Configuration export file (.json)
+            <input type="file" name="file" accept="application/json" required />
+        </label>
+        <div class="actions">
+            <button type="submit" class="primary-action">Load file</button>
+            <a asp-page="Index" class="secondary-action">Cancel</a>
+        </div>
+    </form>
+}
+else
+{
+    <form method="post">@await Html.PartialAsync("_ConfigurationForm", Model)</form>
+}
+</section>

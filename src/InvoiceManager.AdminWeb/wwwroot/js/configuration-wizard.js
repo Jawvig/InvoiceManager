@@ -7,6 +7,11 @@
     if (!wizard) return;
 
     const isEdit = wizard.dataset.isEdit === "true";
+    // Set when the server already rendered a chosen integration type without the user picking
+    // it in this page load — an Import file pre-fill, or a failed Create postback being
+    // re-rendered with the user's earlier choice still in Input.IntegrationType. Either way the
+    // fields for that integration should already be visible, not hidden pending a fresh "change".
+    const isPrefilled = wizard.dataset.prefilled === "true";
     const integrationSelect = document.getElementById("Input_IntegrationType");
     const idField = document.getElementById("configuration-id-field");
     const commonDetails = document.getElementById("common-details");
@@ -104,7 +109,7 @@
     }
 
     integrationSelect?.addEventListener("change", () => applyVisibility(true));
-    applyVisibility(isEdit);
+    applyVisibility(isEdit || isPrefilled);
 
     // Expected amount / currency / amount tolerance are only meaningful (and only validated
     // server-side) when "Match expected amount" is checked — hide them otherwise so an

@@ -10,6 +10,7 @@
         @if (Model.EditingEnabled)
         {
             <a asp-page="Create" class="primary-action">Create</a>
+            <a asp-page="Import" class="secondary-action">Import from file</a>
         }
         else
         {
@@ -61,6 +62,7 @@
             </dl>
             <div class="actions">
                 <a asp-page="History" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType" class="secondary-action">History</a>
+                <a asp-page-handler="Export" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType" class="secondary-action">Export</a>
                 @if (Model.EditingEnabled) {
                     <a asp-page="Edit" asp-route-id="@configuration.Id.Value" asp-route-integrationType="@configuration.IntegrationType" class="secondary-action">Edit</a>
                     <form method="post">
