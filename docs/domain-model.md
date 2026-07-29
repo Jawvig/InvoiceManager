@@ -40,6 +40,27 @@ Edits are future-only. Every newly generated expected invoice snapshots all valu
 needed for matching and routing, so existing records never partially combine old
 criteria with newly edited live configuration.
 
+Two configurations of the same integration type must not share the same
+type-specific matching fields — the same sender email address and body pattern
+for `GraphEmail`, or the same billing account ID *and* the same (or equally
+absent) expected amount for `MicrosoftBilling`. The amount is part of the
+`MicrosoftBilling` comparison because one billing account routinely bills more
+than one distinct product — see the Microsoft 365 Business Basic/Copilot
+example in [Invoice Name](#invoice-name) — so billing account ID alone is not
+enough to call two configurations duplicates. Creating or editing a
+configuration is rejected if it would duplicate another configuration's
+criteria (active or inactive), even when the OneDrive destination differs: two
+configurations that would pick up the same source files is treated as a
+mistake to reject rather than a way to route one set of files to multiple
+destinations, which should be a first-class feature if ever needed.
+
+Configurations can be exported to a file and imported into another environment
+as a new inactive draft, to promote a configuration between environments
+without re-entering every field by hand. Imported OneDrive folder and billing
+account values are still re-verified against that environment's own Microsoft
+Graph/discovery data before saving, the same as a manually entered value — never
+trusted outright from the file.
+
 ## Integration
 
 A provider-specific component that interacts with an external system.

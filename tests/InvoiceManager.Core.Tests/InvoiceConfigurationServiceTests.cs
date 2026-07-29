@@ -33,6 +33,44 @@ public sealed class InvoiceConfigurationServiceTests
     }
 
     [Fact]
+    public async Task Create_RejectsSameSearchCriteria_EvenWithDifferentFolderAndId()
+    {
+        var existing = Configurations.Build(
+            id: new("existing-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"));
+        var service = new InvoiceConfigurationService(new FakeConfigurationRepository(existing));
+        var duplicate = Configurations.Build(
+            id: new("new-config"),
+            isActive: false,
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"),
+            oneDriveFolder: new OneDriveFolder("drive-2", "Drive Two", "folder-2", "/Bills/Other"));
+
+        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
+            service.CreateAsync(duplicate, Actor));
+    }
+
+    [Fact]
+    public async Task Update_RejectsSameSearchCriteriaAsAnotherConfiguration()
+    {
+        var other = Configurations.Build(
+            id: new("other-config"),
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"));
+        var original = Configurations.Build(
+            id: new("editing-config"),
+            isActive: false,
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Different \\d+"));
+        var repository = new FakeConfigurationRepository(other, original);
+        var service = new InvoiceConfigurationService(repository);
+        var updated = original with
+        {
+            IntegrationConfiguration = new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"),
+        };
+
+        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
+            service.UpdateAsync(original, updated, "etag-editing-config", Actor));
+    }
+
+    [Fact]
     public async Task Restore_KeepsCurrentIdentityIntegrationAndActivationState()
     {
         var current = Configurations.Build(isActive: true);

@@ -28,6 +28,7 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         EnsureValid(configuration);
         if (configuration.IsActive)
             throw new ArgumentException("New configurations must be saved as inactive drafts.", nameof(configuration));
+        await EnsureNoDuplicateMatchAsync(configuration, cancellationToken);
         return await repository.CreateAsync(configuration, actor, cancellationToken);
     }
 
@@ -42,6 +43,7 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         if (original.IsActive != updated.IsActive)
             throw new ArgumentException("Activation state must be changed through the separate activate/deactivate action.");
         EnsureValid(updated);
+        await EnsureNoDuplicateMatchAsync(updated, cancellationToken);
         return await repository.ReplaceAsync(
             updated, etag, InvoiceConfigurationRevisionAction.Updated, actor, cancellationToken);
     }
@@ -95,5 +97,14 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         var errors = InvoiceConfigurationValidation.Validate(configuration);
         if (errors.Count > 0)
             throw new ArgumentException(string.Join(" ", errors), nameof(configuration));
+    }
+
+    private async Task EnsureNoDuplicateMatchAsync(
+        InvoiceConfiguration configuration, CancellationToken cancellationToken)
+    {
+        var others = (await repository.ListAllAsync(cancellationToken)).Select(x => x.Configuration).ToList();
+        var errors = InvoiceConfigurationValidation.ValidateNoDuplicateMatch(configuration, others);
+        if (errors.Count > 0)
+            throw new DuplicateInvoiceConfigurationException(string.Join(" ", errors));
     }
 }

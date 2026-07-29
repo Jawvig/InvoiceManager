@@ -28,6 +28,42 @@ public sealed class InvoiceConfigurationExportTests
     }
 
     [Fact]
+    public void FromConfiguration_NestsAmountFieldsAndOmitsTypeIrrelevantNulls()
+    {
+        var configuration = Configurations.Build(
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("billing-account-1"));
+
+        var json = JsonSerializer.Serialize(
+            InvoiceConfigurationExport.FromConfiguration(configuration), InvoiceConfigurationExportJson.Options);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.False(root.TryGetProperty("expectedAmount", out _));
+        Assert.False(root.TryGetProperty("currency", out _));
+        Assert.False(root.TryGetProperty("amountTolerance", out _));
+        var amountMatchingCriteria = root.GetProperty("amountMatchingCriteria");
+        Assert.Equal(10.00m, amountMatchingCriteria.GetProperty("expectedAmount").GetDecimal());
+        Assert.Equal("GBP", amountMatchingCriteria.GetProperty("currency").GetString());
+
+        // GraphEmail-only fields are irrelevant for a MicrosoftBilling configuration and must not
+        // appear in the file at all, rather than appearing as explicit nulls.
+        Assert.False(root.TryGetProperty("senderEmailAddress", out _));
+        Assert.False(root.TryGetProperty("bodyPattern", out _));
+    }
+
+    [Fact]
+    public void FromConfiguration_OmitsAmountMatchingCriteria_WhenNotSet()
+    {
+        var configuration = Configurations.Build() with { AmountMatchingCriteria = Option.None };
+
+        var json = JsonSerializer.Serialize(
+            InvoiceConfigurationExport.FromConfiguration(configuration), InvoiceConfigurationExportJson.Options);
+        using var document = JsonDocument.Parse(json);
+
+        Assert.False(document.RootElement.TryGetProperty("amountMatchingCriteria", out _));
+    }
+
+    [Fact]
     public void FromConfiguration_ThenToFormInput_RoundTripsMicrosoftBillingFields()
     {
         var configuration = Configurations.Build(

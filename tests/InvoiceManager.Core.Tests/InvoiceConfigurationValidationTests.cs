@@ -91,4 +91,105 @@ public sealed class InvoiceConfigurationValidationTests
 
         Assert.Contains(InvoiceConfigurationValidation.Validate(configuration), error => error == expectedError);
     }
+
+    [Fact]
+    public void ValidateNoDuplicateMatch_RejectsSameBillingAccountIdAndAmount_EvenWithDifferentFolder()
+    {
+        var candidate = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("new-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"),
+            oneDriveFolder: new OneDriveFolder("drive-2", "Drive Two", "folder-2", "/Bills/Other"));
+        var other = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("existing-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"));
+
+        var errors = InvoiceConfigurationValidation.ValidateNoDuplicateMatch(candidate, [other]);
+
+        Assert.Contains(errors, e => e.Contains("existing-config"));
+    }
+
+    [Fact]
+    public void ValidateNoDuplicateMatch_AllowsSameBillingAccountId_WhenExpectedAmountDiffers()
+    {
+        // Mirrors the seeded m365-business-basic/m365-copilot pair: one Microsoft 365 billing
+        // account routinely bills more than one distinct product, distinguished only by expected
+        // amount - billing account ID alone must not be treated as the whole match key.
+        var businessBasic = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("m365-business-basic"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1")) with
+        {
+            AmountMatchingCriteria = new AmountMatchingCriteria(new NodaMoney.Money(11.59m, "GBP"), 0m),
+        };
+        var copilot = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("m365-copilot"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1")) with
+        {
+            AmountMatchingCriteria = new AmountMatchingCriteria(new NodaMoney.Money(29.11m, "GBP"), 0m),
+        };
+
+        Assert.Empty(InvoiceConfigurationValidation.ValidateNoDuplicateMatch(copilot, [businessBasic]));
+    }
+
+    [Fact]
+    public void ValidateNoDuplicateMatch_RejectsSameBillingAccountId_WhenNeitherHasAmountCriteria()
+    {
+        var candidate = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("new-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1")) with
+        {
+            AmountMatchingCriteria = Option.None,
+        };
+        var other = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("existing-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1")) with
+        {
+            AmountMatchingCriteria = Option.None,
+        };
+
+        Assert.Contains(
+            InvoiceConfigurationValidation.ValidateNoDuplicateMatch(candidate, [other]),
+            e => e.Contains("existing-config"));
+    }
+
+    [Fact]
+    public void ValidateNoDuplicateMatch_RejectsSameSenderAndBodyPattern_ButNotDifferentPattern()
+    {
+        var candidate = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("new-config"),
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"));
+        var sameCriteria = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("existing-config"),
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"));
+        var differentPattern = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("other-config"),
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Statement \\d+"));
+
+        Assert.Contains(
+            InvoiceConfigurationValidation.ValidateNoDuplicateMatch(candidate, [sameCriteria]),
+            e => e.Contains("existing-config"));
+        Assert.Empty(InvoiceConfigurationValidation.ValidateNoDuplicateMatch(candidate, [differentPattern]));
+    }
+
+    [Fact]
+    public void ValidateNoDuplicateMatch_IgnoresConfigurationsOfADifferentIntegrationType()
+    {
+        var candidate = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("new-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"));
+        var differentType = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("existing-config"),
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "account-1"));
+
+        Assert.Empty(InvoiceConfigurationValidation.ValidateNoDuplicateMatch(candidate, [differentType]));
+    }
+
+    [Fact]
+    public void ValidateNoDuplicateMatch_IgnoresItself()
+    {
+        var candidate = InvoiceManager.TestSupport.Configurations.Build(
+            id: new("existing-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"));
+
+        Assert.Empty(InvoiceConfigurationValidation.ValidateNoDuplicateMatch(candidate, [candidate]));
+    }
 }

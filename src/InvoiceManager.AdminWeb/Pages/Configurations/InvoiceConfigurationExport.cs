@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using InvoiceManager.Core;
 
 namespace InvoiceManager.AdminWeb.Pages.Configurations;
@@ -18,9 +19,7 @@ public sealed record InvoiceConfigurationExport
     public string? BodyPattern { get; init; }
     public required string InvoiceDescription { get; init; }
     public required string Frequency { get; init; }
-    public decimal? ExpectedAmount { get; init; }
-    public string? Currency { get; init; }
-    public decimal? AmountTolerance { get; init; }
+    public AmountMatchingCriteriaExport? AmountMatchingCriteria { get; init; }
     public required string DefaultVatMode { get; init; }
     public required OneDriveFolderExport OneDriveFolder { get; init; }
     public required DateOnly StartDate { get; init; }
@@ -41,9 +40,9 @@ public sealed record InvoiceConfigurationExport
             : null,
         InvoiceDescription = configuration.InvoiceDescription,
         Frequency = configuration.Frequency.ToString(),
-        ExpectedAmount = configuration.AmountMatchingCriteria is AmountMatchingCriteria amount ? amount.Amount.Amount : null,
-        Currency = configuration.AmountMatchingCriteria is AmountMatchingCriteria amount2 ? amount2.Amount.Currency.Code : null,
-        AmountTolerance = configuration.AmountMatchingCriteria is AmountMatchingCriteria amount3 ? amount3.AmountTolerance : null,
+        AmountMatchingCriteria = configuration.AmountMatchingCriteria is AmountMatchingCriteria amount
+            ? AmountMatchingCriteriaExport.FromCriteria(amount)
+            : null,
         DefaultVatMode = configuration.DefaultVatMode.ToString(),
         OneDriveFolder = OneDriveFolderExport.FromFolder(configuration.OneDriveFolder),
         StartDate = configuration.StartDate,
@@ -90,10 +89,10 @@ public sealed record InvoiceConfigurationExport
             IntegrationType = Enum.Parse<Core.IntegrationType>(IntegrationType),
             InvoiceDescription = InvoiceDescription,
             Frequency = Enum.Parse<InvoiceFrequency>(Frequency),
-            HasExpectedAmount = ExpectedAmount is not null,
-            ExpectedAmount = ExpectedAmount,
-            Currency = Currency ?? "GBP",
-            AmountTolerance = AmountTolerance ?? 0,
+            HasExpectedAmount = AmountMatchingCriteria is not null,
+            ExpectedAmount = AmountMatchingCriteria?.ExpectedAmount,
+            Currency = AmountMatchingCriteria?.Currency ?? "GBP",
+            AmountTolerance = AmountMatchingCriteria?.AmountTolerance ?? 0,
             DefaultVatMode = Enum.Parse<VatMode>(DefaultVatMode),
             StartDate = StartDate,
             DateToleranceDays = DateToleranceDays,
@@ -106,6 +105,20 @@ public sealed record InvoiceConfigurationExport
             FolderPath = OneDriveFolder.FolderPath,
         };
     }
+}
+
+public sealed record AmountMatchingCriteriaExport
+{
+    public required decimal ExpectedAmount { get; init; }
+    public required string Currency { get; init; }
+    public required decimal AmountTolerance { get; init; }
+
+    public static AmountMatchingCriteriaExport FromCriteria(AmountMatchingCriteria criteria) => new()
+    {
+        ExpectedAmount = criteria.Amount.Amount,
+        Currency = criteria.Amount.Currency.Code,
+        AmountTolerance = criteria.AmountTolerance,
+    };
 }
 
 public sealed record OneDriveFolderExport
@@ -130,5 +143,6 @@ public static class InvoiceConfigurationExportJson
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 }

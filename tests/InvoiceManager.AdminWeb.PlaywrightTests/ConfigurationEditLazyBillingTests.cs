@@ -24,6 +24,13 @@ public sealed class ConfigurationEditLazyBillingTests(AdminWebAppHostFixture app
         await page.GotoAsync(new Uri(appHost.AdminWebUrl, "/Configurations/Create").ToString());
         await page.Locator("#Input_IntegrationType").SelectOptionAsync("MicrosoftBilling");
         await page.Locator("#Input_InvoiceDescription").FillAsync(description);
+        // A billing account ID alone is not a unique search key - this test tenant's real,
+        // discoverable billing accounts are already used by seeded configurations (see
+        // data/seed/invoice-configurations.json), so an expected amount distinguishes this
+        // configuration's search criteria from theirs (and from any leftover run of this same
+        // test) rather than colliding as a duplicate match.
+        await page.Locator("#Input_HasExpectedAmount").CheckAsync();
+        await page.Locator("#Input_ExpectedAmount").FillAsync((Random.Shared.Next(100, 99999) / 100m).ToString("F2"));
         // Create verifies the submitted folder against Microsoft Graph, so this must be a real,
         // resolvable drive/item ID rather than a fabricated one — see TestOneDriveFolder.
         await page.EvalOnSelectorAsync("#Input_DriveId", "(el, v) => el.value = v", TestOneDriveFolder.DriveId);

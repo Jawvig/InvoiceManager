@@ -79,6 +79,62 @@ public static partial class InvoiceConfigurationValidation
         return errors;
     }
 
+    /// <summary>
+    /// Cross-record check: two configurations that would match the same source files are
+    /// rejected rather than allowed to coexist with different destination OneDrive folders - if
+    /// routing one set of files to two destinations is ever needed, that should be a first-class
+    /// feature rather than something this validation lets happen implicitly. Considers active and
+    /// inactive configurations alike so drafts can't quietly conflict with each other either.
+    ///
+    /// For <c>GraphEmail</c>, the type-specific search fields (sender + body pattern) are the
+    /// whole match key - <see cref="OneDriveFolder"/>, amount criteria, and dates are not
+    /// compared. For <c>MicrosoftBilling</c>, the billing account ID alone is not enough: the seed
+    /// data (<c>m365-business-basic</c> and <c>m365-copilot</c>) deliberately shares one billing
+    /// account ID across separate configurations, distinguished only by
+    /// <see cref="InvoiceConfiguration.AmountMatchingCriteria"/>, because a Microsoft 365 billing
+    /// account routinely bills more than one distinct product - see the "Invoice Name" section of
+    /// domain-model.md. So the amount criteria (both absent, or equal amount + currency) must
+    /// match too before two <c>MicrosoftBilling</c> configurations count as the same search.
+    /// </summary>
+    public static IReadOnlyList<string> ValidateNoDuplicateMatch(
+        InvoiceConfiguration candidate, IReadOnlyList<InvoiceConfiguration> others)
+    {
+        var conflict = others.FirstOrDefault(other =>
+            other.Id != candidate.Id && MatchesSameSearchCriteria(candidate, other));
+        return conflict is null
+            ? []
+            : [$"Invoice configuration '{conflict.Id}' already has the same search criteria. " +
+               "Two configurations that would match the same source files are not supported."];
+    }
+
+    private static bool MatchesSameSearchCriteria(InvoiceConfiguration a, InvoiceConfiguration b)
+    {
+        if (a.IntegrationType != b.IntegrationType)
+            return false;
+
+        return (a.IntegrationConfiguration, b.IntegrationConfiguration) switch
+        {
+            (MicrosoftBillingIntegrationConfiguration x, MicrosoftBillingIntegrationConfiguration y) =>
+                string.Equals(x.BillingAccountId.Trim(), y.BillingAccountId.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                SameAmountMatchingCriteria(a.AmountMatchingCriteria, b.AmountMatchingCriteria),
+            (GraphEmailIntegrationConfiguration x, GraphEmailIntegrationConfiguration y) =>
+                string.Equals(x.SenderEmailAddress.Trim(), y.SenderEmailAddress.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(x.BodyPattern.Trim(), y.BodyPattern.Trim(), StringComparison.Ordinal),
+            _ => false,
+        };
+    }
+
+    private static bool SameAmountMatchingCriteria(
+        Option<AmountMatchingCriteria> a, Option<AmountMatchingCriteria> b) =>
+        (a, b) switch
+        {
+            (None, None) => true,
+            (AmountMatchingCriteria x, AmountMatchingCriteria y) =>
+                x.Amount.Amount == y.Amount.Amount &&
+                string.Equals(x.Amount.Currency.Code, y.Amount.Currency.Code, StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
+
     public static string GenerateSlug(string? invoiceDescription, IntegrationType integrationType)
     {
         var source = string.IsNullOrWhiteSpace(invoiceDescription)

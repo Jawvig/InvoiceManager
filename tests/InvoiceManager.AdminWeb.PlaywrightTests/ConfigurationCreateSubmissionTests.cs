@@ -29,7 +29,9 @@ public sealed class ConfigurationCreateSubmissionTests(AdminWebAppHostFixture ap
 
         await page.Locator("#Input_InvoiceDescription").FillAsync(description);
         await page.Locator("#Input_SenderEmailAddress").FillAsync("billing@example.com");
-        await page.Locator("#Input_BodyPattern").FillAsync("Invoice \\d+");
+        // Body pattern must be unique across test runs/files: two configurations sharing the same
+        // sender + body pattern are now rejected as a duplicate search-criteria match.
+        await page.Locator("#Input_BodyPattern").FillAsync($"Invoice {uniqueSuffix} \\d+");
 
         // Simulate the picker's commit step directly instead of drilling through the live picker
         // UI — but Create still verifies the submitted DriveId/FolderItemId against Microsoft

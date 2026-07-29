@@ -59,8 +59,30 @@ public sealed class ImportModel(
             return Page();
         }
 
+        Input.Id = await UniqueIdAsync(Input.Id, HttpContext.RequestAborted);
         HasImportedFile = true;
         return Page();
+    }
+
+    // Rather than reject an imported file outright when its Configuration ID is already taken in
+    // this environment, append "-1" (or "-2", ...) so the review/save step below doesn't start
+    // out already failing validation - the user can still rename it before saving if they'd
+    // rather use a different ID.
+    private async Task<string> UniqueIdAsync(string id, CancellationToken cancellationToken)
+    {
+        var existingIds = (await service.ListAsync(cancellationToken))
+            .Select(x => x.Configuration.Id.Value)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!existingIds.Contains(id)) return id;
+
+        var suffix = 1;
+        string candidate;
+        do
+        {
+            candidate = $"{id}-{suffix}";
+            suffix++;
+        } while (existingIds.Contains(candidate));
+        return candidate;
     }
 
     // The save step: identical in shape to CreateModel.OnPostAsync (an import always produces a
