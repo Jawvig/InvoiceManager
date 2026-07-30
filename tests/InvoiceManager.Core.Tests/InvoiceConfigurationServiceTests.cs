@@ -98,6 +98,29 @@ public sealed class InvoiceConfigurationServiceTests
     }
 
     [Fact]
+    public async Task Update_RejectsRetryWithPreUpdateEtag_AfterASuccessfulUpdate()
+    {
+        // FakeConfigurationRepository must rotate its etag on every successful write, exactly
+        // like Cosmos does - otherwise a real regression that skipped the optimistic-concurrency
+        // check entirely would go undetected by this fake. A first update should succeed, and a
+        // second update reusing the *original* (now stale) etag must be rejected as a conflict,
+        // even though that etag was valid a moment ago.
+        var original = Configurations.Build(isActive: false);
+        var repository = new FakeConfigurationRepository(original);
+        var service = new InvoiceConfigurationService(repository);
+        var originalEtag = (await repository.ListAllAsync()).Single().ETag;
+        var firstUpdate = original with { InvoiceDescription = "First update" };
+        var secondUpdate = original with { InvoiceDescription = "Second update" };
+
+        var firstResult = await service.UpdateAsync(original, firstUpdate, originalEtag, Actor);
+        Assert.True(firstResult is StoredInvoiceConfiguration);
+
+        var secondResult = await service.UpdateAsync(original, secondUpdate, originalEtag, Actor);
+
+        Assert.True(secondResult is InvoiceConfigurationConflict);
+    }
+
+    [Fact]
     public async Task Update_RejectsSameSearchCriteriaAsAnotherConfiguration()
     {
         var other = Configurations.Build(
@@ -114,7 +137,7 @@ public sealed class InvoiceConfigurationServiceTests
             IntegrationConfiguration = new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"),
         };
 
-        var result = await service.UpdateAsync(original, updated, "etag-editing-config", Actor);
+        var result = await service.UpdateAsync(original, updated, "etag-editing-config-0", Actor);
 
         Assert.True(result is DuplicateInvoiceConfigurationSearchCriteria conflict && conflict.ConflictingId == other.Id);
     }
@@ -142,7 +165,7 @@ public sealed class InvoiceConfigurationServiceTests
             InvoiceConfigurationRevisionAction.Updated, DateTimeOffset.UtcNow,
             "old-actor", "Old actor", historicalSnapshot);
 
-        var result = await service.RestoreAsync(new(current, "etag-editing-config"), revision, Actor);
+        var result = await service.RestoreAsync(new(current, "etag-editing-config-0"), revision, Actor);
 
         Assert.True(result is DuplicateInvoiceConfigurationSearchCriteria conflict && conflict.ConflictingId == other.Id);
     }
@@ -164,7 +187,7 @@ public sealed class InvoiceConfigurationServiceTests
             InvoiceConfigurationRevisionAction.Updated, DateTimeOffset.UtcNow,
             "old-actor", "Old actor", historical);
 
-        var result = await service.RestoreAsync(new(current, "etag-test-config"), revision, Actor);
+        var result = await service.RestoreAsync(new(current, "etag-test-config-0"), revision, Actor);
 
         Assert.True(
             result is StoredInvoiceConfiguration restored &&
