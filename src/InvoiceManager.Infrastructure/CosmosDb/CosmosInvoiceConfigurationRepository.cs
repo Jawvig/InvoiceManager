@@ -60,21 +60,51 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         }
     }
 
+    /// <summary>
+    /// Bootstrap seeding is insert-only and never overwrites UI-managed values - if the
+    /// configuration already exists, this is a no-op. Otherwise, the insert also advances the
+    /// duplicate-validation sentinel in the same transactional batch (see
+    /// <see cref="ConfigurationValidationSentinel"/> and docs/data-model.md): deploys run
+    /// Terraform apply (which can start routing traffic to a live AdminWeb instance) before
+    /// invoking the seeder, so a seeded configuration can genuinely race a concurrent
+    /// Create/Update/Restore request through AdminWeb - see <c>scripts/Deploy-Infra.ps1</c>'s
+    /// <c>Invoke-ConfigurationSeeder</c> call sites, both of which run after
+    /// <c>terraform apply</c>/an unchanged-plan early return, not before AdminWeb comes up.
+    /// Without this, an AdminWeb request that read the sentinel and the configuration list before
+    /// the seeder's insert could still commit search criteria that now conflicts with what the
+    /// seeder just added - exactly the race the sentinel exists to close, just with the seeder as
+    /// the other writer instead of another AdminWeb request.
+    /// </summary>
     public async Task CreateIfNotExistsAsync(
         InvoiceConfiguration configuration,
         CancellationToken cancellationToken = default)
     {
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
-        try
+        const int documentIndex = 0;
+        const int sentinelIndex = 1;
+        const int maxAttempts = 5;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            await container.CreateItemAsync(
-                document,
-                ConfigurationPartition,
-                cancellationToken: cancellationToken);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
-        {
-            // Bootstrap seeding is insert-only and never overwrites UI-managed values.
+            var sentinel = await GetValidationSentinelAsync(cancellationToken);
+            var batch = container.CreateTransactionalBatch(ConfigurationPartition)
+                .CreateItem(document)
+                .ReplaceItem(
+                    ValidationSentinelDocument.SentinelId,
+                    new ValidationSentinelDocument(),
+                    new TransactionalBatchItemRequestOptions { IfMatchEtag = sentinel.ETag });
+
+            using var response = await batch.ExecuteAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+                return;
+
+            if (response[documentIndex].StatusCode == HttpStatusCode.Conflict)
+                return; // Already seeded - insert-only, nothing to do, sentinel untouched.
+
+            if (response[sentinelIndex].StatusCode == HttpStatusCode.PreconditionFailed && attempt < maxAttempts)
+                continue; // Another writer advanced the sentinel first - re-read and retry the insert.
+
+            throw BatchFailed(response);
         }
     }
 

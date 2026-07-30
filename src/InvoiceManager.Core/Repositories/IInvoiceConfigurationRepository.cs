@@ -8,6 +8,15 @@ public interface IInvoiceConfigurationRepository
         InvoiceConfigurationId id,
         IntegrationType integrationType,
         CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Bootstrap seeding: inserts <paramref name="configuration"/> unless a configuration with the
+    /// same ID already exists, in which case this is a no-op - insert-only, never overwrites
+    /// UI-managed values. A successful insert also advances the duplicate-validation sentinel
+    /// atomically with it (see <see cref="ConfigurationValidationSentinel"/>): a deploy can run the
+    /// seeder while a live AdminWeb instance is still serving requests, so this participates in the
+    /// same sentinel protocol as <see cref="CreateAsync"/>/<see cref="ReplaceAsync"/> rather than
+    /// being exempt from it.
+    /// </summary>
     Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -205,6 +205,58 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
         Assert.Single(results, r => r is ValidationSentinelConflict);
     }
 
+    [Fact]
+    public async Task CreateIfNotExistsAsync_AdvancesSentinel_OnSuccessfulInsert()
+    {
+        var before = await repository!.GetValidationSentinelAsync();
+
+        await repository.CreateIfNotExistsAsync(BuildConfiguration(new("seeded-config"), isActive: false));
+
+        var after = await repository.GetValidationSentinelAsync();
+        Assert.NotEqual(before.ETag, after.ETag);
+    }
+
+    [Fact]
+    public async Task CreateIfNotExistsAsync_LeavesSentinelUnchanged_WhenAlreadySeeded()
+    {
+        var configuration = BuildConfiguration(new("already-seeded-config"), isActive: false);
+        await repository!.CreateIfNotExistsAsync(configuration);
+        var before = await repository.GetValidationSentinelAsync();
+
+        // Bootstrap seeding is insert-only - re-seeding the same ID must be a true no-op,
+        // including leaving the sentinel alone (nothing new was actually introduced).
+        await repository.CreateIfNotExistsAsync(configuration with { InvoiceDescription = "Changed" });
+
+        var after = await repository.GetValidationSentinelAsync();
+        Assert.Equal(before.ETag, after.ETag);
+    }
+
+    [Fact]
+    public async Task Seeding_DuringADeployWindow_InvalidatesAConcurrentAdminWebWriteThatReadTheSentinelFirst()
+    {
+        // Models the exact race scripts/Deploy-Infra.ps1 can produce: terraform apply can start
+        // routing traffic to a live AdminWeb instance before the seeder runs, so an admin's
+        // Create/Update/Restore request can read the sentinel (and, in InvoiceConfigurationService,
+        // the configuration list) *before* the seeder inserts a new configuration - the same
+        // read-then-write race the sentinel exists to close, just with the seeder as the other
+        // writer instead of another AdminWeb request. This exercises the repository-level
+        // mechanics that make that possible to detect: CreateIfNotExistsAsync's successful insert
+        // must advance the sentinel, so the admin's now-stale sentinel copy is rejected.
+        var adminWebSentinelReadBeforeSeeding = await repository!.GetValidationSentinelAsync();
+
+        await repository.CreateIfNotExistsAsync(BuildConfiguration(new("seeded-during-deploy"), isActive: false));
+
+        // The admin's request, still holding its now-stale sentinel read from before seeding,
+        // tries to save an unrelated configuration - even though it wouldn't itself conflict with
+        // what the seeder just added, it must still lose, because InvoiceConfigurationService
+        // (the actual caller) hasn't had a chance to revalidate against the now-current list yet.
+        var adminWebConfiguration = BuildConfiguration(new("admin-web-config"), isActive: false);
+        var result = await repository.CreateAsync(
+            adminWebConfiguration, new("actor", "Admin"), adminWebSentinelReadBeforeSeeding);
+
+        Assert.True(result is ValidationSentinelConflict, $"Expected ValidationSentinelConflict, got {result}.");
+    }
+
     private static InvoiceConfiguration BuildConfiguration(
         InvoiceConfigurationId id,
         string invoiceDescription = "Test Invoice",

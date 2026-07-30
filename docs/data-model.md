@@ -121,12 +121,21 @@ retry/give-up rule). This is optimistic serialization of the validation
 check itself, not a lock: writes that don't touch search criteria (activate/
 deactivate) don't participate and never contend with it.
 
-`ConfigurationSeeder`/`tools/InvoiceManager.Seeder` is deliberately exempt:
-it calls the repository's plain insert-if-absent method directly, which
-never runs the duplicate-search-criteria check in the first place, and it
-only ever runs single-threaded at deploy time from a fixed seed list - see
-the XML doc on `ConfigurationSeeder` for the full reasoning and the
-conditions that would invalidate the exemption.
+`ConfigurationSeeder`/`tools/InvoiceManager.Seeder` participates too, even
+though it never calls the duplicate-search-criteria check itself and only
+ever runs single-threaded, once, at deploy time: `scripts/Deploy-Infra.ps1`
+runs `terraform apply` (which can start routing traffic to a live AdminWeb
+instance) *before* invoking the seeder, so a seeded configuration can
+genuinely race a concurrent Create/Update/Restore request through AdminWeb
+during that window. `CreateIfNotExistsAsync` (the plain insert-if-absent
+method the seeder calls) carries this instead: a successful insert also
+conditionally replaces the sentinel in the same transactional batch as the
+insert, using its own read of the sentinel's ETag, retrying (bounded) if
+another writer changed it first. That way an AdminWeb request that read the
+sentinel and the configuration list *before* the seeder's insert correctly
+loses its own write with `ValidationSentinelConflict` and revalidates - see
+the XML doc on `CreateIfNotExistsAsync` and `ConfigurationSeeder` for the
+full reasoning.
 
 ## invoice-records
 
