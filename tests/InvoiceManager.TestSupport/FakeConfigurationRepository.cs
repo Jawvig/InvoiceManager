@@ -11,6 +11,26 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
     : IInvoiceConfigurationRepository
 {
     private readonly List<InvoiceConfiguration> store = [.. configurations];
+    private string sentinelETag = "sentinel-etag-0";
+
+    /// <summary>
+    /// The number of upcoming <see cref="CreateAsync"/>/<see cref="ReplaceAsync"/> calls that
+    /// participate in the sentinel protocol (i.e. pass a sentinel) that should report
+    /// <see cref="ValidationSentinelConflict"/> instead of committing, simulating another
+    /// concurrent writer having changed the sentinel first - set this to exercise
+    /// <see cref="InvoiceConfigurationService"/>'s retry-once behavior in tests. Each simulated
+    /// conflict consumes one call and decrements this count; it does not touch <see cref="store"/>
+    /// or the sentinel's ETag, matching what a real lost race looks like from the caller's side.
+    /// </summary>
+    public int SentinelConflictsToSimulate { get; set; }
+
+    /// <summary>
+    /// A configuration to add to the store at the moment the next simulated sentinel conflict is
+    /// consumed - models the interleaving where a concurrent winner's own Create/Update/Restore
+    /// call (the one that changed the sentinel and caused this loss) committed a configuration
+    /// that only becomes visible starting with this write's retry, not its first attempt.
+    /// </summary>
+    public InvoiceConfiguration? RevealOnNextSentinelConflict { get; set; }
 
     // Tracks a per-(Id, IntegrationType) write count so every successful Create/Replace mints a
     // distinct etag - just like Cosmos rotates the etag on every write. A fake that instead
@@ -42,31 +62,38 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
     public Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 
-    public Task<InvoiceConfigurationCreateResult> CreateAsync(
+    public Task<ConfigurationValidationSentinel> GetValidationSentinelAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ConfigurationValidationSentinel(sentinelETag));
+
+    public Task<InvoiceConfigurationWriteResult> CreateAsync(
         InvoiceConfiguration configuration,
         InvoiceConfigurationActor actor,
+        ConfigurationValidationSentinel sentinel,
         CancellationToken cancellationToken = default)
     {
+        if (TryConsumeSimulatedSentinelConflict())
+            return Task.FromResult<InvoiceConfigurationWriteResult>(new ValidationSentinelConflict());
         if (store.Any(c => c.Id == configuration.Id))
-        {
-            InvoiceConfigurationCreateResult duplicate = new DuplicateInvoiceConfigurationId(configuration.Id);
-            return Task.FromResult(duplicate);
-        }
+            return Task.FromResult<InvoiceConfigurationWriteResult>(new DuplicateInvoiceConfigurationId(configuration.Id));
 
         store.Add(configuration);
         versions[(configuration.Id, configuration.IntegrationType)] = 0;
-        InvoiceConfigurationCreateResult created =
-            new StoredInvoiceConfiguration(configuration, CurrentETag(configuration.Id, configuration.IntegrationType));
-        return Task.FromResult(created);
+        AdvanceSentinel();
+        return Task.FromResult<InvoiceConfigurationWriteResult>(
+            new StoredInvoiceConfiguration(configuration, CurrentETag(configuration.Id, configuration.IntegrationType)));
     }
 
-    public Task<InvoiceConfigurationReplaceResult> ReplaceAsync(
+    public Task<InvoiceConfigurationWriteResult> ReplaceAsync(
         InvoiceConfiguration configuration,
         string etag,
         InvoiceConfigurationRevisionAction action,
         InvoiceConfigurationActor actor,
+        Option<ConfigurationValidationSentinel> sentinel,
         CancellationToken cancellationToken = default)
     {
+        if (sentinel is ConfigurationValidationSentinel && TryConsumeSimulatedSentinelConflict())
+            return Task.FromResult<InvoiceConfigurationWriteResult>(new ValidationSentinelConflict());
+
         // Mirrors the real repository's optimistic-concurrency check: compares the caller's
         // etag against the current stored value, and - just as importantly - rotates to a new
         // etag on every successful write (see the `versions` field above), so a retry against
@@ -75,17 +102,15 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
         var current = store.SingleOrDefault(
             c => c.Id == configuration.Id && c.IntegrationType == configuration.IntegrationType);
         if (current is not null && etag != CurrentETag(key.Id, key.IntegrationType))
-        {
-            InvoiceConfigurationReplaceResult conflict = new InvoiceConfigurationConflict();
-            return Task.FromResult(conflict);
-        }
+            return Task.FromResult<InvoiceConfigurationWriteResult>(new InvoiceConfigurationConflict());
 
         store.RemoveAll(c => c.Id == configuration.Id && c.IntegrationType == configuration.IntegrationType);
         store.Add(configuration);
         versions[key] = versions.GetValueOrDefault(key) + 1;
-        InvoiceConfigurationReplaceResult replaced =
-            new StoredInvoiceConfiguration(configuration, CurrentETag(key.Id, key.IntegrationType));
-        return Task.FromResult(replaced);
+        if (sentinel is ConfigurationValidationSentinel)
+            AdvanceSentinel();
+        return Task.FromResult<InvoiceConfigurationWriteResult>(
+            new StoredInvoiceConfiguration(configuration, CurrentETag(key.Id, key.IntegrationType)));
     }
 
     public Task<IReadOnlyList<InvoiceConfigurationRevision>> ListRevisionsAsync(
@@ -93,6 +118,21 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
         IntegrationType integrationType,
         CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<InvoiceConfigurationRevision>>([]);
+
+    private bool TryConsumeSimulatedSentinelConflict()
+    {
+        if (SentinelConflictsToSimulate <= 0)
+            return false;
+        SentinelConflictsToSimulate--;
+        if (RevealOnNextSentinelConflict is { } revealed)
+        {
+            store.Add(revealed);
+            RevealOnNextSentinelConflict = null;
+        }
+        return true;
+    }
+
+    private void AdvanceSentinel() => sentinelETag = $"sentinel-etag-{Guid.NewGuid():N}";
 
     private string CurrentETag(InvoiceConfigurationId id, IntegrationType integrationType) =>
         $"etag-{id}-{versions.GetValueOrDefault((id, integrationType))}";

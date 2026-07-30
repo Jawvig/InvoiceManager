@@ -52,7 +52,12 @@ configuration is rejected if it would duplicate another configuration's
 criteria (active or inactive), even when the OneDrive destination differs: two
 configurations that would pick up the same source files is treated as a
 mistake to reject rather than a way to route one set of files to multiple
-destinations, which should be a first-class feature if ever needed.
+destinations, which should be a first-class feature if ever needed. This check
+is concurrency-safe: two admins creating/editing/restoring different
+configurations at the same time can't both slip past it and reintroduce the
+same duplicate, because it's guarded by an ETag-protected sentinel document
+rather than being a plain read-then-write - see docs/data-model.md's
+"Duplicate-validation sentinel" section for the mechanism.
 
 Configurations can be exported to a file and imported into another environment
 as a new inactive draft, to promote a configuration between environments

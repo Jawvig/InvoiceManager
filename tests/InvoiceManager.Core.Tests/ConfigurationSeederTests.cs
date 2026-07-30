@@ -87,26 +87,31 @@ public sealed class ConfigurationSeederTests
             return Task.CompletedTask;
         }
 
-        public Task<InvoiceConfigurationCreateResult> CreateAsync(
+        public Task<ConfigurationValidationSentinel> GetValidationSentinelAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ConfigurationValidationSentinel("sentinel-etag"));
+
+        public Task<InvoiceConfigurationWriteResult> CreateAsync(
             InvoiceConfiguration configuration,
             InvoiceConfigurationActor actor,
+            ConfigurationValidationSentinel sentinel,
             CancellationToken cancellationToken = default)
         {
             store.Add(configuration.Id, configuration);
-            InvoiceConfigurationCreateResult result = new StoredInvoiceConfiguration(configuration, "etag");
-            return Task.FromResult(result);
+            return Task.FromResult<InvoiceConfigurationWriteResult>(
+                new StoredInvoiceConfiguration(configuration, "etag"));
         }
 
-        public Task<InvoiceConfigurationReplaceResult> ReplaceAsync(
+        public Task<InvoiceConfigurationWriteResult> ReplaceAsync(
             InvoiceConfiguration configuration,
             string etag,
             InvoiceConfigurationRevisionAction action,
             InvoiceConfigurationActor actor,
+            Option<ConfigurationValidationSentinel> sentinel,
             CancellationToken cancellationToken = default)
         {
             store[configuration.Id] = configuration;
-            InvoiceConfigurationReplaceResult result = new StoredInvoiceConfiguration(configuration, "etag-next");
-            return Task.FromResult(result);
+            return Task.FromResult<InvoiceConfigurationWriteResult>(
+                new StoredInvoiceConfiguration(configuration, "etag-next"));
         }
 
         public Task<IReadOnlyList<InvoiceConfigurationRevision>> ListRevisionsAsync(

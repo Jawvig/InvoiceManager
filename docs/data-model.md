@@ -81,6 +81,88 @@ Notes:
 - If multi-company support becomes necessary, reconsider the partition key and
   include a company or tenant identifier.
 
+### Duplicate-validation sentinel
+
+`InvoiceConfigurationService`'s cross-configuration duplicate-search-criteria
+check (list every live configuration, then validate a candidate against them)
+is a read-then-write operation: without protection, two concurrent
+Create/Update/Restore calls for *different* configuration IDs can both read
+the same list, both pass validation, and both commit, since their individual
+document ETags don't conflict with each other - reintroducing the exact
+duplicate the check exists to prevent.
+
+A single sentinel document closes that race:
+
+- `id`: the fixed constant `__duplicate_validation_sentinel__` (one sentinel
+  for the whole container, alongside every configuration and revision, in
+  the same `config` partition). Deliberately contains underscores, which a
+  real configuration ID's lowercase-kebab-case validation never allows, so
+  this ID can never collide with one a user creates - structurally, not by a
+  reserved-word check that a new call site could forget to apply.
+- `documentType`: `invoiceConfigurationValidationSentinel`.
+- `partitionKey`: `config` (the same constant value as everything else in
+  this container).
+- No other fields - the sentinel carries no meaningful content of its own.
+  Every write to it is a conditional replace with the same body; the only
+  purpose is to force Cosmos to hand out a new `_etag`, the way any write
+  does regardless of whether the body actually changed.
+
+Protocol: before validating, read the sentinel's current ETag. Validate the
+candidate against the live list as before. Then include a conditional
+replace of the sentinel (`If-Match` on the ETag just read) in the *same*
+transactional batch as the configuration + revision writes that Create/
+Update/Restore already perform. One concurrent writer's batch commits and
+changes the sentinel's ETag; a second writer whose batch also included a
+(now-stale) `If-Match` on that ETag has its whole batch rejected with a
+precondition failure - so its earlier validation is treated as unreliable,
+and it re-reads the sentinel and the live list and revalidates once before
+giving up (see `InvoiceConfigurationService`'s XML doc remarks for the exact
+retry/give-up rule). This is optimistic serialization of the validation
+check itself, not a lock: writes that don't touch search criteria (activate/
+deactivate) don't participate and never contend with it.
+
+`ConfigurationSeeder`/`tools/InvoiceManager.Seeder` participates too, even
+though it never calls the duplicate-search-criteria check itself and only
+ever runs single-threaded, once, at deploy time: `scripts/Deploy-Infra.ps1`
+runs `terraform apply` (which can start routing traffic to a live AdminWeb
+instance) *before* invoking the seeder, so a seeded configuration can
+genuinely race a concurrent Create/Update/Restore request through AdminWeb
+during that window, in either order. `CreateIfNotExistsAsync` (the plain
+insert-if-absent method the seeder calls) carries the whole protocol instead:
+
+- If the seeder's insert wins the sentinel race first, its successful insert
+  conditionally replaces the sentinel in the same transactional batch, using
+  its own read of the sentinel's ETag. An AdminWeb request that read the
+  sentinel and the configuration list *before* the seeder's insert then
+  correctly loses its own write with `ValidationSentinelConflict` and
+  revalidates through `InvoiceConfigurationService`.
+- If an AdminWeb write commits conflicting search criteria first - either
+  before the seeder's very first attempt, or between the seeder losing a
+  sentinel race and its retry - `CreateIfNotExistsAsync` revalidates the seed
+  configuration's search criteria against the live list on *every* attempt
+  it makes to insert a **new** ID, so a blind retry can never insert on top
+  of a conflict it would otherwise never notice. A genuine seed-time
+  conflict throws `SeedConfigurationConflictException` rather than being
+  silently committed alongside the configuration it conflicts with - see
+  that type's XML doc for the reasoning (this is a deploy-time data problem
+  for a human to fix, not a normal outcome for the pipeline to recover from
+  automatically).
+
+Crucially, this duplicate-search-criteria check only ever runs for a
+genuinely new configuration ID - `CreateIfNotExistsAsync` checks whether a
+configuration with this exact ID already exists *first*, and returns
+immediately (its long-standing, always-safe no-op) without running the
+check at all if so. This matters because a seeded configuration's live
+search criteria can legitimately drift away from what the seed file
+originally specified (an admin edits it after it's first seeded, freeing up
+its original criteria for some other configuration to claim) - re-seeding
+that same ID later (e.g. on a redeploy) must remain a harmless no-op even
+though the seed file's original criteria might now genuinely match a
+different live configuration; it must never be misreported as a conflict.
+
+See the XML docs on `CreateIfNotExistsAsync`, `ConfigurationSeeder`, and
+`SeedConfigurationConflictException` for the full reasoning.
+
 ## invoice-records
 
 Stores expected invoice processing history, including retrieval and

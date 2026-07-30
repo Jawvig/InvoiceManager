@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using InvoiceManager.Core;
 using InvoiceManager.Infrastructure.CosmosDb;
+using InvoiceManager.TestSupport;
 using NodaMoney;
 
 namespace InvoiceManager.Infrastructure.Tests;
@@ -159,5 +160,22 @@ public sealed class InvoiceConfigurationDocumentTests
         var configuration = document.ToConfiguration();
 
         Assert.Equal(IntegrationType.MicrosoftBilling, configuration.IntegrationType);
+    }
+
+    [Fact]
+    public void SentinelId_CanNeverBeAValidConfigurationId()
+    {
+        // ValidationSentinelDocument shares invoice-configurations' "config" partition and Cosmos
+        // id-space with real configuration documents. If its ID happened to also be a legal
+        // configuration ID, an admin creating a configuration with that exact ID would produce a
+        // confusing Cosmos-level ID collision misreported as an ordinary duplicate-ID conflict,
+        // since no such configuration actually exists in any list/get result. This asserts the
+        // structural guarantee that can never happen: the sentinel's ID fails the same
+        // lowercase-kebab-case check every real configuration ID must pass.
+        var configuration = Configurations.Build(new InvoiceConfigurationId(ValidationSentinelDocument.SentinelId));
+
+        var errors = InvoiceConfigurationValidation.Validate(configuration);
+
+        Assert.Contains("Invoice configuration ID must be lowercase kebab-case.", errors);
     }
 }

@@ -17,7 +17,11 @@ public sealed record DuplicateInvoiceConfigurationSearchCriteria(InvoiceConfigur
 
 /// <summary>
 /// The configuration changed since it was loaded (an ETag mismatch on write). The caller should
-/// reload the latest version and re-apply its edit against that.
+/// reload the latest version and re-apply its edit against that. Also surfaced (see
+/// <see cref="InvoiceConfigurationService"/>'s duplicate-validation-sentinel retry) when the
+/// cross-configuration duplicate-search-criteria check lost its optimistic-concurrency race twice
+/// in a row under sustained contention - the caller's remedy is identical either way: reload and
+/// re-apply against the current state, which will rerun both checks.
 /// </summary>
 public sealed record InvoiceConfigurationConflict;
 
@@ -37,21 +41,3 @@ public union InvoiceConfigurationMutationResult(
     DuplicateInvoiceConfigurationId,
     DuplicateInvoiceConfigurationSearchCriteria,
     InvoiceConfigurationConflict);
-
-/// <summary>
-/// The outcome of <see cref="Repositories.IInvoiceConfigurationRepository.CreateAsync"/>: either the
-/// newly stored configuration, or the specific reason the write did not happen. This is the
-/// repository-level union - the translation of the Cosmos SDK's conflict exception into a result the
-/// repository's own caller can switch over exhaustively - per docs/coding-standards.md's "Translate
-/// at the external-library boundary": the repository, as the class that directly wraps the Cosmos
-/// SDK, is responsible for this translation, not whichever service happens to call it.
-/// </summary>
-public union InvoiceConfigurationCreateResult(StoredInvoiceConfiguration, DuplicateInvoiceConfigurationId);
-
-/// <summary>
-/// The outcome of <see cref="Repositories.IInvoiceConfigurationRepository.ReplaceAsync"/>: either the
-/// replaced configuration, or an ETag mismatch (the configuration changed since it was loaded). See
-/// <see cref="InvoiceConfigurationCreateResult"/> for why this translation lives at the repository
-/// boundary rather than in its caller.
-/// </summary>
-public union InvoiceConfigurationReplaceResult(StoredInvoiceConfiguration, InvoiceConfigurationConflict);
