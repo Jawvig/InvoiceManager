@@ -242,10 +242,19 @@ internal sealed class InvoiceConfigurationRevisionDocument
 /// writer that read the sentinel first loses the transactional batch with a 412 instead of both
 /// writers' independently-passed validation silently standing. See docs/data-model.md's
 /// "Duplicate-validation sentinel" section.
+///
+/// <para>
+/// <see cref="SentinelId"/> deliberately contains underscores, which
+/// <see cref="InvoiceConfigurationValidation.Validate"/>'s lowercase-kebab-case
+/// <c>IdPattern</c> never allows in a real configuration ID - so this document's ID can never
+/// collide with one a user creates, structurally, rather than by relying on a reserved-word check
+/// in validation that a new call site could forget. Do not rename it to something that could pass
+/// that pattern.
+/// </para>
 /// </summary>
 internal sealed class ValidationSentinelDocument
 {
-    public const string SentinelId = "duplicate-validation-sentinel";
+    public const string SentinelId = "__duplicate_validation_sentinel__";
     public const string SentinelDocumentType = "invoiceConfigurationValidationSentinel";
 
     [JsonPropertyName("id")]

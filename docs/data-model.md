@@ -93,9 +93,12 @@ duplicate the check exists to prevent.
 
 A single sentinel document closes that race:
 
-- `id`: the fixed constant `duplicate-validation-sentinel` (one sentinel for
-  the whole container, alongside every configuration and revision, in the
-  same `config` partition).
+- `id`: the fixed constant `__duplicate_validation_sentinel__` (one sentinel
+  for the whole container, alongside every configuration and revision, in
+  the same `config` partition). Deliberately contains underscores, which a
+  real configuration ID's lowercase-kebab-case validation never allows, so
+  this ID can never collide with one a user creates - structurally, not by a
+  reserved-word check that a new call site could forget to apply.
 - `documentType`: `invoiceConfigurationValidationSentinel`.
 - `partitionKey`: `config` (the same constant value as everything else in
   this container).
