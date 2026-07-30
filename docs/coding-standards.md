@@ -43,10 +43,16 @@ wrong) without the exception-based control flow.
   repository wrapping a database SDK) that throws internally and expects
   whatever happens to call it today to catch and translate the exception -
   see [Translate at the external-library boundary](#translate-at-the-external-library-boundary)
-  below for where that translation actually belongs. `IInvoiceConfigurationRepository`
-  does not yet conform to this (tracked in
-  [#93](https://github.com/Jawvig/InvoiceManager/issues/93)) - it is tech
-  debt to fix, not a sanctioned pattern to follow elsewhere.
+  below for where that translation actually belongs. `IInvoiceConfigurationRepository`'s
+  `CreateAsync`/`ReplaceAsync` were brought into line with this as part of the
+  duplicate-validation sentinel work (issue #92): they return
+  `InvoiceConfigurationWriteResult` (a union) instead of throwing
+  `DuplicateInvoiceConfigurationException`/`InvoiceConfigurationConflictException`,
+  which no longer exist. Any other class in this codebase still doing the
+  "lower layer throws, an upstream caller catches" thing is tech debt to fix
+  when touched, not a sanctioned pattern to extend - see
+  [#93](https://github.com/Jawvig/InvoiceManager/issues/93) for the broader
+  sweep to find remaining instances.
 
 ## Translate at the external-library boundary
 
@@ -90,10 +96,15 @@ call means every consumer of that class, present and future, gets the
 already-translated contract for free.
 
 **How to apply:** When adding or reviewing a class that calls an external
-library, check its public methods against both shapes above. See
-[#93](https://github.com/Jawvig/InvoiceManager/issues/93) for the known gap
-this doesn't yet close (`IInvoiceConfigurationRepository`) and for the sweep
-to find others.
+library, check its public methods against both shapes above.
+`CosmosInvoiceConfigurationRepository.CreateAsync`/`ReplaceAsync` are a
+worked example: a `TransactionalBatchResponse`'s per-operation status codes
+are inspected right there and translated into `InvoiceConfigurationWriteResult`
+cases (`DuplicateInvoiceConfigurationId`, `InvoiceConfigurationConflict`,
+`ValidationSentinelConflict`) before the method returns - no Cosmos exception
+or status code crosses the repository's public surface. See
+[#93](https://github.com/Jawvig/InvoiceManager/issues/93) for the sweep to
+find other classes that still don't.
 
 ## Avoid null to represent absence of a value
 

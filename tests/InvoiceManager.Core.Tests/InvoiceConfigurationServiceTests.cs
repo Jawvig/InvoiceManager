@@ -102,6 +102,59 @@ public sealed class InvoiceConfigurationServiceTests
     }
 
     [Fact]
+    public async Task Create_RetriesOnce_WhenSentinelLosesRaceButNoDuplicateFound()
+    {
+        // Simulates a concurrent Create for a different, non-conflicting configuration ID
+        // winning the race and changing the sentinel first: this configuration's write should
+        // retry once, revalidate (still finds nothing), and succeed.
+        var repository = new FakeConfigurationRepository { SentinelConflictsToSimulate = 1 };
+        var service = new InvoiceConfigurationService(repository);
+        var configuration = Configurations.Build(isActive: false);
+
+        var result = await service.CreateAsync(configuration, Actor);
+
+        Assert.True(result is StoredInvoiceConfiguration stored && stored.Configuration.Id == configuration.Id);
+    }
+
+    [Fact]
+    public async Task Create_ReportsConflict_WhenSentinelLosesRaceOnBothAttempts()
+    {
+        var repository = new FakeConfigurationRepository { SentinelConflictsToSimulate = 2 };
+        var service = new InvoiceConfigurationService(repository);
+        var configuration = Configurations.Build(isActive: false);
+
+        var result = await service.CreateAsync(configuration, Actor);
+
+        Assert.True(result is InvoiceConfigurationConflict);
+    }
+
+    [Fact]
+    public async Task Create_FindsDuplicateIntroducedByTheWinnerOfTheSentinelRace()
+    {
+        // The concurrent winner's own write (the one that changed the sentinel and caused this
+        // call to lose the race) commits a configuration that conflicts with this candidate's
+        // search criteria - it isn't visible on the first read, only starting with the retry, so
+        // the retry's revalidation must be the one to catch it.
+        var winner = Configurations.Build(
+            id: new("winner-config"),
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"));
+        var repository = new FakeConfigurationRepository
+        {
+            SentinelConflictsToSimulate = 1,
+            RevealOnNextSentinelConflict = winner,
+        };
+        var service = new InvoiceConfigurationService(repository);
+        var candidate = Configurations.Build(
+            id: new("candidate-config"),
+            isActive: false,
+            integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"));
+
+        var result = await service.CreateAsync(candidate, Actor);
+
+        Assert.True(result is DuplicateInvoiceConfigurationSearchCriteria conflict && conflict.ConflictingId == winner.Id);
+    }
+
+    [Fact]
     public async Task Restore_KeepsCurrentIdentityIntegrationAndActivationState()
     {
         var current = Configurations.Build(isActive: true);

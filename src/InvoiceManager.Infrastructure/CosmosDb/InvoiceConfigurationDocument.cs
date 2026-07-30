@@ -234,6 +234,30 @@ internal sealed class InvoiceConfigurationRevisionDocument
     };
 }
 
+/// <summary>
+/// The sole ETag-protected sentinel document guarding the cross-configuration
+/// duplicate-search-criteria check (<see cref="InvoiceConfigurationValidation.ValidateNoDuplicateMatch"/>).
+/// It carries no meaningful content of its own - every write to it is a conditional replace with
+/// the same body, whose only purpose is to force Cosmos to hand out a new ETag so a concurrent
+/// writer that read the sentinel first loses the transactional batch with a 412 instead of both
+/// writers' independently-passed validation silently standing. See docs/data-model.md's
+/// "Duplicate-validation sentinel" section.
+/// </summary>
+internal sealed class ValidationSentinelDocument
+{
+    public const string SentinelId = "duplicate-validation-sentinel";
+    public const string SentinelDocumentType = "invoiceConfigurationValidationSentinel";
+
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = SentinelId;
+
+    [JsonPropertyName("documentType")]
+    public string DocumentType { get; init; } = SentinelDocumentType;
+
+    [JsonPropertyName("partitionKey")]
+    public string PartitionKey { get; init; } = InvoiceConfigurationDocument.ConfigurationPartitionKey;
+}
+
 internal sealed class AmountMatchingCriteriaDocument
 {
     [JsonPropertyName("amount")]

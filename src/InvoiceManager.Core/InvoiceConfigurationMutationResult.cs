@@ -17,7 +17,11 @@ public sealed record DuplicateInvoiceConfigurationSearchCriteria(InvoiceConfigur
 
 /// <summary>
 /// The configuration changed since it was loaded (an ETag mismatch on write). The caller should
-/// reload the latest version and re-apply its edit against that.
+/// reload the latest version and re-apply its edit against that. Also surfaced (see
+/// <see cref="InvoiceConfigurationService"/>'s duplicate-validation-sentinel retry) when the
+/// cross-configuration duplicate-search-criteria check lost its optimistic-concurrency race twice
+/// in a row under sustained contention - the caller's remedy is identical either way: reload and
+/// re-apply against the current state, which will rerun both checks.
 /// </summary>
 public sealed record InvoiceConfigurationConflict;
 

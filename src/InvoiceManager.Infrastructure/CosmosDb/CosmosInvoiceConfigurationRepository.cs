@@ -78,32 +78,59 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         }
     }
 
-    public async Task<StoredInvoiceConfiguration> CreateAsync(
+    public async Task<ConfigurationValidationSentinel> GetValidationSentinelAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await container.ReadItemAsync<ValidationSentinelDocument>(
+                ValidationSentinelDocument.SentinelId, ConfigurationPartition, cancellationToken: cancellationToken);
+            return new ConfigurationValidationSentinel(response.ETag);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return await CreateValidationSentinelAsync(cancellationToken);
+        }
+    }
+
+    public async Task<InvoiceConfigurationWriteResult> CreateAsync(
         InvoiceConfiguration configuration,
         InvoiceConfigurationActor actor,
+        ConfigurationValidationSentinel sentinel,
         CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow();
         var revision = NewRevision(configuration, InvoiceConfigurationRevisionAction.Created, actor, now);
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
+        const int documentIndex = 0;
+        const int sentinelIndex = 2;
         var batch = container.CreateTransactionalBatch(ConfigurationPartition)
             .CreateItem(document)
-            .CreateItem(InvoiceConfigurationRevisionDocument.FromRevision(revision));
+            .CreateItem(InvoiceConfigurationRevisionDocument.FromRevision(revision))
+            .ReplaceItem(
+                ValidationSentinelDocument.SentinelId,
+                new ValidationSentinelDocument(),
+                new TransactionalBatchItemRequestOptions { IfMatchEtag = sentinel.ETag });
 
         using var response = await batch.ExecuteAsync(cancellationToken);
-        if (response.StatusCode == HttpStatusCode.Conflict)
-            throw new DuplicateInvoiceConfigurationException(
-                $"Invoice configuration ID '{configuration.Id}' already exists.");
-        EnsureBatchSucceeded(response);
+        if (!response.IsSuccessStatusCode)
+        {
+            if (response[documentIndex].StatusCode == HttpStatusCode.Conflict)
+                return new DuplicateInvoiceConfigurationId(configuration.Id);
+            if (response[sentinelIndex].StatusCode == HttpStatusCode.PreconditionFailed)
+                return new ValidationSentinelConflict();
+            throw BatchFailed(response);
+        }
 
         return await ReadRequiredAsync(configuration.Id, configuration.IntegrationType, cancellationToken);
     }
 
-    public async Task<StoredInvoiceConfiguration> ReplaceAsync(
+    public async Task<InvoiceConfigurationWriteResult> ReplaceAsync(
         InvoiceConfiguration configuration,
         string etag,
         InvoiceConfigurationRevisionAction action,
         InvoiceConfigurationActor actor,
+        Option<ConfigurationValidationSentinel> sentinel,
         CancellationToken cancellationToken = default)
     {
         var current = await ReadRequiredAsync(configuration.Id, configuration.IntegrationType, cancellationToken);
@@ -122,6 +149,7 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
             batch.CreateItem(InvoiceConfigurationRevisionDocument.FromRevision(baseline));
         }
 
+        var documentIndex = revisions.Count == 0 ? 1 : 0;
         batch.ReplaceItem(
             document.Id,
             document,
@@ -129,13 +157,45 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         batch.CreateItem(InvoiceConfigurationRevisionDocument.FromRevision(
             NewRevision(configuration, action, actor, now)));
 
+        var sentinelIndex = -1;
+        if (sentinel is ConfigurationValidationSentinel sentinelValue)
+        {
+            sentinelIndex = documentIndex + 2;
+            batch.ReplaceItem(
+                ValidationSentinelDocument.SentinelId,
+                new ValidationSentinelDocument(),
+                new TransactionalBatchItemRequestOptions { IfMatchEtag = sentinelValue.ETag });
+        }
+
         using var response = await batch.ExecuteAsync(cancellationToken);
-        if (response.StatusCode == HttpStatusCode.PreconditionFailed)
-            throw new InvoiceConfigurationConflictException(
-                "This configuration changed after the page was loaded. Reload and review the latest values before saving again.");
-        EnsureBatchSucceeded(response);
+        if (!response.IsSuccessStatusCode)
+        {
+            if (response[documentIndex].StatusCode == HttpStatusCode.PreconditionFailed)
+                return new InvoiceConfigurationConflict();
+            if (sentinelIndex >= 0 && response[sentinelIndex].StatusCode == HttpStatusCode.PreconditionFailed)
+                return new ValidationSentinelConflict();
+            throw BatchFailed(response);
+        }
 
         return await ReadRequiredAsync(configuration.Id, configuration.IntegrationType, cancellationToken);
+    }
+
+    private async Task<ConfigurationValidationSentinel> CreateValidationSentinelAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var created = await container.CreateItemAsync(
+                new ValidationSentinelDocument(), ConfigurationPartition, cancellationToken: cancellationToken);
+            return new ConfigurationValidationSentinel(created.ETag);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+        {
+            // Another concurrent bootstrap call created it first - read what it wrote.
+            var response = await container.ReadItemAsync<ValidationSentinelDocument>(
+                ValidationSentinelDocument.SentinelId, ConfigurationPartition, cancellationToken: cancellationToken);
+            return new ConfigurationValidationSentinel(response.ETag);
+        }
     }
 
     public async Task<IReadOnlyList<InvoiceConfigurationRevision>> ListRevisionsAsync(
@@ -205,10 +265,13 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
             actor?.DisplayName ?? "Imported pre-audit baseline",
             configuration);
 
-    private static void EnsureBatchSucceeded(TransactionalBatchResponse response)
-    {
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(
-                $"Cosmos configuration transaction failed with {(int)response.StatusCode} {response.StatusCode}. {response.ErrorMessage}");
-    }
+    /// <summary>
+    /// Every outcome a normal caller can trigger (a duplicate ID, a stale document ETag, a lost
+    /// sentinel race) is checked and translated to an <see cref="InvoiceConfigurationWriteResult"/>
+    /// case before this is reached - reaching here means the batch failed for some other Cosmos
+    /// reason (throttling, an unexpected status code), which is exactly the "environment/
+    /// infrastructure failure" category docs/coding-standards.md reserves exceptions for.
+    /// </summary>
+    private static InvalidOperationException BatchFailed(TransactionalBatchResponse response) =>
+        new($"Cosmos configuration transaction failed with {(int)response.StatusCode} {response.StatusCode}. {response.ErrorMessage}");
 }

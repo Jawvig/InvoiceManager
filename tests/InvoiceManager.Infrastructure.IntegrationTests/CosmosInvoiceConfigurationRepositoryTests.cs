@@ -78,11 +78,17 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     {
         var actor = new InvoiceConfigurationActor("actor-1", "Admin User");
         var draft = BuildConfiguration(new("audited-config"), isActive: false);
-        var created = await repository!.CreateAsync(draft, actor);
+        var sentinel = await repository!.GetValidationSentinelAsync();
+        var created = await repository.CreateAsync(draft, actor, sentinel) switch
+        {
+            StoredInvoiceConfiguration value => value,
+            var other => throw new Xunit.Sdk.XunitException($"Expected a successful create, got {other}."),
+        };
 
         var updated = draft with { InvoiceDescription = "Updated" };
+        var sentinelForUpdate = await repository.GetValidationSentinelAsync();
         await repository.ReplaceAsync(
-            updated, created.ETag, InvoiceConfigurationRevisionAction.Updated, actor);
+            updated, created.ETag, InvoiceConfigurationRevisionAction.Updated, actor, sentinelForUpdate);
 
         var live = await repository.ListAllAsync();
         var revisions = await repository.ListRevisionsAsync(draft.Id, draft.IntegrationType);
@@ -99,14 +105,15 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     {
         var actor = new InvoiceConfigurationActor("actor-1", "Admin User");
         var original = BuildConfiguration(new("duplicate-id"), isActive: false);
-        await repository!.CreateAsync(original, actor);
+        await repository!.CreateAsync(original, actor, await repository.GetValidationSentinelAsync());
         var duplicate = original with
         {
             IntegrationConfiguration = new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice"),
         };
 
-        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
-            repository.CreateAsync(duplicate, actor));
+        var result = await repository.CreateAsync(duplicate, actor, await repository.GetValidationSentinelAsync());
+
+        Assert.True(result is DuplicateInvoiceConfigurationId conflict && conflict.Id == original.Id);
     }
 
     [Fact]
@@ -123,7 +130,8 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
         await repository.ReplaceAsync(
             configuration with { IsActive = false }, stored.ETag,
             InvoiceConfigurationRevisionAction.Deactivated,
-            new("actor-1", "Admin User"));
+            new("actor-1", "Admin User"),
+            await repository.GetValidationSentinelAsync());
 
         var revisions = await repository.ListRevisionsAsync(configuration.Id, configuration.IntegrationType);
         Assert.Equal(InvoiceConfigurationRevisionAction.PreAuditBaseline, revisions[0].Action);
@@ -135,14 +143,66 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     public async Task Replace_RejectsStaleEtag()
     {
         var configuration = BuildConfiguration(new("etag-conflict"), isActive: false);
-        var stored = await repository!.CreateAsync(configuration, new("actor", "Admin"));
+        var stored = await repository!.CreateAsync(
+            configuration, new("actor", "Admin"), await repository.GetValidationSentinelAsync()) switch
+        {
+            StoredInvoiceConfiguration value => value,
+            var other => throw new Xunit.Sdk.XunitException($"Expected a successful create, got {other}."),
+        };
         await repository.ReplaceAsync(
             configuration with { InvoiceDescription = "First" }, stored.ETag,
-            InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin"));
+            InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin"),
+            await repository.GetValidationSentinelAsync());
 
-        await Assert.ThrowsAsync<InvoiceConfigurationConflictException>(() => repository.ReplaceAsync(
+        var result = await repository.ReplaceAsync(
             configuration with { InvoiceDescription = "Stale" }, stored.ETag,
-            InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin")));
+            InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin"),
+            await repository.GetValidationSentinelAsync());
+
+        Assert.True(result is InvoiceConfigurationConflict, $"Expected InvoiceConfigurationConflict, got {result}.");
+    }
+
+    [Fact]
+    public async Task GetValidationSentinelAsync_BootstrapsSentinel_WhenContainerIsFresh()
+    {
+        var first = await repository!.GetValidationSentinelAsync();
+        var second = await repository.GetValidationSentinelAsync();
+
+        Assert.False(string.IsNullOrWhiteSpace(first.ETag));
+        Assert.Equal(first.ETag, second.ETag);
+    }
+
+    [Fact]
+    public async Task Create_ReportsSentinelConflict_WhenSentinelChangedSinceItWasRead()
+    {
+        var sentinel = await repository!.GetValidationSentinelAsync();
+        // Simulate another writer committing first and changing the sentinel's ETag by writing
+        // through it directly, without going through this stale copy.
+        var otherWriterConfig = BuildConfiguration(new("other-writer-config"), isActive: false);
+        await repository.CreateAsync(otherWriterConfig, new("actor", "Admin"), sentinel);
+
+        var configuration = BuildConfiguration(new("late-writer-config"), isActive: false);
+        var result = await repository.CreateAsync(configuration, new("actor", "Admin"), sentinel);
+
+        Assert.True(result is ValidationSentinelConflict, $"Expected ValidationSentinelConflict, got {result}.");
+        // The configuration document itself must not have been committed - the whole
+        // transactional batch, including the config + revision writes, rolled back together.
+        Assert.True((await repository.GetAsync(configuration.Id, configuration.IntegrationType)) is None);
+    }
+
+    [Fact]
+    public async Task ConcurrentCreates_OnlyOneSucceeds_WhenBothReadTheSameSentinel()
+    {
+        var sentinel = await repository!.GetValidationSentinelAsync();
+        var first = BuildConfiguration(new("race-config-a"), isActive: false);
+        var second = BuildConfiguration(new("race-config-b"), isActive: false);
+
+        var results = await Task.WhenAll(
+            repository.CreateAsync(first, new("actor", "Admin"), sentinel),
+            repository.CreateAsync(second, new("actor", "Admin"), sentinel));
+
+        Assert.Single(results, r => r is StoredInvoiceConfiguration);
+        Assert.Single(results, r => r is ValidationSentinelConflict);
     }
 
     private static InvoiceConfiguration BuildConfiguration(

@@ -81,6 +81,50 @@ Notes:
 - If multi-company support becomes necessary, reconsider the partition key and
   include a company or tenant identifier.
 
+### Duplicate-validation sentinel
+
+`InvoiceConfigurationService`'s cross-configuration duplicate-search-criteria
+check (list every live configuration, then validate a candidate against them)
+is a read-then-write operation: without protection, two concurrent
+Create/Update/Restore calls for *different* configuration IDs can both read
+the same list, both pass validation, and both commit, since their individual
+document ETags don't conflict with each other - reintroducing the exact
+duplicate the check exists to prevent.
+
+A single sentinel document closes that race:
+
+- `id`: the fixed constant `duplicate-validation-sentinel` (one sentinel for
+  the whole container, alongside every configuration and revision, in the
+  same `config` partition).
+- `documentType`: `invoiceConfigurationValidationSentinel`.
+- `partitionKey`: `config` (the same constant value as everything else in
+  this container).
+- No other fields - the sentinel carries no meaningful content of its own.
+  Every write to it is a conditional replace with the same body; the only
+  purpose is to force Cosmos to hand out a new `_etag`, the way any write
+  does regardless of whether the body actually changed.
+
+Protocol: before validating, read the sentinel's current ETag. Validate the
+candidate against the live list as before. Then include a conditional
+replace of the sentinel (`If-Match` on the ETag just read) in the *same*
+transactional batch as the configuration + revision writes that Create/
+Update/Restore already perform. One concurrent writer's batch commits and
+changes the sentinel's ETag; a second writer whose batch also included a
+(now-stale) `If-Match` on that ETag has its whole batch rejected with a
+precondition failure - so its earlier validation is treated as unreliable,
+and it re-reads the sentinel and the live list and revalidates once before
+giving up (see `InvoiceConfigurationService`'s XML doc remarks for the exact
+retry/give-up rule). This is optimistic serialization of the validation
+check itself, not a lock: writes that don't touch search criteria (activate/
+deactivate) don't participate and never contend with it.
+
+`ConfigurationSeeder`/`tools/InvoiceManager.Seeder` is deliberately exempt:
+it calls the repository's plain insert-if-absent method directly, which
+never runs the duplicate-search-criteria check in the first place, and it
+only ever runs single-threaded at deploy time from a fixed seed list - see
+the XML doc on `ConfigurationSeeder` for the full reasoning and the
+conditions that would invalidate the exemption.
+
 ## invoice-records
 
 Stores expected invoice processing history, including retrieval and

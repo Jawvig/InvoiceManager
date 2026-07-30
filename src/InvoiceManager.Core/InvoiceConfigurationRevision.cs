@@ -25,27 +25,37 @@ public sealed record InvoiceConfigurationRevision(
 public sealed record StoredInvoiceConfiguration(InvoiceConfiguration Configuration, string ETag);
 
 /// <summary>
-/// Thrown by <see cref="Repositories.IInvoiceConfigurationRepository.ReplaceAsync"/> to signal an
-/// ETag mismatch. <see cref="InvoiceConfigurationService"/> currently catches it and reports it
-/// through <see cref="InvoiceConfigurationMutationResult"/>'s
-/// <see cref="InvoiceConfigurationConflict"/> case instead - it must never be thrown or caught
-/// anywhere else, and in particular must never reach an AdminWeb page handler. This is a known
-/// gap against docs/coding-standards.md's "Exceptions are not control flow" (the translation
-/// belongs in the repository itself, not in its one current caller) - tracked in
-/// <see href="https://github.com/Jawvig/InvoiceManager/issues/93">issue #93</see>, not a
-/// sanctioned pattern to replicate elsewhere.
+/// A handle on the cross-configuration duplicate-search-criteria sentinel document's current
+/// ETag - see docs/data-model.md's "Duplicate-validation sentinel" section for the document
+/// shape and <see cref="InvoiceConfigurationService"/>'s remarks for the protocol this
+/// participates in. Callers read one of these before validating a candidate configuration against
+/// the live list, then pass it back into <see cref="Repositories.IInvoiceConfigurationRepository.CreateAsync"/>/
+/// <see cref="Repositories.IInvoiceConfigurationRepository.ReplaceAsync"/> so the repository can
+/// include a conditional write of the sentinel in the same transactional batch as the
+/// configuration + revision documents.
 /// </summary>
-public sealed class InvoiceConfigurationConflictException(string message) : Exception(message);
+public sealed record ConfigurationValidationSentinel(string ETag);
 
 /// <summary>
-/// Thrown by <see cref="Repositories.IInvoiceConfigurationRepository.CreateAsync"/> to signal that
-/// the configuration ID already exists. <see cref="InvoiceConfigurationService"/> currently catches
-/// it and reports it through <see cref="InvoiceConfigurationMutationResult"/>'s
-/// <see cref="DuplicateInvoiceConfigurationId"/> case instead - it must never be thrown or caught
-/// anywhere else, and in particular must never reach an AdminWeb page handler. This is a known
-/// gap against docs/coding-standards.md's "Exceptions are not control flow" (the translation
-/// belongs in the repository itself, not in its one current caller) - tracked in
-/// <see href="https://github.com/Jawvig/InvoiceManager/issues/93">issue #93</see>, not a
-/// sanctioned pattern to replicate elsewhere.
+/// The sentinel document's ETag no longer matched at write time: another
+/// Create/Update/Restore committed first and changed it, so this write's earlier
+/// duplicate-search-criteria validation ran against a list that may now be stale.
+/// <see cref="InvoiceConfigurationService"/> catches this internally (it is not part of
+/// <see cref="InvoiceConfigurationMutationResult"/>) and retries the validate-then-write sequence
+/// once against the fresh sentinel and configuration list before giving up.
 /// </summary>
-public sealed class DuplicateInvoiceConfigurationException(string message) : Exception(message);
+public sealed record ValidationSentinelConflict;
+
+/// <summary>
+/// The outcome of a repository-level write that participates in the duplicate-validation sentinel
+/// protocol (<see cref="Repositories.IInvoiceConfigurationRepository.CreateAsync"/>/
+/// <see cref="Repositories.IInvoiceConfigurationRepository.ReplaceAsync"/>). Translated at the
+/// Cosmos SDK boundary inside <c>CosmosInvoiceConfigurationRepository</c> itself, per
+/// docs/coding-standards.md's "Translate at the external-library boundary" - no
+/// <see cref="Exception"/> for any of these outcomes crosses the repository's public surface.
+/// </summary>
+public union InvoiceConfigurationWriteResult(
+    StoredInvoiceConfiguration,
+    DuplicateInvoiceConfigurationId,
+    InvoiceConfigurationConflict,
+    ValidationSentinelConflict);
