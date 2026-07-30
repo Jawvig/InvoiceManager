@@ -240,6 +240,57 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CreateIfNotExistsAsync_IsStillANoOp_WhenTheSeededConfigurationsCriteriaHasDriftedToAnotherConfiguration()
+    {
+        // Regression test for the exact scenario the existing-ID no-op must protect against:
+        // seed ID "drifted-seed-config" was originally seeded with BuildConfiguration's default
+        // search criteria (same billing account "test:billing:account" as everything else built by
+        // it), then an admin edited it via AdminWeb (simulated here with ReplaceAsync) to use
+        // different criteria, freeing up the original criteria. Some other configuration
+        // ("claims-original-criteria") was then legitimately created using those now-free original
+        // criteria - nothing wrong with that on its own. Re-running the seeder for
+        // "drifted-seed-config" (e.g. on a redeploy) must remain the same harmless no-op it always
+        // was, even though the seed file's original criteria now genuinely match a different live
+        // configuration - it must not be misreported as a conflict.
+        var originalSeedConfiguration = BuildConfiguration(new("drifted-seed-config"), isActive: false);
+        await repository!.CreateIfNotExistsAsync(originalSeedConfiguration);
+        var stored = await repository.GetAsync(originalSeedConfiguration.Id, originalSeedConfiguration.IntegrationType) switch
+        {
+            StoredInvoiceConfiguration value => value,
+            var other => throw new Xunit.Sdk.XunitException($"Expected the seeded configuration, got {other}."),
+        };
+
+        // The admin edit: move "drifted-seed-config" to different search criteria, freeing up the
+        // original billing account for someone else to use.
+        var editedConfiguration = originalSeedConfiguration with
+        {
+            IntegrationConfiguration = new MicrosoftBillingIntegrationConfiguration("drifted-seed-new-account"),
+        };
+        await repository.ReplaceAsync(
+            editedConfiguration, stored.ETag, InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin"),
+            Option.None);
+
+        // Another, unrelated configuration legitimately claims the now-free original criteria.
+        var claimant = BuildConfiguration(new("claims-original-criteria"), isActive: false);
+        await repository.CreateAsync(claimant, new("actor", "Admin"), await repository.GetValidationSentinelAsync());
+
+        // Re-running the seeder for the original seed record (unchanged from the seed file, so
+        // still carrying the now-superseded original criteria) must still be a pure no-op.
+        var exception = await Record.ExceptionAsync(() => repository.CreateIfNotExistsAsync(originalSeedConfiguration));
+        Assert.Null(exception);
+
+        var afterReseed = await repository.GetAsync(originalSeedConfiguration.Id, originalSeedConfiguration.IntegrationType) switch
+        {
+            StoredInvoiceConfiguration value => value,
+            var other => throw new Xunit.Sdk.XunitException($"Expected the configuration to still exist, got {other}."),
+        };
+        Assert.True(
+            afterReseed.Configuration.IntegrationConfiguration is MicrosoftBillingIntegrationConfiguration billing &&
+            billing.BillingAccountId == "drifted-seed-new-account",
+            $"Expected the edited billing account to still be in effect, got {afterReseed.Configuration.IntegrationConfiguration}.");
+    }
+
+    [Fact]
     public async Task Seeding_DuringADeployWindow_InvalidatesAConcurrentAdminWebWriteThatReadTheSentinelFirst()
     {
         // Models the exact race scripts/Deploy-Infra.ps1 can produce: terraform apply can start

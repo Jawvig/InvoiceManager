@@ -139,14 +139,26 @@ insert-if-absent method the seeder calls) carries the whole protocol instead:
 - If an AdminWeb write commits conflicting search criteria first - either
   before the seeder's very first attempt, or between the seeder losing a
   sentinel race and its retry - `CreateIfNotExistsAsync` revalidates the seed
-  configuration's search criteria against the live list on *every* attempt,
-  not just the first, so a blind retry can never insert on top of a
-  conflict it would otherwise never notice. A genuine seed-time conflict
-  throws `SeedConfigurationConflictException` rather than being silently
-  skipped like the "ID already exists" no-op path, or silently committed
-  alongside the configuration it conflicts with - see that type's XML doc
-  for the reasoning (this is a deploy-time data problem for a human to fix,
-  not a normal outcome for the pipeline to recover from automatically).
+  configuration's search criteria against the live list on *every* attempt
+  it makes to insert a **new** ID, so a blind retry can never insert on top
+  of a conflict it would otherwise never notice. A genuine seed-time
+  conflict throws `SeedConfigurationConflictException` rather than being
+  silently committed alongside the configuration it conflicts with - see
+  that type's XML doc for the reasoning (this is a deploy-time data problem
+  for a human to fix, not a normal outcome for the pipeline to recover from
+  automatically).
+
+Crucially, this duplicate-search-criteria check only ever runs for a
+genuinely new configuration ID - `CreateIfNotExistsAsync` checks whether a
+configuration with this exact ID already exists *first*, and returns
+immediately (its long-standing, always-safe no-op) without running the
+check at all if so. This matters because a seeded configuration's live
+search criteria can legitimately drift away from what the seed file
+originally specified (an admin edits it after it's first seeded, freeing up
+its original criteria for some other configuration to claim) - re-seeding
+that same ID later (e.g. on a redeploy) must remain a harmless no-op even
+though the seed file's original criteria might now genuinely match a
+different live configuration; it must never be misreported as a conflict.
 
 See the XML docs on `CreateIfNotExistsAsync`, `ConfigurationSeeder`, and
 `SeedConfigurationConflictException` for the full reasoning.

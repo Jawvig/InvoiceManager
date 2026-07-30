@@ -10,16 +10,21 @@ public interface IInvoiceConfigurationRepository
         CancellationToken cancellationToken = default);
     /// <summary>
     /// Bootstrap seeding: inserts <paramref name="configuration"/> unless a configuration with the
-    /// same ID already exists, in which case this is a no-op - insert-only, never overwrites
-    /// UI-managed values. A successful insert also advances the duplicate-validation sentinel
-    /// atomically with it (see <see cref="ConfigurationValidationSentinel"/>): a deploy can run the
-    /// seeder while a live AdminWeb instance is still serving requests, so this participates in the
-    /// same sentinel protocol as <see cref="CreateAsync"/>/<see cref="ReplaceAsync"/> rather than
-    /// being exempt from it. Also revalidates <paramref name="configuration"/>'s search criteria
-    /// against the live list on every attempt (including retries after losing the sentinel race),
-    /// throwing <see cref="SeedConfigurationConflictException"/> rather than inserting on top of a
-    /// conflict - see that type's XML doc for why this is an exception rather than a return-type
-    /// case.
+    /// same ID already exists, in which case this is <b>always</b> a no-op - insert-only, never
+    /// overwrites UI-managed values, and never fails, regardless of how that existing
+    /// configuration's live search criteria may have since drifted from what the seed file
+    /// originally specified (re-seeding an already-existing ID must remain safe to run at any
+    /// time). Only for a genuinely new ID does the insert proceed, and it also advances the
+    /// duplicate-validation sentinel atomically with it (see
+    /// <see cref="ConfigurationValidationSentinel"/>): a deploy can run the seeder while a live
+    /// AdminWeb instance is still serving requests, so this participates in the same sentinel
+    /// protocol as <see cref="CreateAsync"/>/<see cref="ReplaceAsync"/> rather than being exempt
+    /// from it. That new-ID path also revalidates <paramref name="configuration"/>'s search
+    /// criteria against the live list on every attempt (including retries after losing the
+    /// sentinel race), throwing <see cref="SeedConfigurationConflictException"/> rather than
+    /// inserting on top of a conflict - see that type's XML doc for why this is an exception
+    /// rather than a return-type case, and why it can only ever fire for a new ID, never for the
+    /// existing-ID no-op.
     /// </summary>
     Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default);
 

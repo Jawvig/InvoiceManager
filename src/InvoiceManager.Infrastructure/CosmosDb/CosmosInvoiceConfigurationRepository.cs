@@ -62,30 +62,40 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
 
     /// <summary>
     /// Bootstrap seeding is insert-only and never overwrites UI-managed values - if a
-    /// configuration with the same ID already exists, this is a no-op. Otherwise, the insert also
-    /// advances the duplicate-validation sentinel in the same transactional batch (see
-    /// <see cref="ConfigurationValidationSentinel"/> and docs/data-model.md): deploys run
-    /// Terraform apply (which can start routing traffic to a live AdminWeb instance) before
-    /// invoking the seeder, so a seeded configuration can genuinely race a concurrent
-    /// Create/Update/Restore request through AdminWeb - see <c>scripts/Deploy-Infra.ps1</c>'s
-    /// <c>Invoke-ConfigurationSeeder</c> call sites, both of which run after
-    /// <c>terraform apply</c>/an unchanged-plan early return, not before AdminWeb comes up.
+    /// configuration with the same ID already exists, this is <b>always</b> a safe no-op,
+    /// regardless of how its live search criteria may have since drifted from what the seed file
+    /// originally specified (e.g. an admin edited it after it was first seeded, freeing up its
+    /// original criteria for some other configuration to legitimately claim) - re-seeding an
+    /// already-existing ID must never fail or change anything. Only when no configuration with
+    /// this ID exists yet does the insert proceed, and it also advances the duplicate-validation
+    /// sentinel in the same transactional batch (see <see cref="ConfigurationValidationSentinel"/>
+    /// and docs/data-model.md): deploys run Terraform apply (which can start routing traffic to a
+    /// live AdminWeb instance) before invoking the seeder, so a seeded configuration can genuinely
+    /// race a concurrent Create/Update/Restore request through AdminWeb - see
+    /// <c>scripts/Deploy-Infra.ps1</c>'s <c>Invoke-ConfigurationSeeder</c> call sites, both of which
+    /// run after <c>terraform apply</c>/an unchanged-plan early return, not before AdminWeb comes
+    /// up.
     ///
     /// <para>
-    /// Every attempt (not just the first) revalidates <paramref name="configuration"/>'s search
-    /// criteria against the current live list before inserting - covering both race orderings, not
-    /// just the one where the seeder wins first: if an AdminWeb write already committed
-    /// conflicting criteria before this method ever ran, or commits them between this method
-    /// losing a sentinel race and its retry, either way the retry must catch it rather than
-    /// blindly re-attempting the same insert on top of a now-conflicting live configuration. A
-    /// seed-time conflict throws <see cref="SeedConfigurationConflictException"/> instead of being
-    /// silently skipped like the "ID already exists" case - see that type's XML doc for why.
+    /// Every insert attempt (not just the first) revalidates <paramref name="configuration"/>'s
+    /// search criteria against the current live list before inserting - covering both race
+    /// orderings, not just the one where the seeder wins first: if an AdminWeb write already
+    /// committed conflicting criteria before this method's first insert attempt, or commits them
+    /// between this method losing a sentinel race and its retry, either way the retry must catch
+    /// it rather than blindly re-attempting the same insert on top of a now-conflicting live
+    /// configuration. A seed-time conflict throws <see cref="SeedConfigurationConflictException"/>
+    /// instead of being silently skipped - see that type's XML doc for why. This check only ever
+    /// runs once the existing-ID no-op above has ruled out that this is just an idempotent
+    /// re-seed, so it can never fire for the drifted-criteria scenario described above.
     /// </para>
     /// </summary>
     public async Task CreateIfNotExistsAsync(
         InvoiceConfiguration configuration,
         CancellationToken cancellationToken = default)
     {
+        if (await ExistsAsync(configuration.Id, cancellationToken))
+            return; // Already seeded - insert-only, always a safe no-op, live criteria notwithstanding.
+
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         const int documentIndex = 0;
         const int sentinelIndex = 1;
@@ -114,12 +124,34 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
                 return;
 
             if (response[documentIndex].StatusCode == HttpStatusCode.Conflict)
-                return; // Already seeded - insert-only, nothing to do, sentinel untouched.
+                return; // Lost a genuine concurrent-create race for this same new ID - also a safe no-op.
 
             if (response[sentinelIndex].StatusCode == HttpStatusCode.PreconditionFailed && attempt < maxAttempts)
                 continue; // Another writer advanced the sentinel first - revalidate and retry the insert.
 
             throw BatchFailed(response);
+        }
+    }
+
+    /// <summary>
+    /// Whether a live configuration document with this exact ID already exists, regardless of its
+    /// integration type or current search criteria - used only to decide whether
+    /// <see cref="CreateIfNotExistsAsync"/>'s insert-or-no-op branch applies. Deliberately not
+    /// <see cref="GetAsync"/> (which also needs to match an <c>integrationType</c>): the live
+    /// document's Cosmos <c>id</c> is the configuration ID itself, so a plain point-read is
+    /// enough, and this must not require the caller to already know the integration type.
+    /// </summary>
+    private async Task<bool> ExistsAsync(InvoiceConfigurationId id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await container.ReadItemAsync<InvoiceConfigurationDocument>(
+                id.Value, ConfigurationPartition, cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
         }
     }
 
