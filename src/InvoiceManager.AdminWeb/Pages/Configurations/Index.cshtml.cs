@@ -41,21 +41,16 @@ public sealed class IndexModel(
             TempData["StatusMessage"] = "Capture workflow authorization before changing configuration state.";
             return RedirectToPage();
         }
-        try
-        {
-            var current = await service.GetAsync(new(id), integrationType, HttpContext.RequestAborted);
-            if (current is not StoredInvoiceConfiguration stored)
-                return NotFound();
-            await service.SetActiveAsync(
-                stored with { ETag = etag }, activate, User.ToConfigurationActor(), HttpContext.RequestAborted);
-            TempData["StatusMessage"] = activate
+        var current = await service.GetAsync(new(id), integrationType, HttpContext.RequestAborted);
+        if (current is not StoredInvoiceConfiguration stored)
+            return NotFound();
+        var result = await service.SetActiveAsync(
+            stored with { ETag = etag }, activate, User.ToConfigurationActor(), HttpContext.RequestAborted);
+        TempData["StatusMessage"] = InvoiceConfigurationMutationErrorMessages.TryGetMessage(result) is string message
+            ? message
+            : activate
                 ? "Configuration activated. Processing will occur on the next scheduled or manual workflow run."
                 : "Configuration deactivated. Outstanding records are preserved and will be skipped while it is inactive.";
-        }
-        catch (InvoiceConfigurationConflictException ex)
-        {
-            TempData["StatusMessage"] = ex.Message;
-        }
         return RedirectToPage();
     }
 

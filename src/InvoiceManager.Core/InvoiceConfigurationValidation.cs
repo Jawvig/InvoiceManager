@@ -93,18 +93,24 @@ public static partial class InvoiceConfigurationValidation
     /// account ID across separate configurations, distinguished only by
     /// <see cref="InvoiceConfiguration.AmountMatchingCriteria"/>, because a Microsoft 365 billing
     /// account routinely bills more than one distinct product - see the "Invoice Name" section of
-    /// domain-model.md. So the amount criteria (both absent, or equal amount + currency) must
-    /// match too before two <c>MicrosoftBilling</c> configurations count as the same search.
+    /// domain-model.md. Two <c>MicrosoftBilling</c> configurations only count as the same search
+    /// when their amount criteria could both accept the same actual invoice: either one has no
+    /// amount criteria at all (accepts every amount, so it would compete for anything the other
+    /// matches), or both specify the same currency and their accepted amount ranges
+    /// (amount ± tolerance) overlap - equal amounts are just the zero-tolerance special case of
+    /// overlap, not a separate rule.
+    ///
+    /// Returns the conflicting configuration's ID rather than a formatted message, so the caller
+    /// (<see cref="InvoiceConfigurationService"/>) can report it through
+    /// <see cref="DuplicateInvoiceConfigurationSearchCriteria"/> instead of a throw, and the
+    /// AdminWeb page decides how to phrase it for display.
     /// </summary>
-    public static IReadOnlyList<string> ValidateNoDuplicateMatch(
+    public static Option<InvoiceConfigurationId> ValidateNoDuplicateMatch(
         InvoiceConfiguration candidate, IReadOnlyList<InvoiceConfiguration> others)
     {
         var conflict = others.FirstOrDefault(other =>
             other.Id != candidate.Id && MatchesSameSearchCriteria(candidate, other));
-        return conflict is null
-            ? []
-            : [$"Invoice configuration '{conflict.Id}' already has the same search criteria. " +
-               "Two configurations that would match the same source files are not supported."];
+        return conflict is null ? Option.None : conflict.Id;
     }
 
     private static bool MatchesSameSearchCriteria(InvoiceConfiguration a, InvoiceConfiguration b)
@@ -116,7 +122,7 @@ public static partial class InvoiceConfigurationValidation
         {
             (MicrosoftBillingIntegrationConfiguration x, MicrosoftBillingIntegrationConfiguration y) =>
                 string.Equals(x.BillingAccountId.Trim(), y.BillingAccountId.Trim(), StringComparison.OrdinalIgnoreCase) &&
-                SameAmountMatchingCriteria(a.AmountMatchingCriteria, b.AmountMatchingCriteria),
+                OverlappingAmountMatchingCriteria(a.AmountMatchingCriteria, b.AmountMatchingCriteria),
             (GraphEmailIntegrationConfiguration x, GraphEmailIntegrationConfiguration y) =>
                 string.Equals(x.SenderEmailAddress.Trim(), y.SenderEmailAddress.Trim(), StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(x.BodyPattern.Trim(), y.BodyPattern.Trim(), StringComparison.Ordinal),
@@ -124,15 +130,18 @@ public static partial class InvoiceConfigurationValidation
         };
     }
 
-    private static bool SameAmountMatchingCriteria(
+    // Absent amount criteria accepts every amount and currency, so it overlaps whatever the other
+    // side does or doesn't specify - only two configurations that both specify criteria can ever
+    // fail to overlap, and only when their currencies differ or their tolerance ranges don't touch.
+    private static bool OverlappingAmountMatchingCriteria(
         Option<AmountMatchingCriteria> a, Option<AmountMatchingCriteria> b) =>
         (a, b) switch
         {
-            (None, None) => true,
             (AmountMatchingCriteria x, AmountMatchingCriteria y) =>
-                x.Amount.Amount == y.Amount.Amount &&
-                string.Equals(x.Amount.Currency.Code, y.Amount.Currency.Code, StringComparison.OrdinalIgnoreCase),
-            _ => false,
+                string.Equals(x.Amount.Currency.Code, y.Amount.Currency.Code, StringComparison.OrdinalIgnoreCase) &&
+                x.Amount.Amount - x.AmountTolerance <= y.Amount.Amount + y.AmountTolerance &&
+                y.Amount.Amount - y.AmountTolerance <= x.Amount.Amount + x.AmountTolerance,
+            _ => true,
         };
 
     public static string GenerateSlug(string? invoiceDescription, IntegrationType integrationType)

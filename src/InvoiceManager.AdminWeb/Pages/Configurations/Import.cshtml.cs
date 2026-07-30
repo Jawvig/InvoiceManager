@@ -110,18 +110,25 @@ public sealed class ImportModel(
             ModelState.AddModelError(string.Empty, "Select a OneDrive folder returned by the picker.");
             return Page();
         }
+        InvoiceConfiguration configuration;
         try
         {
-            var configuration = Input.Build(false, BillingAccounts, currentBillingAccountId: null, folder);
-            await service.CreateAsync(configuration, User.ToConfigurationActor(), HttpContext.RequestAborted);
-            TempData["StatusMessage"] = "Inactive configuration draft imported.";
-            return RedirectToPage("Index");
+            configuration = Input.Build(false, BillingAccounts, currentBillingAccountId: null, folder);
         }
-        catch (Exception ex) when (ex is ArgumentException or DuplicateInvoiceConfigurationException)
+        catch (ArgumentException ex)
         {
             ModelState.AddModelError(string.Empty, ex.Message);
             return Page();
         }
+
+        var result = await service.CreateAsync(configuration, User.ToConfigurationActor(), HttpContext.RequestAborted);
+        if (InvoiceConfigurationMutationErrorMessages.TryGetMessage(result) is string message)
+        {
+            ModelState.AddModelError(string.Empty, message);
+            return Page();
+        }
+        TempData["StatusMessage"] = "Inactive configuration draft imported.";
+        return RedirectToPage("Index");
     }
 
     protected override Task<bool> CanMutateAsync() =>

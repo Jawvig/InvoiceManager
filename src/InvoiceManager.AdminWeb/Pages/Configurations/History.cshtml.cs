@@ -43,21 +43,16 @@ public sealed class HistoryModel(
             return RedirectToPage(new { id, integrationType });
         }
 
-        try
-        {
-            var currentResult = await service.GetAsync(new(id), integrationType, HttpContext.RequestAborted);
-            if (currentResult is not StoredInvoiceConfiguration current) return NotFound();
-            var revisions = await service.ListRevisionsAsync(new(id), integrationType, HttpContext.RequestAborted);
-            var revision = revisions.SingleOrDefault(x => x.RevisionId == revisionId);
-            if (revision is null) return NotFound();
-            await service.RestoreAsync(
-                current with { ETag = etag }, revision, User.ToConfigurationActor(), HttpContext.RequestAborted);
-            TempData["StatusMessage"] = "Revision restored as a new audited revision; activation state was unchanged.";
-        }
-        catch (InvoiceConfigurationConflictException ex)
-        {
-            TempData["StatusMessage"] = ex.Message;
-        }
+        var currentResult = await service.GetAsync(new(id), integrationType, HttpContext.RequestAborted);
+        if (currentResult is not StoredInvoiceConfiguration current) return NotFound();
+        var revisions = await service.ListRevisionsAsync(new(id), integrationType, HttpContext.RequestAborted);
+        var revision = revisions.SingleOrDefault(x => x.RevisionId == revisionId);
+        if (revision is null) return NotFound();
+        var result = await service.RestoreAsync(
+            current with { ETag = etag }, revision, User.ToConfigurationActor(), HttpContext.RequestAborted);
+        TempData["StatusMessage"] = InvoiceConfigurationMutationErrorMessages.TryGetMessage(result) is string message
+            ? message
+            : "Revision restored as a new audited revision; activation state was unchanged.";
         return RedirectToPage(new { id, integrationType });
     }
 

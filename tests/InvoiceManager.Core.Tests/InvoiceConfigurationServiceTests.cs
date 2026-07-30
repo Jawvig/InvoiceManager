@@ -28,8 +28,9 @@ public sealed class InvoiceConfigurationServiceTests
             Id = existing.Id,
         };
 
-        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
-            service.CreateAsync(duplicate, Actor));
+        var result = await service.CreateAsync(duplicate, Actor);
+
+        Assert.True(result is DuplicateInvoiceConfigurationId duplicateId && duplicateId.Id == existing.Id);
     }
 
     [Fact]
@@ -45,8 +46,9 @@ public sealed class InvoiceConfigurationServiceTests
             integrationConfiguration: new MicrosoftBillingIntegrationConfiguration("account-1"),
             oneDriveFolder: new OneDriveFolder("drive-2", "Drive Two", "folder-2", "/Bills/Other"));
 
-        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
-            service.CreateAsync(duplicate, Actor));
+        var result = await service.CreateAsync(duplicate, Actor);
+
+        Assert.True(result is DuplicateInvoiceConfigurationSearchCriteria conflict && conflict.ConflictingId == existing.Id);
     }
 
     [Fact]
@@ -66,8 +68,37 @@ public sealed class InvoiceConfigurationServiceTests
             IntegrationConfiguration = new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"),
         };
 
-        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
-            service.UpdateAsync(original, updated, "etag-editing-config", Actor));
+        var result = await service.UpdateAsync(original, updated, "etag-editing-config", Actor);
+
+        Assert.True(result is DuplicateInvoiceConfigurationSearchCriteria conflict && conflict.ConflictingId == other.Id);
+    }
+
+    [Fact]
+    public async Task Restore_RejectsSearchCriteriaNowUsedByAnotherConfiguration()
+    {
+        // The revision being restored predates "other-config"; restoring it would recreate the
+        // duplicate this feature is meant to prevent, so this must be checked on Restore too, not
+        // just Create/Update.
+        var other = Configurations.Build(
+            id: new("other-config"),
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"));
+        var current = Configurations.Build(
+            id: new("editing-config"),
+            integrationConfiguration: new GraphEmailIntegrationConfiguration("sender@example.com", "Different \\d+"));
+        var historicalSnapshot = current with
+        {
+            IntegrationConfiguration = new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice \\d+"),
+        };
+        var repository = new FakeConfigurationRepository(other, current);
+        var service = new InvoiceConfigurationService(repository);
+        var revision = new InvoiceConfigurationRevision(
+            "revision-1", current.Id, current.IntegrationType,
+            InvoiceConfigurationRevisionAction.Updated, DateTimeOffset.UtcNow,
+            "old-actor", "Old actor", historicalSnapshot);
+
+        var result = await service.RestoreAsync(new(current, "etag"), revision, Actor);
+
+        Assert.True(result is DuplicateInvoiceConfigurationSearchCriteria conflict && conflict.ConflictingId == other.Id);
     }
 
     [Fact]
@@ -87,12 +118,13 @@ public sealed class InvoiceConfigurationServiceTests
             InvoiceConfigurationRevisionAction.Updated, DateTimeOffset.UtcNow,
             "old-actor", "Old actor", historical);
 
-        var restored = await service.RestoreAsync(
-            new(current, "etag"), revision, Actor);
+        var result = await service.RestoreAsync(new(current, "etag"), revision, Actor);
 
-        Assert.Equal(current.Id, restored.Configuration.Id);
-        Assert.Equal(current.IntegrationType, restored.Configuration.IntegrationType);
-        Assert.True(restored.Configuration.IsActive);
-        Assert.Equal("Historical description", restored.Configuration.InvoiceDescription);
+        Assert.True(
+            result is StoredInvoiceConfiguration restored &&
+            restored.Configuration.Id == current.Id &&
+            restored.Configuration.IntegrationType == current.IntegrationType &&
+            restored.Configuration.IsActive &&
+            restored.Configuration.InvoiceDescription == "Historical description");
     }
 }

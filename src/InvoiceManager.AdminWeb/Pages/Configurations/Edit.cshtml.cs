@@ -50,24 +50,26 @@ public sealed class EditModel(
                 ? billing.BillingAccountId
                 : null;
 
+        InvoiceConfiguration updated;
         try
         {
-            var updated = Input.Build(
-                current.Configuration.IsActive, BillingAccounts, currentBillingAccountId, folder);
-            await service.UpdateAsync(
-                current.Configuration, updated, Input.ETag, User.ToConfigurationActor(), HttpContext.RequestAborted);
-            TempData["StatusMessage"] = "Configuration updated. Existing expected records retain their snapshots.";
-            return RedirectToPage("Index");
-        }
-        catch (InvoiceConfigurationConflictException ex)
-        {
-            ModelState.AddModelError(string.Empty, ex.Message);
+            updated = Input.Build(current.Configuration.IsActive, BillingAccounts, currentBillingAccountId, folder);
         }
         catch (ArgumentException ex)
         {
             ModelState.AddModelError(string.Empty, ex.Message);
+            return Page();
         }
-        return Page();
+
+        var result = await service.UpdateAsync(
+            current.Configuration, updated, Input.ETag, User.ToConfigurationActor(), HttpContext.RequestAborted);
+        if (InvoiceConfigurationMutationErrorMessages.TryGetMessage(result) is string message)
+        {
+            ModelState.AddModelError(string.Empty, message);
+            return Page();
+        }
+        TempData["StatusMessage"] = "Configuration updated. Existing expected records retain their snapshots.";
+        return RedirectToPage("Index");
     }
 
     protected override Task<bool> CanMutateAsync() =>
