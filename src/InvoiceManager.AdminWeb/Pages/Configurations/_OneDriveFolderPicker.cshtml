@@ -11,6 +11,18 @@
             : $"{Model.Input.DriveName} · {Model.Input.FolderPath}")
     </p>
     <button type="button" id="onedrive-picker-open" class="secondary-action">Choose folder…</button>
+    @if (Model.RequiresImportConfirmation)
+    {
+        @* No native `required`: this field sits in a fieldset that other integration types keep
+           hidden, and a hidden required field's exemption from constraint validation isn't
+           reliable across browsers. ImportModel.OnPostAsync enforces this server-side instead,
+           the same way the rest of this form's cross-field checks (e.g. the OneDrive folder
+           itself) round-trip through ModelState rather than native HTML validation. *@
+        <label class="import-confirmation">
+            <input asp-for="ConfirmedFolderSelection" />
+            Confirm this OneDrive folder is correct for this environment
+        </label>
+    }
 </div>
 
 <dialog id="onedrive-picker-dialog" class="onedrive-picker-dialog">

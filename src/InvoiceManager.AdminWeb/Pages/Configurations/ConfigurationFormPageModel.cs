@@ -16,6 +16,21 @@ public abstract class ConfigurationFormPageModel(IMicrosoftResourceDiscovery dis
     public bool ShowMissingBillingWarning => IsEdit && Input.IntegrationType != IntegrationType.GraphEmail &&
         !BillingAccounts.Any(x => x.Id == Input.OriginalBillingAccountId);
 
+    /// <summary>
+    /// True only on the Import review step. Gates the "confirm this is correct" checkboxes in
+    /// _ConfigurationForm.cshtml: an imported OneDrive folder or billing account ID can still
+    /// resolve successfully against Graph/discovery in the target environment (e.g. dev and prod
+    /// sharing a tenant) while being the *wrong* destination for it, so re-verifying existence
+    /// alone isn't enough — the user must actively confirm each one before it can be saved.
+    /// </summary>
+    public virtual bool RequiresImportConfirmation => false;
+
+    [BindProperty]
+    public bool ConfirmedFolderSelection { get; set; }
+
+    [BindProperty]
+    public bool ConfirmedBillingAccountSelection { get; set; }
+
     /// <summary>Whether the current caller is authorized to mutate configurations. Also gates the
     /// AJAX discovery handlers below so an unauthenticated/unauthorized request is rejected rather
     /// than silently returning an empty list.</summary>

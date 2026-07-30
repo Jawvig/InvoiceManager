@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Azure.Cosmos;
 
 namespace InvoiceManager.Infrastructure.CosmosDb;
@@ -13,6 +14,7 @@ internal sealed class CosmosStjSerializer : CosmosSerializer
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     public override T FromStream<T>(Stream stream)

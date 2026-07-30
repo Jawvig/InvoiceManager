@@ -158,10 +158,12 @@ Terraform-managed Entra app registration and store the resulting MSAL token
 cache material in Azure Key Vault.
 
 The admin website is not part of the provider-independent core workflow. It owns
-invoice-configuration administration, typed validation, and audit/history
-presentation. It must not own invoice matching, retrieval,
-OneDrive reconciliation, filename generation, or FreeAgent behavior. Those remain
-core-workflow and integration concerns.
+invoice-configuration administration, typed validation, audit/history
+presentation, and export/import for promoting a configuration between
+environments (see [domain-model.md#invoice-configuration](domain-model.md#invoice-configuration)).
+It must not own invoice matching, retrieval, OneDrive reconciliation, filename
+generation, or FreeAgent behavior. Those remain core-workflow and integration
+concerns.
 
 All AdminWeb pages require an Entra sign-in from the environment's administrator
 security group. The ordinary administrator session is deliberately separate from

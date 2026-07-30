@@ -25,7 +25,9 @@ public sealed class ConfigurationActivateDeactivateTests(AdminWebAppHostFixture 
         await page.Locator("#Input_IntegrationType").SelectOptionAsync("GraphEmail");
         await page.Locator("#Input_InvoiceDescription").FillAsync(description);
         await page.Locator("#Input_SenderEmailAddress").FillAsync("billing@example.com");
-        await page.Locator("#Input_BodyPattern").FillAsync("Invoice \\d+");
+        // Body pattern must be unique across test runs/files: two configurations sharing the same
+        // sender + body pattern are now rejected as a duplicate search-criteria match.
+        await page.Locator("#Input_BodyPattern").FillAsync($"Invoice {uniqueSuffix} \\d+");
         // Create verifies the submitted folder against Microsoft Graph, so this must be a real,
         // resolvable drive/item ID rather than a fabricated one — see TestOneDriveFolder.
         await page.EvalOnSelectorAsync("#Input_DriveId", "(el, v) => el.value = v", TestOneDriveFolder.DriveId);

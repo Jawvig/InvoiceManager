@@ -24,6 +24,15 @@ public sealed class ConfigurationEditLazyBillingTests(AdminWebAppHostFixture app
         await page.GotoAsync(new Uri(appHost.AdminWebUrl, "/Configurations/Create").ToString());
         await page.Locator("#Input_IntegrationType").SelectOptionAsync("MicrosoftBilling");
         await page.Locator("#Input_InvoiceDescription").FillAsync(description);
+        // A billing account ID alone is not a unique search key - this test tenant's real,
+        // discoverable billing accounts are already used by seeded configurations (see
+        // data/seed/invoice-configurations.json), and one of them ("azure-billing") has no
+        // amount criteria at all, which now (correctly) overlaps *any* amount on the same
+        // account - no random amount can avoid colliding with it. So this test must submit
+        // against the *other* seeded account (the one used by m365-business-basic/m365-copilot,
+        // which are both amount-restricted), with an amount that doesn't equal either of theirs.
+        await page.Locator("#Input_HasExpectedAmount").CheckAsync();
+        await page.Locator("#Input_ExpectedAmount").FillAsync((Random.Shared.Next(300, 1000) / 100m).ToString("F2"));
         // Create verifies the submitted folder against Microsoft Graph, so this must be a real,
         // resolvable drive/item ID rather than a fabricated one — see TestOneDriveFolder.
         await page.EvalOnSelectorAsync("#Input_DriveId", "(el, v) => el.value = v", TestOneDriveFolder.DriveId);
@@ -55,9 +64,14 @@ public sealed class ConfigurationEditLazyBillingTests(AdminWebAppHostFixture app
         Assert.DoesNotContain("undefined", firstLabel);
 
         // Loaded options replace the (previously empty) selection, so the user must actively
-        // pick one before submitting — mirrors real usage.
-        var firstValue = await firstOption.GetAttributeAsync("value");
-        await page.Locator("#Input_BillingAccountId").SelectOptionAsync(new[] { firstValue! });
+        // pick one before submitting — mirrors real usage. Submit against the M365 seeded
+        // account specifically (not just whichever option happened to load first): the *other*
+        // seeded account ("azure-billing") has no amount criteria, which unconditionally
+        // overlaps any amount this test could submit, so picking it at random would make this
+        // test collide with a duplicate-match rejection regardless of the amount chosen above.
+        var m365BillingAccountId = Environment.GetEnvironmentVariable("InvoiceManager__Seed__BillingAccountId")
+            ?? throw new InvalidOperationException("InvoiceManager__Seed__BillingAccountId must be set.");
+        await page.Locator("#Input_BillingAccountId").SelectOptionAsync(new[] { m365BillingAccountId });
 
         await page.Locator("button[type=submit]", new PageLocatorOptions { HasText = "Save configuration" }).ClickAsync();
         await Assertions.Expect(page).ToHaveURLAsync(new Regex("/Configurations$"));

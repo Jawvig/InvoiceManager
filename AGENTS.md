@@ -9,6 +9,7 @@ Before making implementation changes, read:
 - [docs/architecture.md](docs/architecture.md)
 - [docs/domain-model.md](docs/domain-model.md)
 - [docs/data-model.md](docs/data-model.md)
+- [docs/coding-standards.md](docs/coding-standards.md) — C# conventions: unions over exceptions, `Option<T>` over null, strong typing
 - [docs/deployment.md](docs/deployment.md) — deployment strategy, CI/CD pipeline, and infrastructure as code
 
 ## Project Intent
@@ -38,8 +39,6 @@ intended to run unattended in Azure and locally through Aspire.
 - Keep integrations focused on external system behavior such as fetching an
   invoice, saving a file, or uploading an attachment.
 - Do not hard-code secrets, credentials, tenant IDs, API keys, or personal data.
-- Prefer strongly typed options and domain models over passing loose dictionaries
-  through the application.
 - Update the relevant documentation when changing architectural decisions,
   storage shape, integration behavior, or domain terminology.
 - When a C# type is serialized to JSON and consumed by hand-written JavaScript
@@ -47,13 +46,9 @@ intended to run unattended in Azure and locally through Aspire.
   compiler across that boundary. Renaming or reshaping such a type must be
   paired with a search of `wwwroot/js` for that endpoint's consumers in the
   same change, not left for a later bug report.
-- When translating an external HTTP API's failures into domain outcomes
-  (Microsoft Graph, FreeAgent, etc.), enumerate the failure modes explicitly
-  instead of special-casing only the one you happened to hit first: "not
-  found" (404) and "malformed/invalid input" (400) are both realistic for a
-  caller-supplied ID and usually need the same treatment, distinct from
-  auth failures (401/403) and transient server errors (429/5xx), which
-  should still propagate as failures.
+- See [docs/coding-standards.md](docs/coding-standards.md) for C#-level
+  conventions (exceptions vs. union return types, `Option<T>` over null,
+  strong typing, enumerating external API failure modes explicitly).
 
 ## Domain-Sensitive Behavior
 
@@ -98,3 +93,12 @@ Be careful with:
   silent default turns a one-line "set this environment variable" error into
   a confusing failure that only surfaces later, inside whatever external call
   actually needed the real value.
+- Related to the point above: a test that grabs "whichever option loaded
+  first" from a *shared* real resource (e.g. a discovery-list dropdown backed
+  by the tenant's real, small set of billing accounts) rather than a value it
+  fully controls can start colliding with seeded data or another test's data
+  the moment a validation rule gets stricter, non-deterministically depending
+  on API response ordering. Prefer generating a value the test owns
+  end-to-end (e.g. a GUID-suffixed string) over selecting an arbitrary
+  existing one, and when a shared resource must be used, select the specific
+  one the test's assertions actually depend on rather than "the first one."

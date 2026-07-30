@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using InvoiceManager.Core;
 using InvoiceManager.Infrastructure.CosmosDb;
 using NodaMoney;
@@ -6,6 +8,50 @@ namespace InvoiceManager.Infrastructure.Tests;
 
 public sealed class InvoiceConfigurationDocumentTests
 {
+    // Mirrors CosmosStjSerializer's private options (camelCase + omit nulls on write) so this
+    // test observes the same JSON shape actually persisted to Cosmos.
+    private static readonly JsonSerializerOptions CosmosLikeOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    [Fact]
+    public void FromConfiguration_OmitsTypeIrrelevantIntegrationFields_ForMicrosoftBilling()
+    {
+        var configuration = new InvoiceConfiguration(
+            new InvoiceConfigurationId("billing-test"),
+            new MicrosoftBillingIntegrationConfiguration("account-123"), "Test",
+            InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+
+        var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
+        var json = JsonSerializer.Serialize(document.IntegrationConfiguration, CosmosLikeOptions);
+        using var parsed = JsonDocument.Parse(json);
+
+        Assert.False(parsed.RootElement.TryGetProperty("senderEmailAddress", out _));
+        Assert.False(parsed.RootElement.TryGetProperty("bodyPattern", out _));
+        Assert.Equal("account-123", parsed.RootElement.GetProperty("billingAccountId").GetString());
+    }
+
+    [Fact]
+    public void FromConfiguration_OmitsTypeIrrelevantIntegrationFields_ForGraphEmail()
+    {
+        var configuration = new InvoiceConfiguration(
+            new InvoiceConfigurationId("email-test"),
+            new GraphEmailIntegrationConfiguration("billing@contoso.com", "Invoice \\d+"), "Test",
+            InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+
+        var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
+        var json = JsonSerializer.Serialize(document.IntegrationConfiguration, CosmosLikeOptions);
+        using var parsed = JsonDocument.Parse(json);
+
+        Assert.False(parsed.RootElement.TryGetProperty("billingAccountId", out _));
+        Assert.Equal("billing@contoso.com", parsed.RootElement.GetProperty("senderEmailAddress").GetString());
+        Assert.Equal("Invoice \\d+", parsed.RootElement.GetProperty("bodyPattern").GetString());
+    }
+
     [Fact]
     public void FromConfiguration_PersistsCompleteAmountMatchingCriteria()
     {

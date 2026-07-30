@@ -8,7 +8,7 @@
 <input asp-for="Input.ETag" type="hidden" />
 <input asp-for="Input.OriginalBillingAccountId" type="hidden" />
 @if (Model.IsEdit) { <input asp-for="Input.IntegrationType" type="hidden" /> }
-<div id="configuration-wizard" data-is-edit="@(Model.IsEdit ? "true" : "false")">
+<div id="configuration-wizard" data-is-edit="@(Model.IsEdit ? "true" : "false")" data-prefilled="@(Model.Input.IntegrationType.HasValue ? "true" : "false")">
 <div class="form-grid">
     <label>Integration
         @if (Model.IsEdit)
@@ -73,10 +73,30 @@
                 {
                     <option value="@Model.Input.OriginalBillingAccountId">@Model.Input.OriginalBillingAccountId</option>
                 }
+                @* Not Edit, but a billing account is already pre-filled (an Import file pre-fill,
+                   or a failed Create/Import postback being re-rendered): keep it selectable so it
+                   survives the client-side discovery-list merge in configuration-wizard.js. This
+                   is display convenience only, not a trust decision — ConfigurationFormInput.Build
+                   always re-checks the saved selection against the live discovery list regardless
+                   of which options were rendered here. *@
+                @if (!Model.IsEdit && !string.IsNullOrWhiteSpace(Model.Input.BillingAccountId))
+                {
+                    <option value="@Model.Input.BillingAccountId">@Model.Input.BillingAccountId</option>
+                }
                 @foreach (var account in Model.BillingAccounts) { <option value="@account.Id">@(string.IsNullOrWhiteSpace(account.DisplayName) ? account.Id : $"{account.DisplayName} ({account.Id})")</option> }
             </select>
             <span id="billing-account-status" class="status-label"></span>
         </label>
+        @if (Model.RequiresImportConfirmation)
+        {
+            @* No native `required`: this fieldset is hidden for a GraphEmail import, and a hidden
+               required field's exemption from constraint validation isn't reliable across
+               browsers. ImportModel.OnPostAsync enforces this server-side instead. *@
+            <label class="import-confirmation">
+                <input asp-for="ConfirmedBillingAccountSelection" />
+                Confirm this billing account is correct for this environment
+            </label>
+        }
     </fieldset>
 
     <fieldset id="email-details" data-integration="GraphEmail" hidden="@(Model.IsEdit ? !isEmail : true)">

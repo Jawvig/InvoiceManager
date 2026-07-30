@@ -8,6 +8,7 @@ Before implementation work, also read:
 - [docs/architecture.md](docs/architecture.md)
 - [docs/domain-model.md](docs/domain-model.md)
 - [docs/data-model.md](docs/data-model.md)
+- [docs/coding-standards.md](docs/coding-standards.md) — C# conventions: unions over exceptions, `Option<T>` over null, strong typing
 - [docs/deployment.md](docs/deployment.md) — deployment strategy, CI/CD pipeline, and infrastructure as code
 
 This project is a C# invoice automation service intended to run as an Azure
