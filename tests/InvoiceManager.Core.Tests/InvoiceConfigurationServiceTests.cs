@@ -52,6 +52,52 @@ public sealed class InvoiceConfigurationServiceTests
     }
 
     [Fact]
+    public async Task Update_ReturnsConflict_WhenEtagIsStale()
+    {
+        // Exercises the repository-level translation added for issue #93: the fake repository
+        // (mirroring CosmosInvoiceConfigurationRepository) returns InvoiceConfigurationConflict
+        // itself when the etag is stale, rather than throwing - the service must pass that case
+        // through its exhaustive switch unchanged.
+        var original = Configurations.Build(isActive: false);
+        var repository = new FakeConfigurationRepository(original);
+        var service = new InvoiceConfigurationService(repository);
+        var updated = original with { InvoiceDescription = "Updated description" };
+
+        var result = await service.UpdateAsync(original, updated, "stale-etag", Actor);
+
+        Assert.True(result is InvoiceConfigurationConflict);
+    }
+
+    [Fact]
+    public async Task SetActive_ReturnsConflict_WhenEtagIsStale()
+    {
+        var original = Configurations.Build(isActive: false);
+        var repository = new FakeConfigurationRepository(original);
+        var service = new InvoiceConfigurationService(repository);
+        var stored = new StoredInvoiceConfiguration(original, "stale-etag");
+
+        var result = await service.SetActiveAsync(stored, isActive: true, Actor);
+
+        Assert.True(result is InvoiceConfigurationConflict);
+    }
+
+    [Fact]
+    public async Task Restore_ReturnsConflict_WhenEtagIsStale()
+    {
+        var current = Configurations.Build(isActive: false);
+        var repository = new FakeConfigurationRepository(current);
+        var service = new InvoiceConfigurationService(repository);
+        var revision = new InvoiceConfigurationRevision(
+            "revision-1", current.Id, current.IntegrationType,
+            InvoiceConfigurationRevisionAction.Updated, DateTimeOffset.UtcNow,
+            "old-actor", "Old actor", current with { InvoiceDescription = "Historical" });
+
+        var result = await service.RestoreAsync(new(current, "stale-etag"), revision, Actor);
+
+        Assert.True(result is InvoiceConfigurationConflict);
+    }
+
+    [Fact]
     public async Task Update_RejectsSameSearchCriteriaAsAnotherConfiguration()
     {
         var other = Configurations.Build(
@@ -96,7 +142,7 @@ public sealed class InvoiceConfigurationServiceTests
             InvoiceConfigurationRevisionAction.Updated, DateTimeOffset.UtcNow,
             "old-actor", "Old actor", historicalSnapshot);
 
-        var result = await service.RestoreAsync(new(current, "etag"), revision, Actor);
+        var result = await service.RestoreAsync(new(current, "etag-editing-config"), revision, Actor);
 
         Assert.True(result is DuplicateInvoiceConfigurationSearchCriteria conflict && conflict.ConflictingId == other.Id);
     }
@@ -118,7 +164,7 @@ public sealed class InvoiceConfigurationServiceTests
             InvoiceConfigurationRevisionAction.Updated, DateTimeOffset.UtcNow,
             "old-actor", "Old actor", historical);
 
-        var result = await service.RestoreAsync(new(current, "etag"), revision, Actor);
+        var result = await service.RestoreAsync(new(current, "etag-test-config"), revision, Actor);
 
         Assert.True(
             result is StoredInvoiceConfiguration restored &&

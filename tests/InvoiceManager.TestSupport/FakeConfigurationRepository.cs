@@ -35,28 +35,46 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
     public Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 
-    public Task<StoredInvoiceConfiguration> CreateAsync(
+    public Task<InvoiceConfigurationCreateResult> CreateAsync(
         InvoiceConfiguration configuration,
         InvoiceConfigurationActor actor,
         CancellationToken cancellationToken = default)
     {
         if (store.Any(c => c.Id == configuration.Id))
-            throw new DuplicateInvoiceConfigurationException(
-                $"Invoice configuration ID '{configuration.Id}' already exists.");
+        {
+            InvoiceConfigurationCreateResult duplicate = new DuplicateInvoiceConfigurationId(configuration.Id);
+            return Task.FromResult(duplicate);
+        }
+
         store.Add(configuration);
-        return Task.FromResult(new StoredInvoiceConfiguration(configuration, $"etag-{configuration.Id}"));
+        InvoiceConfigurationCreateResult created = new StoredInvoiceConfiguration(configuration, $"etag-{configuration.Id}");
+        return Task.FromResult(created);
     }
 
-    public Task<StoredInvoiceConfiguration> ReplaceAsync(
+    public Task<InvoiceConfigurationReplaceResult> ReplaceAsync(
         InvoiceConfiguration configuration,
         string etag,
         InvoiceConfigurationRevisionAction action,
         InvoiceConfigurationActor actor,
         CancellationToken cancellationToken = default)
     {
+        // Mirrors the real repository's optimistic-concurrency check (compares the caller's
+        // etag against the current stored value, computed the same deterministic way GetAsync/
+        // ListAllAsync do) so tests can trigger InvoiceConfigurationConflict by passing a stale
+        // etag, without needing the Cosmos emulator.
+        var current = store.SingleOrDefault(
+            c => c.Id == configuration.Id && c.IntegrationType == configuration.IntegrationType);
+        if (current is not null && etag != $"etag-{current.Id}")
+        {
+            InvoiceConfigurationReplaceResult conflict = new InvoiceConfigurationConflict();
+            return Task.FromResult(conflict);
+        }
+
         store.RemoveAll(c => c.Id == configuration.Id && c.IntegrationType == configuration.IntegrationType);
         store.Add(configuration);
-        return Task.FromResult(new StoredInvoiceConfiguration(configuration, $"etag-{Guid.NewGuid():N}"));
+        InvoiceConfigurationReplaceResult replaced =
+            new StoredInvoiceConfiguration(configuration, $"etag-{configuration.Id}");
+        return Task.FromResult(replaced);
     }
 
     public Task<IReadOnlyList<InvoiceConfigurationRevision>> ListRevisionsAsync(

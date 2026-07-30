@@ -37,3 +37,21 @@ public union InvoiceConfigurationMutationResult(
     DuplicateInvoiceConfigurationId,
     DuplicateInvoiceConfigurationSearchCriteria,
     InvoiceConfigurationConflict);
+
+/// <summary>
+/// The outcome of <see cref="Repositories.IInvoiceConfigurationRepository.CreateAsync"/>: either the
+/// newly stored configuration, or the specific reason the write did not happen. This is the
+/// repository-level union - the translation of the Cosmos SDK's conflict exception into a result the
+/// repository's own caller can switch over exhaustively - per docs/coding-standards.md's "Translate
+/// at the external-library boundary": the repository, as the class that directly wraps the Cosmos
+/// SDK, is responsible for this translation, not whichever service happens to call it.
+/// </summary>
+public union InvoiceConfigurationCreateResult(StoredInvoiceConfiguration, DuplicateInvoiceConfigurationId);
+
+/// <summary>
+/// The outcome of <see cref="Repositories.IInvoiceConfigurationRepository.ReplaceAsync"/>: either the
+/// replaced configuration, or an ETag mismatch (the configuration changed since it was loaded). See
+/// <see cref="InvoiceConfigurationCreateResult"/> for why this translation lives at the repository
+/// boundary rather than in its caller.
+/// </summary>
+public union InvoiceConfigurationReplaceResult(StoredInvoiceConfiguration, InvoiceConfigurationConflict);

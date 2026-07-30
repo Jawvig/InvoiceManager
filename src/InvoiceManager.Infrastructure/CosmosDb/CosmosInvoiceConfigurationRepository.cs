@@ -78,7 +78,7 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         }
     }
 
-    public async Task<StoredInvoiceConfiguration> CreateAsync(
+    public async Task<InvoiceConfigurationCreateResult> CreateAsync(
         InvoiceConfiguration configuration,
         InvoiceConfigurationActor actor,
         CancellationToken cancellationToken = default)
@@ -92,14 +92,13 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
 
         using var response = await batch.ExecuteAsync(cancellationToken);
         if (response.StatusCode == HttpStatusCode.Conflict)
-            throw new DuplicateInvoiceConfigurationException(
-                $"Invoice configuration ID '{configuration.Id}' already exists.");
+            return new DuplicateInvoiceConfigurationId(configuration.Id);
         EnsureBatchSucceeded(response);
 
         return await ReadRequiredAsync(configuration.Id, configuration.IntegrationType, cancellationToken);
     }
 
-    public async Task<StoredInvoiceConfiguration> ReplaceAsync(
+    public async Task<InvoiceConfigurationReplaceResult> ReplaceAsync(
         InvoiceConfiguration configuration,
         string etag,
         InvoiceConfigurationRevisionAction action,
@@ -131,8 +130,7 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
 
         using var response = await batch.ExecuteAsync(cancellationToken);
         if (response.StatusCode == HttpStatusCode.PreconditionFailed)
-            throw new InvoiceConfigurationConflictException(
-                "This configuration changed after the page was loaded. Reload and review the latest values before saving again.");
+            return new InvoiceConfigurationConflict();
         EnsureBatchSucceeded(response);
 
         return await ReadRequiredAsync(configuration.Id, configuration.IntegrationType, cancellationToken);
