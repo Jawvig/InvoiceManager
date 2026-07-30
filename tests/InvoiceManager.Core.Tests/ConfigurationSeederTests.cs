@@ -87,16 +87,17 @@ public sealed class ConfigurationSeederTests
             return Task.CompletedTask;
         }
 
-        public Task<StoredInvoiceConfiguration> CreateAsync(
+        public Task<InvoiceConfigurationCreateResult> CreateAsync(
             InvoiceConfiguration configuration,
             InvoiceConfigurationActor actor,
             CancellationToken cancellationToken = default)
         {
             store.Add(configuration.Id, configuration);
-            return Task.FromResult(new StoredInvoiceConfiguration(configuration, "etag"));
+            InvoiceConfigurationCreateResult result = new StoredInvoiceConfiguration(configuration, "etag");
+            return Task.FromResult(result);
         }
 
-        public Task<StoredInvoiceConfiguration> ReplaceAsync(
+        public Task<InvoiceConfigurationReplaceResult> ReplaceAsync(
             InvoiceConfiguration configuration,
             string etag,
             InvoiceConfigurationRevisionAction action,
@@ -104,7 +105,8 @@ public sealed class ConfigurationSeederTests
             CancellationToken cancellationToken = default)
         {
             store[configuration.Id] = configuration;
-            return Task.FromResult(new StoredInvoiceConfiguration(configuration, "etag-next"));
+            InvoiceConfigurationReplaceResult result = new StoredInvoiceConfiguration(configuration, "etag-next");
+            return Task.FromResult(result);
         }
 
         public Task<IReadOnlyList<InvoiceConfigurationRevision>> ListRevisionsAsync(

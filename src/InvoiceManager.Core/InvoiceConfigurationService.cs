@@ -44,14 +44,11 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         if (await FindDuplicateMatchAsync(configuration, cancellationToken) is InvoiceConfigurationId conflictingId)
             return new DuplicateInvoiceConfigurationSearchCriteria(conflictingId);
 
-        try
+        return await repository.CreateAsync(configuration, actor, cancellationToken) switch
         {
-            return await repository.CreateAsync(configuration, actor, cancellationToken);
-        }
-        catch (DuplicateInvoiceConfigurationException)
-        {
-            return new DuplicateInvoiceConfigurationId(configuration.Id);
-        }
+            StoredInvoiceConfiguration stored => stored,
+            DuplicateInvoiceConfigurationId duplicate => duplicate,
+        };
     }
 
     public async Task<InvoiceConfigurationMutationResult> UpdateAsync(
@@ -72,15 +69,12 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         if (await FindDuplicateMatchAsync(updated, cancellationToken) is InvoiceConfigurationId conflictingId)
             return new DuplicateInvoiceConfigurationSearchCriteria(conflictingId);
 
-        try
+        return await repository.ReplaceAsync(
+            updated, etag, InvoiceConfigurationRevisionAction.Updated, actor, cancellationToken) switch
         {
-            return await repository.ReplaceAsync(
-                updated, etag, InvoiceConfigurationRevisionAction.Updated, actor, cancellationToken);
-        }
-        catch (InvoiceConfigurationConflictException)
-        {
-            return new InvoiceConfigurationConflict();
-        }
+            StoredInvoiceConfiguration stored => stored,
+            InvoiceConfigurationConflict conflict => conflict,
+        };
     }
 
     public async Task<InvoiceConfigurationMutationResult> SetActiveAsync(
@@ -95,19 +89,16 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         if (errors.Count > 0)
             return new InvoiceConfigurationValidationFailed(errors);
 
-        try
+        return await repository.ReplaceAsync(
+            updated,
+            stored.ETag,
+            isActive ? InvoiceConfigurationRevisionAction.Activated : InvoiceConfigurationRevisionAction.Deactivated,
+            actor,
+            cancellationToken) switch
         {
-            return await repository.ReplaceAsync(
-                updated,
-                stored.ETag,
-                isActive ? InvoiceConfigurationRevisionAction.Activated : InvoiceConfigurationRevisionAction.Deactivated,
-                actor,
-                cancellationToken);
-        }
-        catch (InvoiceConfigurationConflictException)
-        {
-            return new InvoiceConfigurationConflict();
-        }
+            StoredInvoiceConfiguration replaced => replaced,
+            InvoiceConfigurationConflict conflict => conflict,
+        };
     }
 
     public async Task<InvoiceConfigurationMutationResult> RestoreAsync(
@@ -136,15 +127,12 @@ public sealed class InvoiceConfigurationService(IInvoiceConfigurationRepository 
         if (await FindDuplicateMatchAsync(restored, cancellationToken) is InvoiceConfigurationId conflictingId)
             return new DuplicateInvoiceConfigurationSearchCriteria(conflictingId);
 
-        try
+        return await repository.ReplaceAsync(
+            restored, current.ETag, InvoiceConfigurationRevisionAction.Restored, actor, cancellationToken) switch
         {
-            return await repository.ReplaceAsync(
-                restored, current.ETag, InvoiceConfigurationRevisionAction.Restored, actor, cancellationToken);
-        }
-        catch (InvoiceConfigurationConflictException)
-        {
-            return new InvoiceConfigurationConflict();
-        }
+            StoredInvoiceConfiguration replaced => replaced,
+            InvoiceConfigurationConflict conflict => conflict,
+        };
     }
 
     private static void EnsureIdentity(InvoiceConfiguration original, InvoiceConfiguration updated)

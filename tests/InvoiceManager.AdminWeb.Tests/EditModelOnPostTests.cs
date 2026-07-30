@@ -36,7 +36,7 @@ public sealed class EditModelOnPostTests
         // both BillingAccountId and OriginalBillingAccountId to the same made-up value rather
         // than the actual stored "stored-billing-id" — this must not be accepted.
         var model = CreateModel(billingAccounts: []);
-        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice"));
+        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice-0"));
         model.Input.BillingAccountId = "forged-id";
         model.Input.OriginalBillingAccountId = "forged-id";
 
@@ -52,7 +52,7 @@ public sealed class EditModelOnPostTests
         var model = CreateModel(
             billingAccounts: [new BillingAccountChoice("stored-billing-id", "Account", "Business")],
             verifiedFolder: null);
-        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice"));
+        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice-0"));
         model.Input.FolderItemId = "forged-folder-id";
 
         var result = await model.OnPostAsync();
@@ -67,7 +67,7 @@ public sealed class EditModelOnPostTests
         // The common case: nothing about the billing account or folder changed. This must
         // succeed even with an empty discovery list and no Graph verification call needed.
         var model = CreateModel(billingAccounts: []);
-        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice"));
+        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice-0"));
 
         var result = await model.OnPostAsync();
 

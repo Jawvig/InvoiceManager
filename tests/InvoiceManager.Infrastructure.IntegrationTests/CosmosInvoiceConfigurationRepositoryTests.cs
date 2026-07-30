@@ -78,7 +78,11 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     {
         var actor = new InvoiceConfigurationActor("actor-1", "Admin User");
         var draft = BuildConfiguration(new("audited-config"), isActive: false);
-        var created = await repository!.CreateAsync(draft, actor);
+        var created = await repository!.CreateAsync(draft, actor) switch
+        {
+            StoredInvoiceConfiguration stored => stored,
+            _ => throw new Xunit.Sdk.XunitException("Expected the configuration to be created."),
+        };
 
         var updated = draft with { InvoiceDescription = "Updated" };
         await repository.ReplaceAsync(
@@ -105,8 +109,9 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
             IntegrationConfiguration = new GraphEmailIntegrationConfiguration("sender@example.com", "Invoice"),
         };
 
-        await Assert.ThrowsAsync<DuplicateInvoiceConfigurationException>(() =>
-            repository.CreateAsync(duplicate, actor));
+        var result = await repository.CreateAsync(duplicate, actor);
+
+        Assert.True(result is DuplicateInvoiceConfigurationId duplicateId && duplicateId.Id == original.Id);
     }
 
     [Fact]
@@ -135,14 +140,20 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     public async Task Replace_RejectsStaleEtag()
     {
         var configuration = BuildConfiguration(new("etag-conflict"), isActive: false);
-        var stored = await repository!.CreateAsync(configuration, new("actor", "Admin"));
+        var stored = await repository!.CreateAsync(configuration, new("actor", "Admin")) switch
+        {
+            StoredInvoiceConfiguration value => value,
+            _ => throw new Xunit.Sdk.XunitException("Expected the configuration to be created."),
+        };
         await repository.ReplaceAsync(
             configuration with { InvoiceDescription = "First" }, stored.ETag,
             InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin"));
 
-        await Assert.ThrowsAsync<InvoiceConfigurationConflictException>(() => repository.ReplaceAsync(
+        var result = await repository.ReplaceAsync(
             configuration with { InvoiceDescription = "Stale" }, stored.ETag,
-            InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin")));
+            InvoiceConfigurationRevisionAction.Updated, new("actor", "Admin"));
+
+        Assert.True(result is InvoiceConfigurationConflict);
     }
 
     private static InvoiceConfiguration BuildConfiguration(

@@ -43,10 +43,12 @@ wrong) without the exception-based control flow.
   repository wrapping a database SDK) that throws internally and expects
   whatever happens to call it today to catch and translate the exception -
   see [Translate at the external-library boundary](#translate-at-the-external-library-boundary)
-  below for where that translation actually belongs. `IInvoiceConfigurationRepository`
-  does not yet conform to this (tracked in
-  [#93](https://github.com/Jawvig/InvoiceManager/issues/93)) - it is tech
-  debt to fix, not a sanctioned pattern to follow elsewhere.
+  below for where that translation actually belongs.
+  `IInvoiceConfigurationRepository.CreateAsync`/`ReplaceAsync` used to be the
+  known instance of this gap (tracked in
+  [#93](https://github.com/Jawvig/InvoiceManager/issues/93)); it now returns
+  `InvoiceConfigurationCreateResult`/`InvoiceConfigurationReplaceResult`
+  instead of throwing, so treat it as a worked example rather than tech debt.
 
 ## Translate at the external-library boundary
 
@@ -90,10 +92,12 @@ call means every consumer of that class, present and future, gets the
 already-translated contract for free.
 
 **How to apply:** When adding or reviewing a class that calls an external
-library, check its public methods against both shapes above. See
-[#93](https://github.com/Jawvig/InvoiceManager/issues/93) for the known gap
-this doesn't yet close (`IInvoiceConfigurationRepository`) and for the sweep
-to find others.
+library, check its public methods against both shapes above.
+`CosmosInvoiceConfigurationRepository.CreateAsync`/`ReplaceAsync` (see
+[#93](https://github.com/Jawvig/InvoiceManager/issues/93)) is a worked
+example: it catches the Cosmos SDK's conflict responses internally and
+returns `InvoiceConfigurationCreateResult`/`InvoiceConfigurationReplaceResult`
+rather than throwing for its caller to catch.
 
 ## Avoid null to represent absence of a value
 

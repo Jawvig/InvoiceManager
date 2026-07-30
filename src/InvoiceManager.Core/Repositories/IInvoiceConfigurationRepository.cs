@@ -9,11 +9,11 @@ public interface IInvoiceConfigurationRepository
         IntegrationType integrationType,
         CancellationToken cancellationToken = default);
     Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default);
-    Task<StoredInvoiceConfiguration> CreateAsync(
+    Task<InvoiceConfigurationCreateResult> CreateAsync(
         InvoiceConfiguration configuration,
         InvoiceConfigurationActor actor,
         CancellationToken cancellationToken = default);
-    Task<StoredInvoiceConfiguration> ReplaceAsync(
+    Task<InvoiceConfigurationReplaceResult> ReplaceAsync(
         InvoiceConfiguration configuration,
         string etag,
         InvoiceConfigurationRevisionAction action,
