@@ -15,7 +15,11 @@ public interface IInvoiceConfigurationRepository
     /// atomically with it (see <see cref="ConfigurationValidationSentinel"/>): a deploy can run the
     /// seeder while a live AdminWeb instance is still serving requests, so this participates in the
     /// same sentinel protocol as <see cref="CreateAsync"/>/<see cref="ReplaceAsync"/> rather than
-    /// being exempt from it.
+    /// being exempt from it. Also revalidates <paramref name="configuration"/>'s search criteria
+    /// against the live list on every attempt (including retries after losing the sentinel race),
+    /// throwing <see cref="SeedConfigurationConflictException"/> rather than inserting on top of a
+    /// conflict - see that type's XML doc for why this is an exception rather than a return-type
+    /// case.
     /// </summary>
     Task CreateIfNotExistsAsync(InvoiceConfiguration configuration, CancellationToken cancellationToken = default);
 

@@ -63,7 +63,15 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
     public async Task ListActiveAsync_ReturnsOnlyActiveConfigurations()
     {
         var active = BuildConfiguration(new InvoiceConfigurationId("list-active"), isActive: true);
-        var inactive = BuildConfiguration(new InvoiceConfigurationId("list-inactive"), isActive: false);
+        // BuildConfiguration's defaults (same billing account, same amount criteria) make any two
+        // distinct-ID configurations built by it conflict per ValidateNoDuplicateMatch, which
+        // CreateIfNotExistsAsync now enforces (see the sentinel-protocol tests below) - give this
+        // one distinct search criteria since this test is only about the isActive filter, not
+        // duplicate detection.
+        var inactive = BuildConfiguration(new InvoiceConfigurationId("list-inactive"), isActive: false) with
+        {
+            IntegrationConfiguration = new MicrosoftBillingIntegrationConfiguration("list-inactive-account"),
+        };
         await repository!.CreateIfNotExistsAsync(active);
         await repository.CreateIfNotExistsAsync(inactive);
 
@@ -255,6 +263,74 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
             adminWebConfiguration, new("actor", "Admin"), adminWebSentinelReadBeforeSeeding);
 
         Assert.True(result is ValidationSentinelConflict, $"Expected ValidationSentinelConflict, got {result}.");
+    }
+
+    [Fact]
+    public async Task CreateIfNotExistsAsync_ThrowsSeedConflict_WhenALiveConfigurationAlreadyHasConflictingCriteria()
+    {
+        // The reverse race ordering from the test above: an AdminWeb write commits conflicting
+        // search criteria *before* the seeder ever attempts its insert (the simplest case of
+        // "before the seeder's very first attempt, or between a lost sentinel race and its
+        // retry" - both paths go through the exact same revalidate-then-insert check on every
+        // attempt, so pinning the live conflict down before attempt 1 exercises the same code the
+        // retry path would). BuildConfiguration's defaults (same billing account, same amount
+        // criteria) make any two distinct-ID configurations built by it conflict.
+        var adminWebConfiguration = BuildConfiguration(new("admin-committed-first"), isActive: false);
+        await repository!.CreateAsync(
+            adminWebConfiguration, new("actor", "Admin"), await repository.GetValidationSentinelAsync());
+
+        var seedConfiguration = BuildConfiguration(new("seed-conflicts-with-admin"), isActive: false);
+        await Assert.ThrowsAsync<SeedConfigurationConflictException>(
+            () => repository.CreateIfNotExistsAsync(seedConfiguration));
+
+        // The seed configuration must not have been inserted alongside the conflicting one.
+        Assert.True(
+            (await repository.GetAsync(seedConfiguration.Id, seedConfiguration.IntegrationType)) is None);
+    }
+
+    [Fact]
+    public async Task Seeding_ConcurrentWithAConflictingAdminWebWrite_NeverStoresBothConflictingConfigurations()
+    {
+        // A genuine Task.WhenAll race (like ConcurrentCreates_OnlyOneSucceeds_... above) between a
+        // simulated AdminWeb Create and the seeder's CreateIfNotExistsAsync for two configurations
+        // that conflict with each other's search criteria. Whichever ordering the real emulator
+        // produces, the two conflicting configurations must never both end up stored: if the
+        // seeder wins the sentinel race first, the AdminWeb write must lose with
+        // ValidationSentinelConflict (its own caller, InvoiceConfigurationService, would then
+        // revalidate and report the duplicate); if the AdminWeb write wins first, the seeder must
+        // detect the now-conflicting live configuration - on its first attempt or a retry after
+        // losing its own sentinel race - and throw SeedConfigurationConflictException instead of
+        // inserting on top of it.
+        var adminWebSentinel = await repository!.GetValidationSentinelAsync();
+        var seedConfiguration = BuildConfiguration(new("race-seed-config"), isActive: false);
+        var adminWebConfiguration = BuildConfiguration(new("race-adminweb-config"), isActive: false);
+
+        var seedTask = SeedIgnoringExpectedConflictAsync(repository, seedConfiguration);
+        var adminWebTask = repository.CreateAsync(adminWebConfiguration, new("actor", "Admin"), adminWebSentinel);
+
+        await Task.WhenAll(seedTask, adminWebTask);
+
+        var seedStored = await repository.GetAsync(seedConfiguration.Id, seedConfiguration.IntegrationType)
+            is StoredInvoiceConfiguration;
+        var adminWebStored = await repository.GetAsync(adminWebConfiguration.Id, adminWebConfiguration.IntegrationType)
+            is StoredInvoiceConfiguration;
+
+        Assert.False(
+            seedStored && adminWebStored,
+            "Both conflicting configurations were stored - the invariant the sentinel protocol exists to protect was violated.");
+    }
+
+    private static async Task SeedIgnoringExpectedConflictAsync(
+        CosmosInvoiceConfigurationRepository repository, InvoiceConfiguration configuration)
+    {
+        try
+        {
+            await repository.CreateIfNotExistsAsync(configuration);
+        }
+        catch (SeedConfigurationConflictException)
+        {
+            // Expected when the concurrent AdminWeb write wins the race and commits first.
+        }
     }
 
     private static InvoiceConfiguration BuildConfiguration(

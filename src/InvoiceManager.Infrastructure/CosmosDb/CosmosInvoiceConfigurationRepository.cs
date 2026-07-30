@@ -61,19 +61,26 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
     }
 
     /// <summary>
-    /// Bootstrap seeding is insert-only and never overwrites UI-managed values - if the
-    /// configuration already exists, this is a no-op. Otherwise, the insert also advances the
-    /// duplicate-validation sentinel in the same transactional batch (see
+    /// Bootstrap seeding is insert-only and never overwrites UI-managed values - if a
+    /// configuration with the same ID already exists, this is a no-op. Otherwise, the insert also
+    /// advances the duplicate-validation sentinel in the same transactional batch (see
     /// <see cref="ConfigurationValidationSentinel"/> and docs/data-model.md): deploys run
     /// Terraform apply (which can start routing traffic to a live AdminWeb instance) before
     /// invoking the seeder, so a seeded configuration can genuinely race a concurrent
     /// Create/Update/Restore request through AdminWeb - see <c>scripts/Deploy-Infra.ps1</c>'s
     /// <c>Invoke-ConfigurationSeeder</c> call sites, both of which run after
     /// <c>terraform apply</c>/an unchanged-plan early return, not before AdminWeb comes up.
-    /// Without this, an AdminWeb request that read the sentinel and the configuration list before
-    /// the seeder's insert could still commit search criteria that now conflicts with what the
-    /// seeder just added - exactly the race the sentinel exists to close, just with the seeder as
-    /// the other writer instead of another AdminWeb request.
+    ///
+    /// <para>
+    /// Every attempt (not just the first) revalidates <paramref name="configuration"/>'s search
+    /// criteria against the current live list before inserting - covering both race orderings, not
+    /// just the one where the seeder wins first: if an AdminWeb write already committed
+    /// conflicting criteria before this method ever ran, or commits them between this method
+    /// losing a sentinel race and its retry, either way the retry must catch it rather than
+    /// blindly re-attempting the same insert on top of a now-conflicting live configuration. A
+    /// seed-time conflict throws <see cref="SeedConfigurationConflictException"/> instead of being
+    /// silently skipped like the "ID already exists" case - see that type's XML doc for why.
+    /// </para>
     /// </summary>
     public async Task CreateIfNotExistsAsync(
         InvoiceConfiguration configuration,
@@ -87,6 +94,14 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             var sentinel = await GetValidationSentinelAsync(cancellationToken);
+
+            var others = (await ListAllAsync(cancellationToken)).Select(x => x.Configuration).ToList();
+            if (InvoiceConfigurationValidation.ValidateNoDuplicateMatch(configuration, others) is InvoiceConfigurationId conflictingId)
+                throw new SeedConfigurationConflictException(
+                    $"Seed configuration '{configuration.Id}' has the same search criteria as " +
+                    $"existing configuration '{conflictingId}'. Fix the seed data or the " +
+                    "conflicting configuration, then re-run the seeder.");
+
             var batch = container.CreateTransactionalBatch(ConfigurationPartition)
                 .CreateItem(document)
                 .ReplaceItem(
@@ -102,7 +117,7 @@ public sealed class CosmosInvoiceConfigurationRepository : IInvoiceConfiguration
                 return; // Already seeded - insert-only, nothing to do, sentinel untouched.
 
             if (response[sentinelIndex].StatusCode == HttpStatusCode.PreconditionFailed && attempt < maxAttempts)
-                continue; // Another writer advanced the sentinel first - re-read and retry the insert.
+                continue; // Another writer advanced the sentinel first - revalidate and retry the insert.
 
             throw BatchFailed(response);
         }

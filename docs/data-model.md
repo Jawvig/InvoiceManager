@@ -127,15 +127,29 @@ ever runs single-threaded, once, at deploy time: `scripts/Deploy-Infra.ps1`
 runs `terraform apply` (which can start routing traffic to a live AdminWeb
 instance) *before* invoking the seeder, so a seeded configuration can
 genuinely race a concurrent Create/Update/Restore request through AdminWeb
-during that window. `CreateIfNotExistsAsync` (the plain insert-if-absent
-method the seeder calls) carries this instead: a successful insert also
-conditionally replaces the sentinel in the same transactional batch as the
-insert, using its own read of the sentinel's ETag, retrying (bounded) if
-another writer changed it first. That way an AdminWeb request that read the
-sentinel and the configuration list *before* the seeder's insert correctly
-loses its own write with `ValidationSentinelConflict` and revalidates - see
-the XML doc on `CreateIfNotExistsAsync` and `ConfigurationSeeder` for the
-full reasoning.
+during that window, in either order. `CreateIfNotExistsAsync` (the plain
+insert-if-absent method the seeder calls) carries the whole protocol instead:
+
+- If the seeder's insert wins the sentinel race first, its successful insert
+  conditionally replaces the sentinel in the same transactional batch, using
+  its own read of the sentinel's ETag. An AdminWeb request that read the
+  sentinel and the configuration list *before* the seeder's insert then
+  correctly loses its own write with `ValidationSentinelConflict` and
+  revalidates through `InvoiceConfigurationService`.
+- If an AdminWeb write commits conflicting search criteria first - either
+  before the seeder's very first attempt, or between the seeder losing a
+  sentinel race and its retry - `CreateIfNotExistsAsync` revalidates the seed
+  configuration's search criteria against the live list on *every* attempt,
+  not just the first, so a blind retry can never insert on top of a
+  conflict it would otherwise never notice. A genuine seed-time conflict
+  throws `SeedConfigurationConflictException` rather than being silently
+  skipped like the "ID already exists" no-op path, or silently committed
+  alongside the configuration it conflicts with - see that type's XML doc
+  for the reasoning (this is a deploy-time data problem for a human to fix,
+  not a normal outcome for the pipeline to recover from automatically).
+
+See the XML docs on `CreateIfNotExistsAsync`, `ConfigurationSeeder`, and
+`SeedConfigurationConflictException` for the full reasoning.
 
 ## invoice-records
 
