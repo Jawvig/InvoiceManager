@@ -32,13 +32,20 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
     /// </summary>
     public InvoiceConfiguration? RevealOnNextSentinelConflict { get; set; }
 
+    // Tracks a per-(Id, IntegrationType) write count so every successful Create/Replace mints a
+    // distinct etag - just like Cosmos rotates the etag on every write. A fake that instead
+    // reused a constant "etag-{id}" would wrongly accept a retry against a stale, pre-update
+    // etag, silently hiding a real regression that skips the optimistic-concurrency check.
+    private readonly Dictionary<(InvoiceConfigurationId, IntegrationType), int> versions =
+        configurations.ToDictionary(c => (c.Id, c.IntegrationType), _ => 0);
+
     public Task<IReadOnlyList<InvoiceConfiguration>> ListActiveAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<InvoiceConfiguration>>(
             store.Where(c => c.IsActive).ToList());
 
     public Task<IReadOnlyList<StoredInvoiceConfiguration>> ListAllAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<StoredInvoiceConfiguration>>(
-            store.Select(c => new StoredInvoiceConfiguration(c, $"etag-{c.Id}")).ToList());
+            store.Select(c => new StoredInvoiceConfiguration(c, CurrentETag(c.Id, c.IntegrationType))).ToList());
 
     public Task<Option<StoredInvoiceConfiguration>> GetAsync(
         InvoiceConfigurationId id,
@@ -48,7 +55,7 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
         var configuration = store.SingleOrDefault(c => c.Id == id && c.IntegrationType == integrationType);
         Option<StoredInvoiceConfiguration> result = configuration is null
             ? Option.None
-            : new StoredInvoiceConfiguration(configuration, $"etag-{configuration.Id}");
+            : new StoredInvoiceConfiguration(configuration, CurrentETag(id, integrationType));
         return Task.FromResult(result);
     }
 
@@ -68,10 +75,12 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
             return Task.FromResult<InvoiceConfigurationWriteResult>(new ValidationSentinelConflict());
         if (store.Any(c => c.Id == configuration.Id))
             return Task.FromResult<InvoiceConfigurationWriteResult>(new DuplicateInvoiceConfigurationId(configuration.Id));
+
         store.Add(configuration);
+        versions[(configuration.Id, configuration.IntegrationType)] = 0;
         AdvanceSentinel();
         return Task.FromResult<InvoiceConfigurationWriteResult>(
-            new StoredInvoiceConfiguration(configuration, $"etag-{configuration.Id}"));
+            new StoredInvoiceConfiguration(configuration, CurrentETag(configuration.Id, configuration.IntegrationType)));
     }
 
     public Task<InvoiceConfigurationWriteResult> ReplaceAsync(
@@ -84,12 +93,24 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
     {
         if (sentinel is ConfigurationValidationSentinel && TryConsumeSimulatedSentinelConflict())
             return Task.FromResult<InvoiceConfigurationWriteResult>(new ValidationSentinelConflict());
+
+        // Mirrors the real repository's optimistic-concurrency check: compares the caller's
+        // etag against the current stored value, and - just as importantly - rotates to a new
+        // etag on every successful write (see the `versions` field above), so a retry against
+        // the pre-update etag is correctly rejected by this fake too, not just by Cosmos.
+        var key = (configuration.Id, configuration.IntegrationType);
+        var current = store.SingleOrDefault(
+            c => c.Id == configuration.Id && c.IntegrationType == configuration.IntegrationType);
+        if (current is not null && etag != CurrentETag(key.Id, key.IntegrationType))
+            return Task.FromResult<InvoiceConfigurationWriteResult>(new InvoiceConfigurationConflict());
+
         store.RemoveAll(c => c.Id == configuration.Id && c.IntegrationType == configuration.IntegrationType);
         store.Add(configuration);
+        versions[key] = versions.GetValueOrDefault(key) + 1;
         if (sentinel is ConfigurationValidationSentinel)
             AdvanceSentinel();
         return Task.FromResult<InvoiceConfigurationWriteResult>(
-            new StoredInvoiceConfiguration(configuration, $"etag-{Guid.NewGuid():N}"));
+            new StoredInvoiceConfiguration(configuration, CurrentETag(key.Id, key.IntegrationType)));
     }
 
     public Task<IReadOnlyList<InvoiceConfigurationRevision>> ListRevisionsAsync(
@@ -112,4 +133,7 @@ public sealed class FakeConfigurationRepository(params InvoiceConfiguration[] co
     }
 
     private void AdvanceSentinel() => sentinelETag = $"sentinel-etag-{Guid.NewGuid():N}";
+
+    private string CurrentETag(InvoiceConfigurationId id, IntegrationType integrationType) =>
+        $"etag-{id}-{versions.GetValueOrDefault((id, integrationType))}";
 }

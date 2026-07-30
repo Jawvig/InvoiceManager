@@ -44,8 +44,7 @@ wrong) without the exception-based control flow.
   whatever happens to call it today to catch and translate the exception -
   see [Translate at the external-library boundary](#translate-at-the-external-library-boundary)
   below for where that translation actually belongs. `IInvoiceConfigurationRepository`'s
-  `CreateAsync`/`ReplaceAsync` were brought into line with this as part of the
-  duplicate-validation sentinel work (issue #92): they return
+  `CreateAsync`/`ReplaceAsync` were brought into line with this: they return
   `InvoiceConfigurationWriteResult` (a union) instead of throwing
   `DuplicateInvoiceConfigurationException`/`InvoiceConfigurationConflictException`,
   which no longer exist. Any other class in this codebase still doing the
