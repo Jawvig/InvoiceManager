@@ -25,7 +25,7 @@ resource "azuread_application_federated_identity_credential" "github_actions" {
   audiences      = ["api://AzureADTokenExchange"]
 
   # Matches the subject GitHub presents for a job bound to this deploy
-  # environment, e.g. repo:Jawvig/InvoiceManager:environment:test.
+  # environment, e.g. repo:omnics/InvoiceManager:environment:test.
   subject = "repo:${var.github_owner}/${var.github_repository}:environment:${var.environment}"
 }
 
