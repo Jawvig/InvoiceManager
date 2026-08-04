@@ -10,7 +10,8 @@ public sealed record InvoiceProcessingSnapshot(
     string InvoiceDescription,
     int DateToleranceDays,
     Option<AmountMatchingCriteria> AmountMatchingCriteria,
-    VatMode VatMode)
+    VatMode VatMode,
+    Option<FreeAgentBillMatching> FreeAgentMatching)
 {
     public IntegrationType IntegrationType => IntegrationConfiguration.ToIntegrationType();
 
@@ -21,5 +22,6 @@ public sealed record InvoiceProcessingSnapshot(
             configuration.InvoiceDescription,
             configuration.DateToleranceDays,
             configuration.AmountMatchingCriteria,
-            configuration.DefaultVatMode);
+            configuration.DefaultVatMode,
+            configuration.FreeAgentMatching);
 }

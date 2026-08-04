@@ -155,6 +155,18 @@ resource "azurerm_cosmosdb_sql_container" "invoice_records" {
   }
 }
 
+resource "azurerm_cosmosdb_sql_container" "freeagent_interventions" {
+  name                = "freeagent-interventions"
+  resource_group_name = azurerm_cosmosdb_account.invoice_manager.resource_group_name
+  account_name        = azurerm_cosmosdb_account.invoice_manager.name
+  database_name       = azurerm_cosmosdb_sql_database.invoice_manager.name
+  partition_key_paths = ["/recordId"]
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 # Grants the deploying identity Cosmos DB data-plane write access so the seeder
 # can run immediately after terraform apply without a separate auth step.
 resource "azurerm_cosmosdb_sql_role_assignment" "deployer_data_contributor" {
@@ -347,6 +359,10 @@ resource "azurerm_function_app_flex_consumption" "functions" {
     KeyVault__Uri                    = azurerm_key_vault.invoice_manager.vault_uri
 
     DocumentIntelligence__Endpoint = azurerm_cognitive_account.document_intelligence.endpoint
+
+    # Non-secret: which FreeAgent host (sandbox/production) the unattended workflow calls.
+    # Must match whichever FreeAgent app AdminWeb authorized, or every FreeAgent call fails.
+    FreeAgent__Environment = local.freeagent_environment
   }
 
   # App Service Authentication (Easy Auth). Requires a valid Entra token on every

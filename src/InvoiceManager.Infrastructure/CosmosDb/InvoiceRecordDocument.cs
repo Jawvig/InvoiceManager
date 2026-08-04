@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using NodaMoney;
 
 namespace InvoiceManager.Infrastructure.CosmosDb;
@@ -57,6 +58,37 @@ internal sealed class OneDriveDetailsDocument
         new() { OneDriveLocation = details.OneDriveLocation };
 }
 
+/// <summary>The Cosmos JSON shape for <see cref="FreeAgentAttachmentMetadata"/>.</summary>
+internal sealed class FreeAgentAttachmentMetadataDocument
+{
+    [JsonPropertyName("fileName")]
+    public required string FileName { get; init; }
+
+    [JsonPropertyName("fileSizeBytes")]
+    public required long FileSizeBytes { get; init; }
+
+    [JsonPropertyName("contentType")]
+    public required string ContentType { get; init; }
+
+    [JsonPropertyName("uploadedAt")]
+    public required string UploadedAt { get; init; }
+
+    public FreeAgentAttachmentMetadata ToMetadata() =>
+        new(
+            FileName,
+            FileSizeBytes,
+            ContentType,
+            DateTimeOffset.ParseExact(UploadedAt, "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+
+    public static FreeAgentAttachmentMetadataDocument FromMetadata(FreeAgentAttachmentMetadata metadata) => new()
+    {
+        FileName = metadata.FileName,
+        FileSizeBytes = metadata.FileSizeBytes,
+        ContentType = metadata.ContentType,
+        UploadedAt = metadata.UploadedAt.ToString("O", CultureInfo.InvariantCulture),
+    };
+}
+
 /// <summary>
 /// The Cosmos DB document shape for an invoice record.
 /// Maps between the Cosmos JSON structure and <see cref="InvoiceRecord"/>.
@@ -98,6 +130,22 @@ internal sealed class InvoiceRecordDocument
     [JsonPropertyName("reconciledAt")]
     public string? ReconciledAt { get; init; }
 
+    // Present for every FreeAgent* state: the matched bill's resource URL, the
+    // idempotency anchor a later run resumes reconciliation from instead of
+    // re-searching.
+    [JsonPropertyName("freeAgentBillUrl")]
+    public string? FreeAgentBillUrl { get; init; }
+
+    // Present only for FreeAgentAttached: the verified attachment metadata, used to
+    // decide whether a later retry's upload is already correct.
+    [JsonPropertyName("freeAgentAttachment")]
+    public FreeAgentAttachmentMetadataDocument? FreeAgentAttachment { get; init; }
+
+    // Present only for FreeAgentInterventionPending: the pending intervention this
+    // record is waiting on a decision for.
+    [JsonPropertyName("freeAgentInterventionId")]
+    public string? FreeAgentInterventionId { get; init; }
+
     public InvoiceRecord ToRecord() =>
         new(
             new InvoiceConfigurationId(ConfigurationId),
@@ -120,6 +168,9 @@ internal sealed class InvoiceRecordDocument
             LastError = fields.LastError,
             MatchReason = fields.MatchReason,
             ReconciledAt = fields.ReconciledAt,
+            FreeAgentBillUrl = fields.FreeAgentBillUrl,
+            FreeAgentAttachment = fields.FreeAgentAttachment,
+            FreeAgentInterventionId = fields.FreeAgentInterventionId,
         };
     }
 
@@ -135,6 +186,16 @@ internal sealed class InvoiceRecordDocument
             RequiredMatchReason(),
             RequiredReconciledAt()),
         nameof(SavedToOneDrive) => new SavedToOneDrive(RequiredActualDetails(), RequiredOneDriveDetails()),
+        nameof(FreeAgentBillMatched) => new FreeAgentBillMatched(
+            RequiredActualDetails(), RequiredOneDriveDetails(), RequiredFreeAgentBillIdentity()),
+        nameof(FreeAgentBillReconciled) => new FreeAgentBillReconciled(
+            RequiredActualDetails(), RequiredOneDriveDetails(), RequiredFreeAgentBillIdentity()),
+        nameof(FreeAgentAttached) => new FreeAgentAttached(
+            RequiredActualDetails(), RequiredOneDriveDetails(), RequiredFreeAgentBillIdentity(), RequiredFreeAgentAttachment()),
+        nameof(FreeAgentInterventionPending) => new FreeAgentInterventionPending(
+            RequiredActualDetails(), RequiredOneDriveDetails(), RequiredFreeAgentInterventionId()),
+        nameof(FreeAgentError) => new FreeAgentError(
+            RequiredActualDetails(), RequiredOneDriveDetails(), LastError ?? string.Empty),
         _ => throw new InvalidOperationException(
             $"Invoice record document '{Id}' has unrecognised status '{Status}'."),
     };
@@ -149,6 +210,23 @@ internal sealed class InvoiceRecordDocument
         ?? throw new InvalidOperationException(
             $"Invoice record document '{Id}' has status '{Status}' but is missing 'oneDriveDetails'.");
 
+    private FreeAgentBillIdentity RequiredFreeAgentBillIdentity() =>
+        FreeAgentBillUrl is { } url
+            ? new FreeAgentBillIdentity(url)
+            : throw new InvalidOperationException(
+                $"Invoice record document '{Id}' has status '{Status}' but is missing 'freeAgentBillUrl'.");
+
+    private FreeAgentAttachmentMetadata RequiredFreeAgentAttachment() =>
+        FreeAgentAttachment?.ToMetadata()
+        ?? throw new InvalidOperationException(
+            $"Invoice record document '{Id}' has status '{Status}' but is missing 'freeAgentAttachment'.");
+
+    private Core.FreeAgentInterventionId RequiredFreeAgentInterventionId() =>
+        FreeAgentInterventionId is { } id
+            ? new Core.FreeAgentInterventionId(id)
+            : throw new InvalidOperationException(
+                $"Invoice record document '{Id}' has status '{Status}' but is missing 'freeAgentInterventionId'.");
+
     private string RequiredMatchReason() =>
         MatchReason
         ?? throw new InvalidOperationException(
@@ -162,39 +240,78 @@ internal sealed class InvoiceRecordDocument
 
     private static StorageFieldSet StorageFields(InvoiceWorkflowState state) => state switch
     {
-        Expected => new(nameof(Expected), null, null, null, null, null),
-        NotFound => new(nameof(NotFound), null, null, null, null, null),
-        RetrievalError error => new(nameof(RetrievalError), null, null, error.ErrorMessage, null, null),
-        Retrieved retrieved => new(
-            nameof(Retrieved),
-            ActualInvoiceDetailsDocument.FromDetails(retrieved.ActualDetails),
-            null,
-            null,
-            null,
-            null),
-        ReconciledFromOneDrive reconciled => new(
-            nameof(ReconciledFromOneDrive),
-            ActualInvoiceDetailsDocument.FromDetails(reconciled.ActualDetails),
-            OneDriveDetailsDocument.FromDetails(reconciled.OneDriveDetails),
-            null,
-            reconciled.MatchReason,
-            reconciled.ReconciledAt.ToString("O", CultureInfo.InvariantCulture)),
-        SavedToOneDrive saved => new(
-            nameof(SavedToOneDrive),
-            ActualInvoiceDetailsDocument.FromDetails(saved.ActualDetails),
-            OneDriveDetailsDocument.FromDetails(saved.OneDriveDetails),
-            null,
-            null,
-            null),
+        Expected => new() { Status = nameof(Expected) },
+        NotFound => new() { Status = nameof(NotFound) },
+        RetrievalError error => new() { Status = nameof(RetrievalError), LastError = error.ErrorMessage },
+        Retrieved retrieved => new()
+        {
+            Status = nameof(Retrieved),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(retrieved.ActualDetails),
+        },
+        ReconciledFromOneDrive reconciled => new()
+        {
+            Status = nameof(ReconciledFromOneDrive),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(reconciled.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(reconciled.OneDriveDetails),
+            MatchReason = reconciled.MatchReason,
+            ReconciledAt = reconciled.ReconciledAt.ToString("O", CultureInfo.InvariantCulture),
+        },
+        SavedToOneDrive saved => new()
+        {
+            Status = nameof(SavedToOneDrive),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(saved.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(saved.OneDriveDetails),
+        },
+        FreeAgentBillMatched matched => new()
+        {
+            Status = nameof(FreeAgentBillMatched),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(matched.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(matched.OneDriveDetails),
+            FreeAgentBillUrl = matched.Bill.BillUrl,
+        },
+        FreeAgentBillReconciled reconciledBill => new()
+        {
+            Status = nameof(FreeAgentBillReconciled),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(reconciledBill.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(reconciledBill.OneDriveDetails),
+            FreeAgentBillUrl = reconciledBill.Bill.BillUrl,
+        },
+        FreeAgentAttached attached => new()
+        {
+            Status = nameof(FreeAgentAttached),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(attached.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(attached.OneDriveDetails),
+            FreeAgentBillUrl = attached.Bill.BillUrl,
+            FreeAgentAttachment = FreeAgentAttachmentMetadataDocument.FromMetadata(attached.Attachment),
+        },
+        FreeAgentInterventionPending pending => new()
+        {
+            Status = nameof(FreeAgentInterventionPending),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(pending.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(pending.OneDriveDetails),
+            FreeAgentInterventionId = pending.InterventionId.Value,
+        },
+        FreeAgentError freeAgentError => new()
+        {
+            Status = nameof(FreeAgentError),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(freeAgentError.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(freeAgentError.OneDriveDetails),
+            LastError = freeAgentError.ErrorMessage,
+        },
     };
 
-    private readonly record struct StorageFieldSet(
-        string Status,
-        ActualInvoiceDetailsDocument? ActualDetails,
-        OneDriveDetailsDocument? OneDriveDetails,
-        string? LastError,
-        string? MatchReason,
-        string? ReconciledAt);
+    private sealed record StorageFieldSet
+    {
+        public required string Status { get; init; }
+        public ActualInvoiceDetailsDocument? ActualDetails { get; init; }
+        public OneDriveDetailsDocument? OneDriveDetails { get; init; }
+        public string? LastError { get; init; }
+        public string? MatchReason { get; init; }
+        public string? ReconciledAt { get; init; }
+        public string? FreeAgentBillUrl { get; init; }
+        public FreeAgentAttachmentMetadataDocument? FreeAgentAttachment { get; init; }
+        public string? FreeAgentInterventionId { get; init; }
+    }
 }
 
 internal sealed class InvoiceProcessingSnapshotDocument
@@ -225,13 +342,17 @@ internal sealed class InvoiceProcessingSnapshotDocument
     [JsonPropertyName("vatMode")]
     public required string VatMode { get; init; }
 
+    [JsonPropertyName("freeAgentMatching")]
+    public FreeAgentBillMatchingDocument? FreeAgentMatching { get; init; }
+
     public InvoiceProcessingSnapshot ToSnapshot() => new(
         IntegrationConfiguration.ToConfiguration(),
         OneDriveFolder.ToFolder(),
         InvoiceDescription,
         DateToleranceDays,
         AmountMatchingCriteria is { } criteria ? criteria.ToCriteria() : Option.None,
-        Enum.Parse<VatMode>(VatMode, true));
+        Enum.Parse<VatMode>(VatMode, true),
+        FreeAgentMatching is { } matching ? matching.ToMatching() : Option.None);
 
     public static InvoiceProcessingSnapshotDocument FromSnapshot(InvoiceProcessingSnapshot snapshot) => new()
     {
@@ -246,5 +367,10 @@ internal sealed class InvoiceProcessingSnapshotDocument
             None => null,
         },
         VatMode = snapshot.VatMode.ToString(),
+        FreeAgentMatching = snapshot.FreeAgentMatching switch
+        {
+            FreeAgentBillMatching matching => FreeAgentBillMatchingDocument.FromMatching(matching),
+            None => null,
+        },
     };
 }

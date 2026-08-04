@@ -24,7 +24,8 @@ public sealed class ConfigurationFormInputTests
             false,
             [new BillingAccountChoice("billing-id", "Billing account", "Business")],
             currentBillingAccountId: null,
-            Folder));
+            Folder,
+            Option.None));
     }
 
     [Fact]
@@ -38,7 +39,7 @@ public sealed class ConfigurationFormInputTests
             BodyPattern = "Invoice \\d+",
         };
 
-        var configuration = input.Build(false, [], currentBillingAccountId: null, Folder);
+        var configuration = input.Build(false, [], currentBillingAccountId: null, Folder, Option.None);
 
         var email = Assert.IsType<GraphEmailIntegrationConfiguration>(configuration.IntegrationConfiguration.Value);
         Assert.Equal("billing@example.com", email.SenderEmailAddress);
@@ -57,7 +58,8 @@ public sealed class ConfigurationFormInputTests
         };
 
         var configuration = input.Build(
-            false, [new BillingAccountChoice("billing-id", "Billing account", "Business")], currentBillingAccountId: null, Folder);
+            false, [new BillingAccountChoice("billing-id", "Billing account", "Business")], currentBillingAccountId: null, Folder,
+            Option.None);
 
         var billing = Assert.IsType<MicrosoftBillingIntegrationConfiguration>(configuration.IntegrationConfiguration.Value);
         Assert.Equal("billing-id", billing.BillingAccountId);
@@ -77,7 +79,7 @@ public sealed class ConfigurationFormInputTests
             BillingAccountId = "unknown-id",
         };
 
-        Assert.ThrowsAny<ArgumentException>(() => input.Build(false, [], currentBillingAccountId: null, Folder));
+        Assert.ThrowsAny<ArgumentException>(() => input.Build(false, [], currentBillingAccountId: null, Folder, Option.None));
     }
 
     [Fact]
@@ -92,7 +94,7 @@ public sealed class ConfigurationFormInputTests
             BillingAccountId = "stored-id",
         };
 
-        var configuration = input.Build(false, [], currentBillingAccountId: "stored-id", Folder);
+        var configuration = input.Build(false, [], currentBillingAccountId: "stored-id", Folder, Option.None);
 
         var billing = Assert.IsType<MicrosoftBillingIntegrationConfiguration>(configuration.IntegrationConfiguration.Value);
         Assert.Equal("stored-id", billing.BillingAccountId);
@@ -113,6 +115,30 @@ public sealed class ConfigurationFormInputTests
             OriginalBillingAccountId = "forged-id",
         };
 
-        Assert.ThrowsAny<ArgumentException>(() => input.Build(false, [], currentBillingAccountId: "real-stored-id", Folder));
+        Assert.ThrowsAny<ArgumentException>(() => input.Build(false, [], currentBillingAccountId: "real-stored-id", Folder, Option.None));
+    }
+
+    [Fact]
+    public void Build_PreservesExistingFreeAgentMatching_WhenEditingAnUnrelatedField()
+    {
+        // No AdminWeb UI sets FreeAgentMatching yet, so an Edit must never silently wipe an
+        // existing value just because the form has no field for it.
+        var input = new ConfigurationFormInput
+        {
+            Id = "billing-invoice",
+            IntegrationType = IntegrationType.MicrosoftBilling,
+            BillingAccountId = "stored-id",
+        };
+        var existing = new FreeAgentBillMatching(
+            "https://api.sandbox.freeagent.com/v2/company",
+            "https://api.sandbox.freeagent.com/v2/contacts/1",
+            DateToleranceDays: 3,
+            AmountTolerance: 0.01m,
+            AllowDateReconciliation: true,
+            AllowAmountReconciliation: true);
+
+        var configuration = input.Build(false, [], currentBillingAccountId: "stored-id", Folder, existing);
+
+        Assert.True(configuration.FreeAgentMatching is FreeAgentBillMatching, "Expected FreeAgentMatching to be preserved.");
     }
 }

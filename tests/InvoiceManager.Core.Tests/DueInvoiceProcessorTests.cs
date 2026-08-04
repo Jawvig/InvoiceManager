@@ -1,5 +1,6 @@
 using System.Globalization;
 using InvoiceManager.Core.Integrations;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Core.Repositories;
 using InvoiceManager.TestSupport;
 using Microsoft.Extensions.Logging;
@@ -321,6 +322,10 @@ public sealed class DueInvoiceProcessorTests
             new FakeOneDriveIntegration(),
             BuildFilename(),
             BuildGenerator(records, savedConfig, notFoundConfig),
+            new FakeFreeAgentBillMatcher(),
+            new FakeFreeAgentBillReconciler(),
+            new FakeFreeAgentAttachmentUploader(),
+            new InMemoryFreeAgentInterventionRepository(),
             new FixedTimeProvider(Today),
             logger);
 
@@ -353,6 +358,10 @@ public sealed class DueInvoiceProcessorTests
             new FakeOneDriveIntegration(),
             BuildFilename(),
             BuildGenerator(records, failing, healthy),
+            new FakeFreeAgentBillMatcher(),
+            new FakeFreeAgentBillReconciler(),
+            new FakeFreeAgentAttachmentUploader(),
+            new InMemoryFreeAgentInterventionRepository(),
             new FixedTimeProvider(Today),
             NullLogger<DueInvoiceProcessor>.Instance);
 
@@ -436,6 +445,64 @@ public sealed class DueInvoiceProcessorTests
     }
 
     [Fact]
+    public async Task ProcessDueAsync_ReportsConflict_WhenMatchedBillHasMultipleItemsAndAMismatchedTotal()
+    {
+        // "Never guess which item to change" must not silently fall through to attaching as
+        // though reconciled - a multi-item bill whose total doesn't match the invoice has to be
+        // reported as a conflict, not attached with the wrong amount left in place.
+        var matching = new FreeAgentBillMatching(
+            "https://api.sandbox.freeagent.com/v2/company",
+            "https://api.sandbox.freeagent.com/v2/contacts/1",
+            DateToleranceDays: 3,
+            AmountTolerance: 0.01m,
+            AllowDateReconciliation: false,
+            AllowAmountReconciliation: true);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10), freeAgentMatching: matching);
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+
+        var source = new FakeInvoiceSourceIntegration(
+            BuildMatch(new DateOnly(2025, 7, 12), new Money(121.00m, "GBP"), "G152207778"));
+        var oneDrive = new FakeOneDriveIntegration();
+
+        var billIdentity = new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1");
+        var itemA = new FreeAgentBillItem(
+            new FreeAgentBillItemIdentity("https://api.sandbox.freeagent.com/v2/bill_items/1"), "Item A", new Money(50.00m, "GBP"));
+        var itemB = new FreeAgentBillItem(
+            new FreeAgentBillItemIdentity("https://api.sandbox.freeagent.com/v2/bill_items/2"), "Item B", new Money(50.00m, "GBP"));
+        var bill = new FreeAgentBillSnapshot(
+            billIdentity, FreeAgentBillStatus.Open, new DateOnly(2025, 7, 12), new DateOnly(2025, 8, 12),
+            new Money(100.00m, "GBP"), new Money(0m, "GBP"), new Money(100.00m, "GBP"), Option.None,
+            matching.ContactUrl, "REF-1", [itemA, itemB], Option.None);
+
+        var matcher = new FakeFreeAgentBillMatcher { Result = new FreeAgentBillFound(bill) };
+        var uploader = new FakeFreeAgentAttachmentUploader
+        {
+            Upload = (_, _, _) => throw new InvalidOperationException("Attachment must never be uploaded for a bill left in conflict."),
+        };
+
+        var processor = new DueInvoiceProcessor(
+            records,
+            new FakeConfigurationRepository(config),
+            [source],
+            oneDrive,
+            BuildFilename(),
+            BuildGenerator(records, config),
+            matcher,
+            new FakeFreeAgentBillReconciler(),
+            uploader,
+            new InMemoryFreeAgentInterventionRepository(),
+            new FixedTimeProvider(Today),
+            NullLogger<DueInvoiceProcessor>.Instance);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingFreeAgentConflict);
+        var stored = records.All.Single(r => r.Id == dueRecord.Id);
+        Assert.True(stored.State is FreeAgentError, $"Expected FreeAgentError but was {stored.State}.");
+    }
+
+    [Fact]
     public async Task ProcessDueAsync_MarksRetrievalError_WhenOneDriveSearchThrows()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
@@ -483,6 +550,10 @@ public sealed class DueInvoiceProcessorTests
             oneDrive,
             BuildFilename(),
             BuildGenerator(records, configurations),
+            new FakeFreeAgentBillMatcher(),
+            new FakeFreeAgentBillReconciler(),
+            new FakeFreeAgentAttachmentUploader(),
+            new InMemoryFreeAgentInterventionRepository(),
             new FixedTimeProvider(Today),
             NullLogger<DueInvoiceProcessor>.Instance);
 

@@ -23,9 +23,13 @@ public static class CosmosSchema
     public static ContainerDefinition InvoiceRecords { get; } =
         new("invoice-records", "/configurationId");
 
+    /// <summary>Stores <c>FreeAgentGuessIntervention</c> documents.</summary>
+    public static ContainerDefinition FreeAgentInterventions { get; } =
+        new("freeagent-interventions", "/recordId");
+
     /// <summary>Every container this service requires.</summary>
     public static IReadOnlyList<ContainerDefinition> Containers { get; } =
-        [InvoiceConfigurations, InvoiceRecords];
+        [InvoiceConfigurations, InvoiceRecords, FreeAgentInterventions];
 }
 
 /// <summary>

@@ -1,0 +1,68 @@
+using NodaMoney;
+
+namespace InvoiceManager.Core.Integrations.FreeAgent;
+
+/// <summary>
+/// An opaque, InvoiceManager-owned reference to a FreeAgent bill's resource URL.
+/// Not a Cosmos document ID (no <see cref="IStringId{TSelf}"/>), but still a typed
+/// wrapper rather than a bare string, so a bill identity and an item identity can
+/// never be swapped at a call site.
+/// </summary>
+public sealed record FreeAgentBillIdentity(string BillUrl)
+{
+    public string BillUrl { get; } = !string.IsNullOrWhiteSpace(BillUrl)
+        ? BillUrl
+        : throw new ArgumentException("FreeAgentBillIdentity cannot be null or empty.", nameof(BillUrl));
+}
+
+/// <summary>An opaque, InvoiceManager-owned reference to a FreeAgent bill item's resource URL.</summary>
+public sealed record FreeAgentBillItemIdentity(string ItemUrl)
+{
+    public string ItemUrl { get; } = !string.IsNullOrWhiteSpace(ItemUrl)
+        ? ItemUrl
+        : throw new ArgumentException("FreeAgentBillItemIdentity cannot be null or empty.", nameof(ItemUrl));
+}
+
+/// <summary>The status of a FreeAgent bill, enumerated rather than left as FreeAgent's raw string.</summary>
+public enum FreeAgentBillStatus
+{
+    Open,
+    Paid,
+    PartPaid,
+    Overpaid,
+    Unrecognised,
+}
+
+/// <summary>A single line item on a FreeAgent bill.</summary>
+public sealed record FreeAgentBillItem(FreeAgentBillItemIdentity ItemUrl, string Description, Money TotalValue);
+
+/// <summary>
+/// Metadata about a bill's attachment, retained for audit/retry diagnosis. Never
+/// carries the attachment's bytes/base64 content.
+/// </summary>
+public sealed record FreeAgentAttachmentMetadata(
+    string FileName,
+    long FileSizeBytes,
+    string ContentType,
+    DateTimeOffset UploadedAt);
+
+/// <summary>
+/// The Core-owned, provider-agnostic verified state of a FreeAgent bill after a
+/// query or mutation. The integration project must repopulate every field after
+/// every relevant mutation - this is what "verify status, total, paid amount,
+/// amount due, paid date, bill items, contact, and attachment metadata after
+/// every relevant mutation" means at the Core boundary.
+/// </summary>
+public sealed record FreeAgentBillSnapshot(
+    FreeAgentBillIdentity Identity,
+    FreeAgentBillStatus Status,
+    DateOnly DatedOn,
+    DateOnly DueOn,
+    Money TotalValue,
+    Money PaidValue,
+    Money DueValue,
+    Option<DateOnly> PaidOn,
+    string ContactUrl,
+    string Reference,
+    IReadOnlyList<FreeAgentBillItem> Items,
+    Option<FreeAgentAttachmentMetadata> Attachment);

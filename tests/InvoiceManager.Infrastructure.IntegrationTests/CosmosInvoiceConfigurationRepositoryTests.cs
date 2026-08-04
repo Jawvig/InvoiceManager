@@ -398,5 +398,6 @@ public sealed class CosmosInvoiceConfigurationRepositoryTests : IAsyncLifetime
             IsActive: isActive,
             OneDriveFolder: new OneDriveFolder("test-drive", "Test Drive", "test-folder-item", "/Bills/Test"),
             StartDate: new DateOnly(2025, 1, 1),
-            DateToleranceDays: 5);
+            DateToleranceDays: 5,
+            FreeAgentMatching: Option.None);
 }

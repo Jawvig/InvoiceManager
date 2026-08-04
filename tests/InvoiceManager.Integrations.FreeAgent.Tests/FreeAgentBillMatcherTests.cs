@@ -1,0 +1,91 @@
+using InvoiceManager.Core.Integrations.FreeAgent;
+using InvoiceManager.TestSupport;
+using NodaMoney;
+
+namespace InvoiceManager.Integrations.FreeAgent.Tests;
+
+public sealed class FreeAgentBillMatcherTests
+{
+    private const string ContactUrl = "https://api.sandbox.freeagent.com/v2/contacts/1";
+    private const string BillUrl = "https://api.sandbox.freeagent.com/v2/bills/1";
+
+    [Fact]
+    public async Task FindBillAsync_MatchesOnAmountAndCurrency_WhenBothAgree()
+    {
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillsPageJson(("GBP", "121.00", "REF-1"))),
+                _ => JsonResponse(EmptyPageJson()),
+            });
+        var client = TestClientFactory.Create(handler);
+        var matcher = new FreeAgentBillMatcher(client);
+
+        var criteria = new FreeAgentBillSearchCriteria(
+            "https://api.sandbox.freeagent.com/v2/company",
+            ContactUrl,
+            new DateOnly(2026, 8, 1),
+            3,
+            new Money(121.00m, "GBP"),
+            0.01m,
+            "REF-1");
+
+        var result = await matcher.FindBillAsync(criteria);
+
+        Assert.True(result is FreeAgentBillFound, $"Expected FreeAgentBillFound but got {result}.");
+    }
+
+    [Fact]
+    public async Task FindBillAsync_RejectsAmountMatch_WhenCurrencyDiffers()
+    {
+        // Same numeric total (121.00) but in USD, not the expected GBP - must not match
+        // just because the decimal amounts happen to agree.
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillsPageJson(("USD", "121.00", "REF-1"))),
+                _ => JsonResponse(EmptyPageJson()),
+            });
+        var client = TestClientFactory.Create(handler);
+        var matcher = new FreeAgentBillMatcher(client);
+
+        var criteria = new FreeAgentBillSearchCriteria(
+            "https://api.sandbox.freeagent.com/v2/company",
+            ContactUrl,
+            new DateOnly(2026, 8, 1),
+            3,
+            new Money(121.00m, "GBP"),
+            0.01m,
+            "REF-1");
+
+        var result = await matcher.FindBillAsync(criteria);
+
+        Assert.True(result is NoFreeAgentBillMatch, $"Expected NoFreeAgentBillMatch but got {result}.");
+    }
+
+    private static string BillsPageJson(params (string Currency, string TotalValue, string Reference)[] bills) =>
+        $$"""
+        {"bills": [{{string.Join(",", bills.Select(b => $$"""
+        {
+          "url": "{{BillUrl}}",
+          "contact": "{{ContactUrl}}",
+          "reference": "{{b.Reference}}",
+          "dated_on": "2026-08-01",
+          "due_on": "2026-08-30",
+          "currency": "{{b.Currency}}",
+          "total_value": "{{b.TotalValue}}",
+          "paid_value": "0.00",
+          "due_value": "{{b.TotalValue}}",
+          "status": "Open",
+          "bill_items": []
+        }
+        """))}}]}
+        """;
+
+    private static string EmptyPageJson() => """{"bills": []}""";
+
+    private static HttpResponseMessage JsonResponse(string json) => new(System.Net.HttpStatusCode.OK)
+    {
+        Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+    };
+}

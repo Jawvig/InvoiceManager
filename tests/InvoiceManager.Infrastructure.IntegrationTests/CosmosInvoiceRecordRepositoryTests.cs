@@ -204,7 +204,8 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
                 invoiceDescription,
                 5,
                 new AmountMatchingCriteria(new Money(10.00m, "GBP"), 0.50m),
-                VatMode.Exclusive));
+                VatMode.Exclusive,
+                Option.None));
 
     private static ActualInvoiceDetails BuildActualDetails(
         DateOnly? actualInvoiceDate = null,

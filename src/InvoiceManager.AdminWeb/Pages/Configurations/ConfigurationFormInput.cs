@@ -88,7 +88,8 @@ public sealed class ConfigurationFormInput
         bool isActive,
         IReadOnlyList<BillingAccountChoice> billingAccounts,
         string? currentBillingAccountId,
-        OneDriveFolder folder)
+        OneDriveFolder folder,
+        Option<FreeAgentBillMatching> existingFreeAgentMatching)
     {
         if (IntegrationType is null)
             throw new ArgumentException("Select an integration.");
@@ -135,7 +136,12 @@ public sealed class ConfigurationFormInput
             isActive,
             folder,
             StartDate,
-            DateToleranceDays);
+            DateToleranceDays,
+            // No AdminWeb UI sets this yet - FreeAgent bill matching is configured through a
+            // later PR's dedicated UI. Preserve whatever is already stored on Edit rather than
+            // silently wiping it every time an unrelated field is changed; Create/Import have
+            // nothing to preserve and pass Option.None.
+            existingFreeAgentMatching);
 
         var errors = InvoiceConfigurationValidation.Validate(configuration);
         if (errors.Count > 0)

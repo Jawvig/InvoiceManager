@@ -7,8 +7,10 @@ using InvoiceManager.Core.Repositories;
 using InvoiceManager.Infrastructure;
 using InvoiceManager.Infrastructure.CosmosDb;
 using InvoiceManager.Infrastructure.DocumentIntelligence;
+using InvoiceManager.Infrastructure.FreeAgentAuthorization;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.Infrastructure.OneDrive;
+using InvoiceManager.Integrations.FreeAgent;
 using InvoiceManager.Integrations.Microsoft365;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
@@ -89,6 +91,16 @@ var host = new HostBuilder()
         services.AddSingleton<IValidateOptions<MicrosoftAuthorizationOptions>, MicrosoftAuthorizationOptionsValidator>();
         services.AddOptions<MicrosoftBillingOptions>()
             .Bind(context.Configuration.GetSection(MicrosoftBillingOptions.SectionName));
+
+        services.AddOptions<FreeAgentOptions>()
+            .Bind(context.Configuration.GetSection(FreeAgentOptions.SectionName));
+        services.AddOptions<FreeAgentAuthorizationOptions>()
+            .Bind(context.Configuration.GetSection(FreeAgentAuthorizationOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<FreeAgentAuthorizationOptions>, FreeAgentAuthorizationOptionsValidator>();
+        services.AddFreeAgentIntegration();
+        services.AddSingleton<IFreeAgentInterventionRepository>(sp =>
+            new CosmosFreeAgentInterventionRepository(sp.GetRequiredService<CosmosClient>(), databaseName));
 
         services.AddSingleton<IMicrosoftAuthorizationStore>(sp =>
         {
