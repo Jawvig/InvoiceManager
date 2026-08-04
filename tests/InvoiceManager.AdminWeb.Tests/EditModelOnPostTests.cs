@@ -27,7 +27,8 @@ public sealed class EditModelOnPostTests
         IsActive: false,
         StoredFolder,
         DateOnly.FromDateTime(DateTime.UtcNow),
-        DateToleranceDays: 5);
+        DateToleranceDays: 5,
+        FreeAgentMatching: Option.None);
 
     [Fact]
     public async Task OnPostAsync_RejectsForgedBillingAccount_EvenWhenPostedOriginalMatches()

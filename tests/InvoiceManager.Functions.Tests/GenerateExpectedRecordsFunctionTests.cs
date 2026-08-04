@@ -89,6 +89,10 @@ public sealed class GenerateExpectedRecordsFunctionTests
             new FakeOneDriveIntegration(),
             new InvoiceFilename(new InvoiceFilenameSettings { Culture = CultureInfo.GetCultureInfo("en-GB") }),
             generator,
+            new FakeFreeAgentBillMatcher(),
+            new FakeFreeAgentBillReconciler(),
+            new FakeFreeAgentAttachmentUploader(),
+            new InMemoryFreeAgentInterventionRepository(),
             new FixedTimeProvider(today),
             NullLogger<DueInvoiceProcessor>.Instance);
         return new GenerateExpectedRecordsTimer(

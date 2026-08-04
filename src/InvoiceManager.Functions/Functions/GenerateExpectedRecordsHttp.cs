@@ -35,12 +35,17 @@ public sealed class GenerateExpectedRecordsHttp(
         var processingResults = await processor.ProcessDueAsync(cancellationToken);
         logger.LogInformation(
             "Due invoice processing complete: {SavedCount} saved, {ReconciledCount} reconciled, " +
-            "{NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed.",
+            "{NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed, " +
+            "{FreeAgentAmbiguousCount} FreeAgent ambiguous, {FreeAgentInterventionCount} FreeAgent intervention required, " +
+            "{FreeAgentConflictCount} FreeAgent conflict.",
             processingResults.Count(r => r is ProcessingSucceeded),
             processingResults.Count(r => r is ProcessingReconciled),
             processingResults.Count(r => r is ProcessingNoMatch),
             processingResults.Count(r => r is ProcessingNotFound),
-            processingResults.Count(r => r is ProcessingFailed));
+            processingResults.Count(r => r is ProcessingFailed),
+            processingResults.Count(r => r is ProcessingFreeAgentAmbiguous),
+            processingResults.Count(r => r is ProcessingFreeAgentInterventionRequired),
+            processingResults.Count(r => r is ProcessingFreeAgentConflict));
 
         var body = new RunResultDto(
             generationResults.Select(result => result switch
@@ -55,6 +60,10 @@ public sealed class GenerateExpectedRecordsHttp(
                 ProcessingNoMatch noMatch => new RecordResultDto(noMatch.RecordId.Value, "NoMatch", null),
                 ProcessingNotFound notFound => new RecordResultDto(notFound.RecordId.Value, "NotFound", null),
                 ProcessingFailed failed => new RecordResultDto(failed.RecordId.Value, "Failed", failed.Exception.Message),
+                ProcessingFreeAgentAmbiguous ambiguous => new RecordResultDto(ambiguous.RecordId.Value, "FreeAgentAmbiguous", null),
+                ProcessingFreeAgentInterventionRequired intervention => new RecordResultDto(
+                    intervention.RecordId.Value, "FreeAgentInterventionRequired", null),
+                ProcessingFreeAgentConflict conflict => new RecordResultDto(conflict.RecordId.Value, "FreeAgentConflict", conflict.Reason),
             }).ToList());
 
         // Set the status as part of the write: under the ASP.NET Core integration

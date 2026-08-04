@@ -13,7 +13,8 @@ public static class Configurations
         bool isActive = true,
         decimal amountTolerance = 0m,
         IntegrationConfiguration? integrationConfiguration = null,
-        OneDriveFolder? oneDriveFolder = null) =>
+        OneDriveFolder? oneDriveFolder = null,
+        FreeAgentBillMatching? freeAgentMatching = null) =>
         new(
             id ?? new InvoiceConfigurationId("test-config"),
             integrationConfiguration ?? new MicrosoftBillingIntegrationConfiguration("test:billing:account"),
@@ -24,5 +25,6 @@ public static class Configurations
             IsActive: isActive,
             OneDriveFolder: oneDriveFolder ?? new OneDriveFolder("test-drive", "Test Drive", "test-folder-item", "/Bills/Test"),
             StartDate: startDate ?? new DateOnly(2025, 1, 1),
-            DateToleranceDays: 5);
+            DateToleranceDays: 5,
+            FreeAgentMatching: freeAgentMatching is { } matching ? matching : Option.None);
 }

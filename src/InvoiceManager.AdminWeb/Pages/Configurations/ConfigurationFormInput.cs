@@ -135,7 +135,10 @@ public sealed class ConfigurationFormInput
             isActive,
             folder,
             StartDate,
-            DateToleranceDays);
+            DateToleranceDays,
+            // No AdminWeb UI sets this yet - FreeAgent bill matching is configured
+            // through a later PR's dedicated UI.
+            Option.None);
 
         var errors = InvoiceConfigurationValidation.Validate(configuration);
         if (errors.Count > 0)

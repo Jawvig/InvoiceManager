@@ -86,7 +86,9 @@ var configurations = records.Select(r => new InvoiceConfiguration(
     r.IsActive,
     ToOneDriveFolder(r.OneDriveFolder, isTest),
     DateOnly.ParseExact(r.StartDate, "O", CultureInfo.InvariantCulture),
-    r.DateToleranceDays)).ToList();
+    r.DateToleranceDays,
+    // Seed files do not yet support FreeAgent bill matching.
+    Option.None)).ToList();
 
 var cosmosClient = CosmosClientFactory.Create(configuration);
 

@@ -321,6 +321,10 @@ public sealed class DueInvoiceProcessorTests
             new FakeOneDriveIntegration(),
             BuildFilename(),
             BuildGenerator(records, savedConfig, notFoundConfig),
+            new FakeFreeAgentBillMatcher(),
+            new FakeFreeAgentBillReconciler(),
+            new FakeFreeAgentAttachmentUploader(),
+            new InMemoryFreeAgentInterventionRepository(),
             new FixedTimeProvider(Today),
             logger);
 
@@ -353,6 +357,10 @@ public sealed class DueInvoiceProcessorTests
             new FakeOneDriveIntegration(),
             BuildFilename(),
             BuildGenerator(records, failing, healthy),
+            new FakeFreeAgentBillMatcher(),
+            new FakeFreeAgentBillReconciler(),
+            new FakeFreeAgentAttachmentUploader(),
+            new InMemoryFreeAgentInterventionRepository(),
             new FixedTimeProvider(Today),
             NullLogger<DueInvoiceProcessor>.Instance);
 
@@ -483,6 +491,10 @@ public sealed class DueInvoiceProcessorTests
             oneDrive,
             BuildFilename(),
             BuildGenerator(records, configurations),
+            new FakeFreeAgentBillMatcher(),
+            new FakeFreeAgentBillReconciler(),
+            new FakeFreeAgentAttachmentUploader(),
+            new InMemoryFreeAgentInterventionRepository(),
             new FixedTimeProvider(Today),
             NullLogger<DueInvoiceProcessor>.Instance);
 
