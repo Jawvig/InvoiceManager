@@ -342,9 +342,9 @@ resource "azurerm_function_app_flex_consumption" "functions" {
     CosmosEndpoint = azurerm_cosmosdb_account.invoice_manager.endpoint
     CosmosDatabase = local.cosmos_database_name
 
-    MicrosoftAuthorization__TenantId    = data.azurerm_client_config.current.tenant_id
-    MicrosoftAuthorization__ClientId    = azuread_application.invoice_manager.client_id
-    MicrosoftAuthorization__KeyVaultUri = azurerm_key_vault.invoice_manager.vault_uri
+    MicrosoftAuthorization__TenantId = data.azurerm_client_config.current.tenant_id
+    MicrosoftAuthorization__ClientId = azuread_application.invoice_manager.client_id
+    KeyVault__Uri                    = azurerm_key_vault.invoice_manager.vault_uri
 
     DocumentIntelligence__Endpoint = azurerm_cognitive_account.document_intelligence.endpoint
   }
@@ -437,7 +437,7 @@ resource "azurerm_container_app" "adminweb" {
         value = azuread_application.invoice_manager.client_id
       }
       env {
-        name  = "MicrosoftAuthorization__KeyVaultUri"
+        name  = "KeyVault__Uri"
         value = azurerm_key_vault.invoice_manager.vault_uri
       }
       env {

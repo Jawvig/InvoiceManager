@@ -1,4 +1,5 @@
 using InvoiceManager.AdminWeb.Services;
+using InvoiceManager.Infrastructure;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -13,13 +14,16 @@ public class AuthorizationModel : PageModel
 {
     private readonly IMicrosoftAuthorizationStore authorizationStore;
     private readonly MicrosoftAuthorizationOptions authorizationOptions;
+    private readonly KeyVaultOptions keyVaultOptions;
 
     public AuthorizationModel(
         IMicrosoftAuthorizationStore authorizationStore,
-        IOptions<MicrosoftAuthorizationOptions> authorizationOptions)
+        IOptions<MicrosoftAuthorizationOptions> authorizationOptions,
+        IOptions<KeyVaultOptions> keyVaultOptions)
     {
         this.authorizationStore = authorizationStore;
         this.authorizationOptions = authorizationOptions.Value;
+        this.keyVaultOptions = keyVaultOptions.Value;
     }
 
     public bool IsSignedIn { get; private set; }
@@ -119,9 +123,9 @@ public class AuthorizationModel : PageModel
             messages.Add("Set MicrosoftAuthorization:ClientSecret before authorizing Microsoft.");
         }
 
-        if (!authorizationOptions.HasPersistentStore)
+        if (!keyVaultOptions.HasPersistentStore)
         {
-            messages.Add("Set MicrosoftAuthorization:KeyVaultUri before captured authorization can be saved.");
+            messages.Add("Set KeyVault:Uri before captured authorization can be saved.");
         }
 
         return messages;

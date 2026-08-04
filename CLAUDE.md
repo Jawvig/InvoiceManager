@@ -13,3 +13,35 @@ Before implementation work, also read:
 
 This project is a C# invoice automation service intended to run as an Azure
 Functions isolated worker app, with local development orchestrated by Aspire.
+
+## Pull Request Workflow (Claude Code only)
+
+This workflow is specific to Claude Code. It does not apply to other agents
+that read [AGENTS.md](AGENTS.md) (Codex, GitHub Copilot) when working in this
+repository directly.
+
+Run this whole loop automatically once a PR is created — do not pause to ask
+for confirmation before invoking codex or before starting another review
+round. Only stop and ask if genuinely blocked (e.g. codex itself fails to
+run, or a comment's correct resolution is ambiguous enough to need a human
+call).
+
+When asked to create a pull request:
+
+1. Commit and push the current changes, then open the PR (`gh pr create`).
+2. Ask the `codex` CLI to review the PR and post its findings as inline PR
+   review comments (check `codex --help` for the current review/comment
+   invocation if unfamiliar with it).
+3. Once codex's comments are posted, critically review each one yourself —
+   do not apply a change just because codex suggested it.
+   - For a comment you agree with, make the corresponding code change in its
+     own separate commit, unless that doesn't make sense in context (e.g.
+     several comments point at the same root cause and can only be fixed
+     together).
+   - For a comment you disagree with, reply to it explaining why and close
+     it, rather than leaving it unaddressed and unexplained.
+4. Push any resulting changes, and resolve/close the comments that are now
+   addressed by that push.
+5. Ask codex to review again.
+6. Repeat steps 3-5 until a codex review pass completes with no further
+   comments posted.

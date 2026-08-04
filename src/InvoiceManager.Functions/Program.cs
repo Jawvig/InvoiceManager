@@ -4,6 +4,7 @@ using Azure.Identity;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations;
 using InvoiceManager.Core.Repositories;
+using InvoiceManager.Infrastructure;
 using InvoiceManager.Infrastructure.CosmosDb;
 using InvoiceManager.Infrastructure.DocumentIntelligence;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
@@ -29,10 +30,10 @@ var host = new HostBuilder()
         // Fail fast when no Key Vault is configured: the Functions app cannot acquire M365
         // tokens without the ClientSecret (and token cache) stored there, so continuing would
         // only defer the failure to the first invocation and make it harder to diagnose.
-        var keyVaultUri = config.Build().GetValue<Uri?>("MicrosoftAuthorization:KeyVaultUri")
+        var keyVaultUri = config.Build().GetValue<Uri?>("KeyVault:Uri")
             ?? throw new InvalidOperationException(
-                "MicrosoftAuthorization:KeyVaultUri is required. Set it in user-secrets or as an " +
-                "environment variable so the Functions app can load MicrosoftAuthorization secrets.");
+                "KeyVault:Uri is required. Set it in user-secrets or as an " +
+                "environment variable so the Functions app can load Key Vault secrets.");
         // ExcludeVisualStudioCredential: VisualStudioCredential can resolve to a cached
         // account that differs from the developer's actual signed-in identity (and thus
         // lack RBAC roles granted to that identity), producing confusing 401s that look
@@ -78,6 +79,10 @@ var host = new HostBuilder()
         // Validate at startup (like the admin website) so a missing TenantId/ClientId/
         // ClientSecret fails fast here rather than at the first M365 token acquisition.
         // ClientSecret is loaded from Key Vault above, so it is present by validation time.
+        services.AddOptions<KeyVaultOptions>()
+            .Bind(context.Configuration.GetSection(KeyVaultOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<KeyVaultOptions>, KeyVaultOptionsValidator>();
         services.AddOptions<MicrosoftAuthorizationOptions>()
             .Bind(context.Configuration.GetSection(MicrosoftAuthorizationOptions.SectionName))
             .ValidateOnStart();
@@ -87,8 +92,9 @@ var host = new HostBuilder()
 
         services.AddSingleton<IMicrosoftAuthorizationStore>(sp =>
         {
+            var keyVaultOptions = sp.GetRequiredService<IOptions<KeyVaultOptions>>();
             var options = sp.GetRequiredService<IOptions<MicrosoftAuthorizationOptions>>();
-            var secretStoreClient = new AzureKeyVaultSecretStoreClient(options.Value.KeyVaultUri);
+            var secretStoreClient = new AzureKeyVaultSecretStoreClient(keyVaultOptions.Value.Uri);
             return new KeyVaultMicrosoftAuthorizationStore(secretStoreClient, options);
         });
         services.AddSingleton<IMicrosoftTokenProvider, MicrosoftTokenProvider>();

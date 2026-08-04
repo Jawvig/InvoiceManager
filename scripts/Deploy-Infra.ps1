@@ -28,7 +28,18 @@ param(
 
     # Use an already-published admin website image reference (no build/push). Mutually
     # exclusive with -PublishAdminWebImage; use when the image was pushed out-of-band.
-    [string] $AdminWebImage
+    [string] $AdminWebImage,
+
+    # FreeAgent has no Terraform provider (its OAuth app is registered manually in FreeAgent's
+    # developer dashboard), so its client ID/secret cannot be provisioned the way
+    # MicrosoftAuthorization's are. By default this script prompts for each value only when it
+    # is missing from the target environment's Key Vault, consistent with the rest of the
+    # script's "ensure everything is in place" behaviour. These two flags force re-entry of one
+    # value even when it is already present - separate switches because the client secret
+    # rotates far more often than the client ID.
+    [switch] $PromptFreeAgentClientId,
+
+    [switch] $PromptFreeAgentClientSecret
 )
 
 if ($PublishAdminWebImage -and $AdminWebImage) {
@@ -288,6 +299,121 @@ function Set-ProjectUserSecret {
     )
 }
 
+function Test-KeyVaultSecretExists {
+    param(
+        [string] $VaultName,
+        [string] $SecretName
+    )
+
+    $null = az keyvault secret show --vault-name $VaultName --name $SecretName --output json 2>$null
+    $exists = $LASTEXITCODE -eq 0
+    $global:LASTEXITCODE = 0
+    return $exists
+}
+
+function Set-KeyVaultSecretFromPrompt {
+    param(
+        [string] $VaultName,
+        [string] $SecretName,
+        [string] $PromptText,
+        [switch] $AsSecureString
+    )
+
+    if ($AsSecureString) {
+        $secureValue = Read-Host -Prompt $PromptText -AsSecureString
+        # SecureStringToBSTR always produces a UTF-16, length-prefixed BSTR - PtrToStringBSTR is
+        # the correct decode (respects the length prefix rather than scanning for a null
+        # terminator, so it can't mis-decode or truncate). ZeroFreeBSTR then zeroes and frees the
+        # unmanaged buffer so the secret doesn't linger in memory longer than necessary.
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureValue)
+        try {
+            $plainValue = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        }
+        finally {
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+    }
+    else {
+        $plainValue = Read-Host -Prompt $PromptText
+    }
+
+    if ([string]::IsNullOrWhiteSpace($plainValue)) {
+        throw "$SecretName was not provided. Re-run and enter a value, or set it directly with 'az keyvault secret set'."
+    }
+
+    # --value would place the secret literally in az's process command line, visible to any
+    # process-listing/monitoring tool for as long as the child process runs. --file instead
+    # passes only a path; the temp file is written with no trailing newline/BOM and removed
+    # immediately after.
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    try {
+        # Not Set-Content -Encoding utf8: under Windows PowerShell 5.1 (still the default
+        # `powershell.exe` on Windows) that writes a UTF-8 BOM, which az would then store as part
+        # of the secret value. UTF8Encoding($false) is BOM-less on every PowerShell version.
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($tempFile, $plainValue, $utf8NoBom)
+
+        # Not Invoke-CheckedCommand: its failure path echoes the full command line, which would
+        # put $plainValue - the secret itself - into the thrown exception and any terminal/CI log
+        # that captures it. Build the failure message without the command array instead.
+        az keyvault secret set --vault-name $VaultName --name $SecretName --file $tempFile --output none
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to set Key Vault secret '$SecretName' in vault '$VaultName' (az exited with code $LASTEXITCODE)."
+        }
+    }
+    finally {
+        Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+        $plainValue = $null
+    }
+}
+
+function Set-FreeAgentClientCredentials {
+    param(
+        [string] $TerraformRoot,
+        [string] $Environment,
+        [switch] $ForcePromptClientId,
+        [switch] $ForcePromptClientSecret
+    )
+
+    Write-Section "Ensuring FreeAgent client credentials"
+
+    Push-Location $TerraformRoot
+    try {
+        $outputs = Invoke-JsonCommand -Command @("terraform", "output", "-json")
+    }
+    finally {
+        Pop-Location
+    }
+
+    $keyVaultName = $outputs.key_vault_name.value
+    $appName = if ($Environment -eq "production") { "Omnics InvoiceManager" } else { "Omnics InvoiceManager Sandbox" }
+
+    $clientIdSecretName = "FreeAgentAuthorization--ClientId"
+    $clientSecretSecretName = "FreeAgentAuthorization--ClientSecret"
+
+    $needsClientId = $ForcePromptClientId -or -not (Test-KeyVaultSecretExists -VaultName $keyVaultName -SecretName $clientIdSecretName)
+    $needsClientSecret = $ForcePromptClientSecret -or -not (Test-KeyVaultSecretExists -VaultName $keyVaultName -SecretName $clientSecretSecretName)
+
+    if (-not $needsClientId -and -not $needsClientSecret) {
+        Write-Host "FreeAgent client ID and client secret already present in Key Vault '$keyVaultName'."
+        return
+    }
+
+    Write-Host "Register the '$appName' app at https://dev.freeagent.com/ (OAuth identifier and secret) before continuing, if you have not already."
+
+    if ($needsClientId) {
+        Set-KeyVaultSecretFromPrompt -VaultName $keyVaultName -SecretName $clientIdSecretName `
+            -PromptText "FreeAgent OAuth identifier for '$appName'"
+    }
+
+    if ($needsClientSecret) {
+        Set-KeyVaultSecretFromPrompt -VaultName $keyVaultName -SecretName $clientSecretSecretName `
+            -PromptText "FreeAgent OAuth secret for '$appName'" -AsSecureString
+    }
+
+    Write-Host "FreeAgent client credentials stored in Key Vault '$keyVaultName'."
+}
+
 function Set-TestAdminWebLocalConfiguration {
     param(
         [string] $TerraformRoot,
@@ -318,7 +444,7 @@ function Set-TestAdminWebLocalConfiguration {
     foreach ($project in @($adminWebProject, $appHostProject)) {
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:TenantId" -Value $outputs.tenant_id.value
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
-        Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:KeyVaultUri" -Value $outputs.key_vault_uri.value
+        Set-ProjectUserSecret -ProjectPath $project -Key "KeyVault:Uri" -Value $outputs.key_vault_uri.value
         Set-ProjectUserSecret -ProjectPath $project -Key "AdminAuthorization:GroupObjectId" -Value $outputs.adminweb_admin_group_object_id.value
     }
 
@@ -670,6 +796,8 @@ try {
         Write-Host "Terraform plan completed with no changes."
         if (-not $PlanOnly) {
             Remove-InjectedFunctionStorageConnectionString -TerraformRoot $terraformRoot
+            Set-FreeAgentClientCredentials -TerraformRoot $terraformRoot -Environment $Environment `
+                -ForcePromptClientId:$PromptFreeAgentClientId -ForcePromptClientSecret:$PromptFreeAgentClientSecret
             Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
             if ($Environment -eq "test") {
                 Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
@@ -715,6 +843,9 @@ try {
     Invoke-CheckedCommand -Command $applyCommand
 
     Remove-InjectedFunctionStorageConnectionString -TerraformRoot $terraformRoot
+
+    Set-FreeAgentClientCredentials -TerraformRoot $terraformRoot -Environment $Environment `
+        -ForcePromptClientId:$PromptFreeAgentClientId -ForcePromptClientSecret:$PromptFreeAgentClientSecret
 
     Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
 

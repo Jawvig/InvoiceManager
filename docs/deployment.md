@@ -184,8 +184,13 @@ Use the PowerShell bootstrap script from the repository root:
 Parameter syntax:
 
 ```text
-./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-SkipGitHubManagement] [-PublishAdminWebImage]
+./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-SkipGitHubManagement] [-PublishAdminWebImage] [-PromptFreeAgentClientId] [-PromptFreeAgentClientSecret]
 ```
+
+`-PromptFreeAgentClientId` / `-PromptFreeAgentClientSecret` force the script to
+re-prompt for that FreeAgent OAuth credential even when it is already present
+in the target environment's Key Vault (see below) — separate flags because the
+client secret rotates far more often than the client ID.
 
 `-SkipGitHubManagement` runs a **GitHub-less apply**: it passes
 `-var=manage_github=false` and skips every `gh` interaction (the tool check,
@@ -231,7 +236,17 @@ The script:
    section below).
 9. Removes the provider-injected empty-key Function App storage connection
    strings (see below).
-10. Seeds the invoice configurations, passing `--environment <env>` (and
+10. Ensures FreeAgent client credentials exist in the target environment's Key
+    Vault, prompting interactively for `FreeAgentAuthorization--ClientId`
+    and/or `FreeAgentAuthorization--ClientSecret` only when a value is missing
+    (or `-PromptFreeAgentClientId`/`-PromptFreeAgentClientSecret` forces
+    re-entry). FreeAgent has no Terraform provider — its OAuth app
+    (`Omnics InvoiceManager Sandbox` for `test`, `Omnics InvoiceManager` for
+    `production`) must be registered manually at
+    [dev.freeagent.com](https://dev.freeagent.com/) first. The refresh token
+    is captured separately, through the admin website's FreeAgent
+    authorization page, not by this script.
+11. Seeds the invoice configurations, passing `--environment <env>` (and
     `--clear-database` when `-ClearDatabase` is supplied — see below).
 
 ### Function App storage connection string cleanup
@@ -366,9 +381,14 @@ user secrets contain only non-secret settings:
 ```bash
 dotnet user-secrets set "MicrosoftAuthorization:TenantId" "<tenant-id>" --project src/InvoiceManager.AdminWeb
 dotnet user-secrets set "MicrosoftAuthorization:ClientId" "<application-client-id>" --project src/InvoiceManager.AdminWeb
-dotnet user-secrets set "MicrosoftAuthorization:KeyVaultUri" "https://<key-vault-name>.vault.azure.net/" --project src/InvoiceManager.AdminWeb
+dotnet user-secrets set "KeyVault:Uri" "https://<key-vault-name>.vault.azure.net/" --project src/InvoiceManager.AdminWeb
 dotnet user-secrets set "AdminAuthorization:GroupObjectId" "<admin-group-object-id>" --project src/InvoiceManager.AdminWeb
 ```
+
+`KeyVault:Uri` is shared, application-wide configuration (not specific to
+Microsoft authorization) — every secret-backed store, including the FreeAgent
+authorization store described below, resolves its Key Vault client from this
+one setting.
 
 The AppHost (`src/InvoiceManager.AppHost`, `UserSecretsId` `InvoiceManager.AppHost`) needs its own copies of the
 `MicrosoftAuthorization` values above, plus the Document Intelligence endpoint used by the
@@ -382,9 +402,9 @@ dotnet user-secrets set "DocumentIntelligence:Endpoint" "https://<doc-intel-reso
 Without it, the Functions app fails `DocumentIntelligenceOptions` validation at startup and the
 AppHost's `functions` resource never becomes healthy.
 
-When the admin website starts, it uses `MicrosoftAuthorization:KeyVaultUri` and
-`DefaultAzureCredential` to load `MicrosoftAuthorization:ClientSecret` from Key
-Vault before binding and validating the final authentication configuration.
+When the admin website starts, it uses `KeyVault:Uri` and `DefaultAzureCredential`
+to load `MicrosoftAuthorization:ClientSecret` from Key Vault before binding and
+validating the final authentication configuration.
 Local developers must be signed in to Azure with access to the test Key Vault.
 Key Vault access is controlled through Azure RBAC rather than legacy vault
 access policies.

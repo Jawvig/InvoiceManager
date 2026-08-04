@@ -3,6 +3,7 @@ using Azure.Identity;
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Core;
 using InvoiceManager.Core.Repositories;
+using InvoiceManager.Infrastructure;
 using InvoiceManager.Infrastructure.CosmosDb;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.Azure.Cosmos;
@@ -29,12 +30,17 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-var configuredKeyVaultUri = builder.Configuration.GetValue<Uri?>("MicrosoftAuthorization:KeyVaultUri");
+var configuredKeyVaultUri = builder.Configuration.GetValue<Uri?>("KeyVault:Uri");
 if (configuredKeyVaultUri is not null && !builder.Environment.IsEnvironment("Testing"))
 {
     builder.Configuration.AddAzureKeyVault(configuredKeyVaultUri, new DefaultAzureCredential());
 }
 
+builder.Services
+    .AddOptions<KeyVaultOptions>()
+    .Bind(builder.Configuration.GetSection(KeyVaultOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<KeyVaultOptions>, KeyVaultOptionsValidator>();
 builder.Services
     .AddOptions<MicrosoftAuthorizationOptions>()
     .Bind(builder.Configuration.GetSection(MicrosoftAuthorizationOptions.SectionName))
@@ -47,8 +53,8 @@ builder.Services.AddOptions<AdminAuthorizationOptions>()
 
 builder.Services.AddSingleton<IMicrosoftAuthorizationStore>(serviceProvider =>
 {
-    var options = serviceProvider.GetRequiredService<IOptions<MicrosoftAuthorizationOptions>>().Value;
-    var secretStoreClient = new AzureKeyVaultSecretStoreClient(options.KeyVaultUri);
+    var keyVaultUri = serviceProvider.GetRequiredService<IOptions<KeyVaultOptions>>().Value.Uri;
+    var secretStoreClient = new AzureKeyVaultSecretStoreClient(keyVaultUri);
     return new KeyVaultMicrosoftAuthorizationStore(
         secretStoreClient,
         serviceProvider.GetRequiredService<IOptions<MicrosoftAuthorizationOptions>>());

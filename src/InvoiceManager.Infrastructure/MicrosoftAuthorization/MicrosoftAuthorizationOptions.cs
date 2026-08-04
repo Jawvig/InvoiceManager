@@ -14,8 +14,6 @@ public sealed class MicrosoftAuthorizationOptions
 
     public string? ClientSecret { get; set; }
 
-    public Uri KeyVaultUri { get; set; } = null!;
-
     public string TokenCacheSecretName { get; set; } = DefaultTokenCacheSecretName;
 
     public string Authority => string.IsNullOrWhiteSpace(TenantId)
@@ -27,8 +25,6 @@ public sealed class MicrosoftAuthorizationOptions
         !string.IsNullOrWhiteSpace(ClientId);
 
     public bool HasClientSecret => !string.IsNullOrWhiteSpace(ClientSecret);
-
-    public bool HasPersistentStore => KeyVaultUri is not null;
 }
 
 public sealed class MicrosoftAuthorizationOptionsValidator
@@ -51,11 +47,6 @@ public sealed class MicrosoftAuthorizationOptionsValidator
         if (string.IsNullOrWhiteSpace(options.ClientSecret))
         {
             failures.Add("MicrosoftAuthorization:ClientSecret is required.");
-        }
-
-        if (options.KeyVaultUri is null)
-        {
-            failures.Add("MicrosoftAuthorization:KeyVaultUri is required.");
         }
 
         if (string.IsNullOrWhiteSpace(options.TokenCacheSecretName))
