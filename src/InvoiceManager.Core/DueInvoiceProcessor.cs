@@ -300,11 +300,19 @@ public sealed class DueInvoiceProcessor(
 
         // Amount reconciliation only ever targets a bill with exactly one item - "never
         // guess which item to change" extends to never auto-picking the only item on a
-        // multi-item bill.
-        if (matching.AllowAmountReconciliation &&
-            currentBill.Items.Count == 1 &&
-            currentBill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
+        // multi-item bill. A mismatched total on a bill with zero or multiple items is never
+        // silently accepted, though - falling through to attach as though reconciled would
+        // leave a wrong amount on the bill with no record of the discrepancy.
+        if (matching.AllowAmountReconciliation && currentBill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
         {
+            if (currentBill.Items.Count != 1)
+            {
+                const string reason =
+                    "FreeAgent bill amount does not match the invoice and the bill does not have exactly one item to reconcile.";
+                await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
+                return new ProcessingFreeAgentConflict(matchedRecord.Id, reason);
+            }
+
             var item = currentBill.Items[0].ItemUrl;
             var amountResult = await freeAgentBillReconciler.ReconcileItemAmountAsync(
                 billIdentity, item, actualDetails.ActualAmount, cancellationToken);
