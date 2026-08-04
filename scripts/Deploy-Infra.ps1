@@ -347,7 +347,11 @@ function Set-KeyVaultSecretFromPrompt {
     # immediately after.
     $tempFile = [System.IO.Path]::GetTempFileName()
     try {
-        Set-Content -Path $tempFile -Value $plainValue -NoNewline -Encoding utf8
+        # Not Set-Content -Encoding utf8: under Windows PowerShell 5.1 (still the default
+        # `powershell.exe` on Windows) that writes a UTF-8 BOM, which az would then store as part
+        # of the secret value. UTF8Encoding($false) is BOM-less on every PowerShell version.
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($tempFile, $plainValue, $utf8NoBom)
 
         # Not Invoke-CheckedCommand: its failure path echoes the full command line, which would
         # put $plainValue - the secret itself - into the thrown exception and any terminal/CI log
