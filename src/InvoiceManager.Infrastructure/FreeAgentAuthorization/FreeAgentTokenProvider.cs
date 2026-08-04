@@ -51,54 +51,71 @@ public sealed class FreeAgentTokenProvider : IFreeAgentTokenProvider
             if (cachedAccessToken is { } stillCached && DateTimeOffset.UtcNow < cachedAccessTokenExpiresAt)
                 return stillCached;
 
-            var refreshToken = await authorizationStore.ReadRefreshTokenAsync(cancellationToken)
-                ?? throw new InvalidOperationException(
-                    "No FreeAgent refresh token is stored. An administrator must complete FreeAgent " +
-                    "authorization on the AdminWeb Authorization page before the workflow can call FreeAgent.");
-
-            var environment = freeAgentOptions.Value.Environment;
-            var options = authorizationOptions.Value;
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, FreeAgentHosts.TokenEndpoint(environment))
+            // The gate above only serialises callers within this process; the refresh token
+            // itself rotates in Key Vault and is shared by every Functions instance, so a
+            // concurrent refresh from another cold instance can consume it first. Retry once
+            // against whatever token is currently stored before giving up, rather than failing
+            // outright on the first invalid_grant.
+            try
             {
-                Content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["grant_type"] = "refresh_token",
-                    ["refresh_token"] = refreshToken,
-                    ["client_id"] = options.ClientId ?? string.Empty,
-                    ["client_secret"] = options.ClientSecret ?? string.Empty,
-                }),
-            };
-
-            using var response = await httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                // Never include the response body: it can echo request parameters.
-                throw new InvalidOperationException(
-                    $"FreeAgent token refresh failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
+                return await RefreshAsync(cancellationToken);
             }
-
-            var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponseWire>(cancellationToken)
-                ?? throw new InvalidOperationException("FreeAgent's token response could not be parsed.");
-
-            if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
-                throw new InvalidOperationException("FreeAgent's token response did not include an access token.");
-
-            // Persist the rotated refresh token before exposing the new access token, so a
-            // crash between the two never strands the stored token as already-consumed.
-            if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
-                await authorizationStore.SaveRefreshTokenAsync(tokenResponse.RefreshToken, cancellationToken);
-
-            cachedAccessToken = tokenResponse.AccessToken;
-            cachedAccessTokenExpiresAt = DateTimeOffset.UtcNow
-                + TimeSpan.FromSeconds(Math.Max(0, tokenResponse.ExpiresIn - ExpiryBuffer.TotalSeconds));
-
-            return cachedAccessToken;
+            catch (InvalidOperationException)
+            {
+                return await RefreshAsync(cancellationToken);
+            }
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    private async Task<string> RefreshAsync(CancellationToken cancellationToken)
+    {
+        var refreshToken = await authorizationStore.ReadRefreshTokenAsync(cancellationToken)
+            ?? throw new InvalidOperationException(
+                "No FreeAgent refresh token is stored. An administrator must complete FreeAgent " +
+                "authorization on the AdminWeb Authorization page before the workflow can call FreeAgent.");
+
+        var environment = freeAgentOptions.Value.Environment;
+        var options = authorizationOptions.Value;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, FreeAgentHosts.TokenEndpoint(environment))
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "refresh_token",
+                ["refresh_token"] = refreshToken,
+                ["client_id"] = options.ClientId ?? string.Empty,
+                ["client_secret"] = options.ClientSecret ?? string.Empty,
+            }),
+        };
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            // Never include the response body: it can echo request parameters.
+            throw new InvalidOperationException(
+                $"FreeAgent token refresh failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
+        }
+
+        var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponseWire>(cancellationToken)
+            ?? throw new InvalidOperationException("FreeAgent's token response could not be parsed.");
+
+        if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+            throw new InvalidOperationException("FreeAgent's token response did not include an access token.");
+
+        // Persist the rotated refresh token before exposing the new access token, so a
+        // crash between the two never strands the stored token as already-consumed.
+        if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
+            await authorizationStore.SaveRefreshTokenAsync(tokenResponse.RefreshToken, cancellationToken);
+
+        cachedAccessToken = tokenResponse.AccessToken;
+        cachedAccessTokenExpiresAt = DateTimeOffset.UtcNow
+            + TimeSpan.FromSeconds(Math.Max(0, tokenResponse.ExpiresIn - ExpiryBuffer.TotalSeconds));
+
+        return cachedAccessToken;
     }
 
     private sealed class TokenResponseWire
