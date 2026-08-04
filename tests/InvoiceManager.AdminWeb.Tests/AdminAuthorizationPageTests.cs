@@ -7,7 +7,9 @@ using InvoiceManager.Core.Repositories;
 using InvoiceManager.TestSupport;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -66,6 +68,25 @@ public sealed class AdminAuthorizationPageTests
         Assert.NotNull(ordinary);
         Assert.NotNull(workflow);
         Assert.NotEqual(ordinary.Method, workflow.Method);
+    }
+
+    [Fact]
+    public async Task FreeAgentSignIn_UsesATransientSignInScheme_SoItNeverOverwritesTheAdminSession()
+    {
+        // The generic OAuth handler used for FreeAgent adds no claims in OnCreatingTicket (unlike
+        // the Microsoft OIDC flow, which re-derives real claims from an ID token) - if this ever
+        // regresses to the default SignInScheme, completing FreeAgent authorization would replace
+        // the operator's authenticated admin cookie with a claimless principal and fail the
+        // AdminGroup policy on the very next request.
+        await using var factory = CreateConfiguredFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var options = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<OAuthOptions>>()
+            .Get("FreeAgentWorkflowAuthorization");
+
+        Assert.Equal("FreeAgentTransientSignIn", options.SignInScheme);
+        Assert.NotEqual(CookieAuthenticationDefaults.AuthenticationScheme, options.SignInScheme);
     }
 
     [Fact]

@@ -86,6 +86,17 @@ builder.Services
     .AddCookie()
     .AddOpenIdConnect()
     .AddOpenIdConnect(MicrosoftOpenIdConnectOptionsSetup.WorkflowAuthorizationScheme, _ => { })
+    // A dedicated, otherwise-unused sign-in scheme for the FreeAgent ticket. Unlike the Microsoft
+    // OIDC flow above (which re-authenticates the same admin from a real ID token's claims, so
+    // signing back into the shared cookie is a harmless refresh), OnCreatingTicket below adds no
+    // claims - it only persists the refresh token to Key Vault. Without this, the OAuth handler's
+    // default SignInScheme falls back to the app's shared admin cookie and would overwrite the
+    // operator's authenticated session with a claimless principal, failing the AdminGroup policy
+    // on the very next request.
+    .AddCookie(FreeAgentOAuthOptionsSetup.TransientSignInScheme, options =>
+    {
+        options.Cookie.Name = ".InvoiceManager.FreeAgentTransient";
+    })
     .AddOAuth(FreeAgentOAuthOptionsSetup.WorkflowAuthorizationScheme, _ => { });
 builder.Services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, MicrosoftOpenIdConnectOptionsSetup>();
 builder.Services.AddSingleton<IConfigureOptions<OAuthOptions>, FreeAgentOAuthOptionsSetup>();
@@ -281,6 +292,7 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
 internal sealed class FreeAgentOAuthOptionsSetup : IConfigureNamedOptions<OAuthOptions>
 {
     public const string WorkflowAuthorizationScheme = "FreeAgentWorkflowAuthorization";
+    public const string TransientSignInScheme = "FreeAgentTransientSignIn";
 
     private readonly IOptions<FreeAgentOptions> freeAgentOptions;
     private readonly IOptions<FreeAgentAuthorizationOptions> authorizationOptions;
@@ -308,6 +320,10 @@ internal sealed class FreeAgentOAuthOptionsSetup : IConfigureNamedOptions<OAuthO
         options.AuthorizationEndpoint = FreeAgentHosts.AuthorizationEndpoint(environment).ToString();
         options.TokenEndpoint = FreeAgentHosts.TokenEndpoint(environment).ToString();
         options.CallbackPath = "/freeagent-authorization/callback";
+        // See the AddCookie(TransientSignInScheme, ...) comment in Program.cs: without this, the
+        // handler's default SignInScheme falls back to the shared admin cookie and would
+        // overwrite the operator's session with this ticket's claimless principal.
+        options.SignInScheme = TransientSignInScheme;
         // FreeAgent's OAuth app is a confidential client (it has a client secret); PKCE is for
         // public clients and isn't part of FreeAgent's documented authorization-code flow.
         options.UsePkce = false;
