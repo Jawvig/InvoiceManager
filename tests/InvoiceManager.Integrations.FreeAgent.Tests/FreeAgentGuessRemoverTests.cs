@@ -14,6 +14,22 @@ public sealed class FreeAgentGuessRemoverTests
     private const string BankTransactionUrl = "https://api.sandbox.freeagent.com/v2/bank_transactions/1";
 
     [Fact]
+    public async Task RemoveConfirmedGuessAsync_RevalidationFails_WhenInterventionIsNotApproved()
+    {
+        var handler = new StubHttpMessageHandler((request, index) =>
+            throw new InvalidOperationException("No FreeAgent call should have been made for an unapproved intervention."));
+        var client = TestClientFactory.Create(handler);
+        var reconciler = new FreeAgentBillReconciler(client);
+        var remover = new FreeAgentGuessRemover(client, reconciler);
+
+        var intervention = BuildIntervention() with { Status = FreeAgentGuessInterventionStatus.Pending };
+        var result = await remover.RemoveConfirmedGuessAsync(intervention);
+
+        Assert.True(result is FreeAgentGuessRevalidationFailed, $"Expected FreeAgentGuessRevalidationFailed but got {result}.");
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
     public async Task RemoveConfirmedGuessAsync_RevalidationFails_WhenExplanationNoLongerMatches_AndNothingIsDeleted()
     {
         var handler = new StubHttpMessageHandler((request, index) =>

@@ -23,6 +23,13 @@ internal sealed class FreeAgentGuessRemover : IFreeAgentGuessRemover
     public async Task<FreeAgentGuessRemovalResult> RemoveConfirmedGuessAsync(
         FreeAgentGuessIntervention intervention, CancellationToken cancellationToken = default)
     {
+        // The intervention itself must be Approved - this is the type-level enforcement point
+        // for "never delete an unapproved Guess": a caller passing a Pending, Declined, or
+        // Expired intervention (a bug in the future AdminWeb confirm-handler) is refused here
+        // regardless of whether the remote preconditions below happen to hold.
+        if (intervention.Status != FreeAgentGuessInterventionStatus.Approved)
+            return new FreeAgentGuessRevalidationFailed("The intervention has not been approved.");
+
         // Re-check every precondition immediately before deleting, fresh - never reused from
         // when the intervention was first created, since time has passed and an administrator
         // confirmed asynchronously.
