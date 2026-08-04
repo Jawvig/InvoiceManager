@@ -314,6 +314,19 @@ public sealed class DueInvoiceProcessor(
             {
                 return outcomeResult;
             }
+
+            // The reconciler verified the item itself reflects the requested amount, but the
+            // actual goal - the reason this branch ran at all - is the bill's own aggregate
+            // total matching the invoice. Verify that explicitly rather than assuming the two
+            // always move together (VAT/rounding could leave them apart).
+            if (amountResult is FreeAgentReconciled reconciled &&
+                reconciled.Bill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
+            {
+                const string reason =
+                    "FreeAgent accepted the item amount change but the bill's aggregate total still does not match the invoice.";
+                await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
+                return new ProcessingFreeAgentConflict(matchedRecord.Id, reason);
+            }
         }
 
         var reconciledRecord = matchedRecord with
@@ -415,6 +428,23 @@ public sealed class DueInvoiceProcessor(
         FreeAgentPaymentInterventionDetails details,
         CancellationToken cancellationToken)
     {
+        // Guard against creating a duplicate when a concurrent run (the HTTP-triggered and
+        // timer-triggered processors can overlap on the same due record) already created one -
+        // not fully atomic against the same race, but catches the common case.
+        if (await freeAgentInterventionRepository.HasPendingInterventionAsync(record.Id, cancellationToken))
+        {
+            var pendingInterventions = await freeAgentInterventionRepository.ListPendingAsync(cancellationToken);
+            if (pendingInterventions.FirstOrDefault(i => i.RecordId == record.Id) is { } existing)
+            {
+                var alreadyPending = record with
+                {
+                    State = new FreeAgentInterventionPending(actualDetails, oneDriveDetails, existing.Id),
+                };
+                await recordRepository.ReplaceAsync(alreadyPending, cancellationToken);
+                return new ProcessingFreeAgentInterventionRequired(record.Id, existing.Id);
+            }
+        }
+
         var interventionId = new FreeAgentInterventionId($"freeagent-intervention-{Guid.NewGuid():N}");
         var intervention = FreeAgentGuessIntervention.Create(interventionId, record.Id, details, timeProvider.GetUtcNow());
         await freeAgentInterventionRepository.CreateAsync(intervention, cancellationToken);
