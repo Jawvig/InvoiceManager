@@ -61,6 +61,9 @@ internal sealed class InvoiceConfigurationDocument
     [JsonPropertyName("dateToleranceDays")]
     public required int DateToleranceDays { get; init; }
 
+    [JsonPropertyName("freeAgentMatching")]
+    public FreeAgentBillMatchingDocument? FreeAgentMatching { get; init; }
+
     public InvoiceConfiguration ToConfiguration() =>
         new(
             new InvoiceConfigurationId(Id),
@@ -72,11 +75,17 @@ internal sealed class InvoiceConfigurationDocument
             IsActive,
             OneDriveFolder.ToFolder(),
             DateOnly.ParseExact(StartDate, "O", CultureInfo.InvariantCulture),
-            DateToleranceDays);
+            DateToleranceDays,
+            ToFreeAgentMatching());
 
     private Option<AmountMatchingCriteria> ToAmountMatchingCriteria() =>
         AmountMatchingCriteria is { } criteria
             ? criteria.ToCriteria()
+            : Option.None;
+
+    private Option<FreeAgentBillMatching> ToFreeAgentMatching() =>
+        FreeAgentMatching is { } matching
+            ? matching.ToMatching()
             : Option.None;
 
     public static InvoiceConfigurationDocument FromConfiguration(InvoiceConfiguration config) =>
@@ -97,7 +106,47 @@ internal sealed class InvoiceConfigurationDocument
             OneDriveFolder = OneDriveFolderDocument.FromFolder(config.OneDriveFolder),
             StartDate = config.StartDate.ToString("O", CultureInfo.InvariantCulture),
             DateToleranceDays = config.DateToleranceDays,
+            FreeAgentMatching = config.FreeAgentMatching switch
+            {
+                FreeAgentBillMatching matching => FreeAgentBillMatchingDocument.FromMatching(matching),
+                None => null,
+            },
         };
+}
+
+/// <summary>The Cosmos JSON shape for <see cref="FreeAgentBillMatching"/>.</summary>
+internal sealed class FreeAgentBillMatchingDocument
+{
+    [JsonPropertyName("companyUrl")]
+    public required string CompanyUrl { get; init; }
+
+    [JsonPropertyName("contactUrl")]
+    public required string ContactUrl { get; init; }
+
+    [JsonPropertyName("dateToleranceDays")]
+    public required int DateToleranceDays { get; init; }
+
+    [JsonPropertyName("amountTolerance")]
+    public required decimal AmountTolerance { get; init; }
+
+    [JsonPropertyName("allowDateReconciliation")]
+    public required bool AllowDateReconciliation { get; init; }
+
+    [JsonPropertyName("allowAmountReconciliation")]
+    public required bool AllowAmountReconciliation { get; init; }
+
+    public FreeAgentBillMatching ToMatching() =>
+        new(CompanyUrl, ContactUrl, DateToleranceDays, AmountTolerance, AllowDateReconciliation, AllowAmountReconciliation);
+
+    public static FreeAgentBillMatchingDocument FromMatching(FreeAgentBillMatching matching) => new()
+    {
+        CompanyUrl = matching.CompanyUrl,
+        ContactUrl = matching.ContactUrl,
+        DateToleranceDays = matching.DateToleranceDays,
+        AmountTolerance = matching.AmountTolerance,
+        AllowDateReconciliation = matching.AllowDateReconciliation,
+        AllowAmountReconciliation = matching.AllowAmountReconciliation,
+    };
 }
 
 /// <summary>

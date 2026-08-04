@@ -155,6 +155,18 @@ resource "azurerm_cosmosdb_sql_container" "invoice_records" {
   }
 }
 
+resource "azurerm_cosmosdb_sql_container" "freeagent_interventions" {
+  name                = "freeagent-interventions"
+  resource_group_name = azurerm_cosmosdb_account.invoice_manager.resource_group_name
+  account_name        = azurerm_cosmosdb_account.invoice_manager.name
+  database_name       = azurerm_cosmosdb_sql_database.invoice_manager.name
+  partition_key_paths = ["/recordId"]
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 # Grants the deploying identity Cosmos DB data-plane write access so the seeder
 # can run immediately after terraform apply without a separate auth step.
 resource "azurerm_cosmosdb_sql_role_assignment" "deployer_data_contributor" {

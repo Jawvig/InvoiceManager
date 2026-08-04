@@ -24,7 +24,7 @@ public sealed class InvoiceConfigurationDocumentTests
             new InvoiceConfigurationId("billing-test"),
             new MicrosoftBillingIntegrationConfiguration("account-123"), "Test",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
-            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5, Option.None);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         var json = JsonSerializer.Serialize(document.IntegrationConfiguration, CosmosLikeOptions);
@@ -42,7 +42,7 @@ public sealed class InvoiceConfigurationDocumentTests
             new InvoiceConfigurationId("email-test"),
             new GraphEmailIntegrationConfiguration("billing@contoso.com", "Invoice \\d+"), "Test",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
-            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5, Option.None);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         var json = JsonSerializer.Serialize(document.IntegrationConfiguration, CosmosLikeOptions);
@@ -61,7 +61,7 @@ public sealed class InvoiceConfigurationDocumentTests
             new MicrosoftBillingIntegrationConfiguration("account"), "Test",
             InvoiceFrequency.Monthly,
             new AmountMatchingCriteria(new Money(10m, "GBP"), 0.25m), VatMode.Inclusive,
-            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5, Option.None);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         var roundTripped = document.ToConfiguration();
@@ -76,7 +76,7 @@ public sealed class InvoiceConfigurationDocumentTests
             new InvoiceConfigurationId("azure-test"),
             new MicrosoftBillingIntegrationConfiguration("account"), "",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
-            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5, Option.None);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
 
@@ -92,7 +92,7 @@ public sealed class InvoiceConfigurationDocumentTests
             new MicrosoftBillingIntegrationConfiguration("account"), "Azure",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive, true,
             new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills/Azure"),
-            new DateOnly(2026, 1, 1), 5);
+            new DateOnly(2026, 1, 1), 5, Option.None);
 
         var roundTripped = InvoiceConfigurationDocument.FromConfiguration(configuration).ToConfiguration();
 
@@ -107,7 +107,7 @@ public sealed class InvoiceConfigurationDocumentTests
             new InvoiceConfigurationId("email-test"),
             new GraphEmailIntegrationConfiguration("billing@contoso.com", "Invoice for account \\d+"), "Test",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
-            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5, Option.None);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         var roundTripped = document.ToConfiguration();
@@ -127,7 +127,7 @@ public sealed class InvoiceConfigurationDocumentTests
             new InvoiceConfigurationId("billing-test"),
             new MicrosoftBillingIntegrationConfiguration("account-123"), "Test",
             InvoiceFrequency.Monthly, Option.None, VatMode.Inclusive,
-            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5);
+            true, new OneDriveFolder("drive-id", "Drive", "folder-id", "/Bills"), new DateOnly(2026, 1, 1), 5, Option.None);
 
         var document = InvoiceConfigurationDocument.FromConfiguration(configuration);
         var roundTripped = document.ToConfiguration();
