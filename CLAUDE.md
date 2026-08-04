@@ -20,6 +20,12 @@ This workflow is specific to Claude Code. It does not apply to other agents
 that read [AGENTS.md](AGENTS.md) (Codex, GitHub Copilot) when working in this
 repository directly.
 
+Run this whole loop automatically once a PR is created — do not pause to ask
+for confirmation before invoking codex or before starting another review
+round. Only stop and ask if genuinely blocked (e.g. codex itself fails to
+run, or a comment's correct resolution is ambiguous enough to need a human
+call).
+
 When asked to create a pull request:
 
 1. Commit and push the current changes, then open the PR (`gh pr create`).
