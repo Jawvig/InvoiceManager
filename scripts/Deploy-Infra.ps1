@@ -342,13 +342,13 @@ function Set-KeyVaultSecretFromPrompt {
     }
 
     try {
-        Invoke-CheckedCommand -Command @(
-            "az", "keyvault", "secret", "set",
-            "--vault-name", $VaultName,
-            "--name", $SecretName,
-            "--value", $plainValue,
-            "--output", "none"
-        )
+        # Not Invoke-CheckedCommand: its failure path echoes the full command line, which would
+        # put $plainValue - the secret itself - into the thrown exception and any terminal/CI log
+        # that captures it. Build the failure message without the command array instead.
+        az keyvault secret set --vault-name $VaultName --name $SecretName --value $plainValue --output none
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to set Key Vault secret '$SecretName' in vault '$VaultName' (az exited with code $LASTEXITCODE)."
+        }
     }
     finally {
         $plainValue = $null
