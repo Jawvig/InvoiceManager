@@ -81,6 +81,7 @@ public sealed class FreeAgentGuessRemoverTests
                 3 => JsonResponse(BankTransactionJson(explained: false)),
                 4 => JsonResponse(BillJson()), // reconciler's GET for item-ownership check
                 5 => JsonResponse(BillJson(totalValue: "100.00")), // successful PUT response
+                6 => JsonResponse(BillJson(totalValue: "100.00")), // independent verification GET
                 _ => throw new InvalidOperationException("Unexpected request."),
             });
         var client = TestClientFactory.Create(handler);

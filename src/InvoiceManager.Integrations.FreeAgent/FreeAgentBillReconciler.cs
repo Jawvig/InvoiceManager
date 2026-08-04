@@ -80,11 +80,13 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
         if (result.IsLocked)
             return await ClassifyLockedAsync(bill, item, result.LockedFieldDetail!, newTotalValue, cancellationToken);
 
-        if (result.Value is not { } updated)
+        if (result.Value is null)
             return new FreeAgentRemoteRejected("FreeAgent did not return an updated bill.");
 
-        // Verify the specific item actually reflects the requested total - a 200 response
-        // does not by itself guarantee FreeAgent applied the change.
+        // Verify against an independent read, not the PUT response body - an optimistic or
+        // stale mutation response could echo back what was requested without FreeAgent having
+        // actually persisted it, same reasoning as the date and attachment paths' re-GET.
+        var updated = await client.GetBillAsync(bill.BillUrl, cancellationToken);
         var updatedItem = (updated.BillItems ?? []).FirstOrDefault(i => string.Equals(i.Url, item.ItemUrl, StringComparison.Ordinal));
         if (updatedItem?.TotalValue is not { } updatedTotalText ||
             !decimal.TryParse(updatedTotalText, System.Globalization.CultureInfo.InvariantCulture, out var updatedTotal) ||

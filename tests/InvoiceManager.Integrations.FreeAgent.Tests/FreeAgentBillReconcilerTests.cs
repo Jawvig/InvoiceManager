@@ -40,6 +40,8 @@ public sealed class FreeAgentBillReconcilerTests
             {
                 0 => JsonResponse(BillJson(status: "Open", items: [ItemUrl])),
                 1 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], totalValue: "125.50")),
+                // Verified against an independent GET, not the PUT response body.
+                2 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], totalValue: "125.50")),
                 _ => throw new InvalidOperationException("Unexpected request."),
             });
         var client = TestClientFactory.Create(handler);
@@ -54,6 +56,7 @@ public sealed class FreeAgentBillReconcilerTests
         var reconciled = ExtractReconciled(result);
         Assert.Equal(125.50m, reconciled.Bill.TotalValue.Amount);
         Assert.Equal(HttpMethod.Put, handler.Requests[1].Method);
+        Assert.Equal(HttpMethod.Get, handler.Requests[2].Method);
     }
 
     [Fact]
@@ -180,6 +183,7 @@ public sealed class FreeAgentBillReconcilerTests
                 // FreeAgent returns 200 but the item's total_value is unchanged (121.00, not the
                 // requested 125.50) - must not be trusted as a successful reconciliation.
                 1 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], totalValue: "121.00")),
+                2 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], totalValue: "121.00")),
                 _ => throw new InvalidOperationException("Unexpected request."),
             });
         var client = TestClientFactory.Create(handler);
@@ -191,6 +195,31 @@ public sealed class FreeAgentBillReconcilerTests
             new Money(125.50m, "GBP"));
 
         Assert.True(result is FreeAgentVerificationFailed, $"Expected FreeAgentVerificationFailed but got {result}.");
+    }
+
+    [Fact]
+    public async Task ReconcileItemAmountAsync_ReturnsVerificationFailed_WhenPutResponseIsStaleAndIndependentReadDisagrees()
+    {
+        // The PUT response itself echoes the requested value (optimistic/stale), but a fresh,
+        // independent GET reveals FreeAgent never actually persisted it - must not be trusted.
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillJson(status: "Open", items: [ItemUrl])),
+                1 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], totalValue: "125.50")),
+                2 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], totalValue: "121.00")),
+                _ => throw new InvalidOperationException("Unexpected request."),
+            });
+        var client = TestClientFactory.Create(handler);
+        var reconciler = new FreeAgentBillReconciler(client);
+
+        var result = await reconciler.ReconcileItemAmountAsync(
+            new FreeAgentBillIdentity(BillUrl),
+            new FreeAgentBillItemIdentity(ItemUrl),
+            new Money(125.50m, "GBP"));
+
+        Assert.True(result is FreeAgentVerificationFailed, $"Expected FreeAgentVerificationFailed but got {result}.");
+        Assert.Equal(3, handler.Requests.Count); // GET + PUT + independent verification GET
     }
 
     [Fact]
