@@ -359,6 +359,10 @@ resource "azurerm_function_app_flex_consumption" "functions" {
     KeyVault__Uri                    = azurerm_key_vault.invoice_manager.vault_uri
 
     DocumentIntelligence__Endpoint = azurerm_cognitive_account.document_intelligence.endpoint
+
+    # Non-secret: which FreeAgent host (sandbox/production) the unattended workflow calls.
+    # Must match whichever FreeAgent app AdminWeb authorized, or every FreeAgent call fails.
+    FreeAgent__Environment = local.freeagent_environment
   }
 
   # App Service Authentication (Easy Auth). Requires a valid Entra token on every
