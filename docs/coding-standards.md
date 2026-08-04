@@ -50,7 +50,7 @@ wrong) without the exception-based control flow.
   which no longer exist. Any other class in this codebase still doing the
   "lower layer throws, an upstream caller catches" thing is tech debt to fix
   when touched, not a sanctioned pattern to extend - see
-  [#93](https://github.com/Jawvig/InvoiceManager/issues/93) for the broader
+  [#93](https://github.com/omnics/InvoiceManager/issues/93) for the broader
   sweep to find remaining instances.
 
 ## Translate at the external-library boundary
@@ -102,7 +102,7 @@ are inspected right there and translated into `InvoiceConfigurationWriteResult`
 cases (`DuplicateInvoiceConfigurationId`, `InvoiceConfigurationConflict`,
 `ValidationSentinelConflict`) before the method returns - no Cosmos exception
 or status code crosses the repository's public surface. See
-[#93](https://github.com/Jawvig/InvoiceManager/issues/93) for the sweep to
+[#93](https://github.com/omnics/InvoiceManager/issues/93) for the sweep to
 find other classes that still don't.
 
 ## Avoid null to represent absence of a value
