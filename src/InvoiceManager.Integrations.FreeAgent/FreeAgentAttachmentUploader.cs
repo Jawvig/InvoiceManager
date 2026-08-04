@@ -34,7 +34,8 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
             var matchesOwnLastUpload =
                 expectedExisting is FreeAgentAttachmentMetadata expected &&
                 string.Equals(expected.FileName, existingMetadata.FileName, StringComparison.Ordinal) &&
-                expected.FileSizeBytes == existingMetadata.FileSizeBytes;
+                expected.FileSizeBytes == existingMetadata.FileSizeBytes &&
+                string.Equals(expected.ContentType, existingMetadata.ContentType, StringComparison.OrdinalIgnoreCase);
 
             if (matchesOwnLastUpload)
                 return new FreeAgentAttachmentAlreadyCorrect(existingMetadata);
