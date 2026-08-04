@@ -115,6 +115,78 @@ public sealed class FreeAgentBillReconcilerTests
     }
 
     [Fact]
+    public async Task ReconcileItemAmountAsync_ReturnsRemoteRejected_WhenA422HasNoLockedFieldSignal()
+    {
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillJson(status: "Open", items: [ItemUrl])),
+                // A normal validation 422 (e.g. an invalid amount), not FreeAgent's proven
+                // locked-field response - must never be reported as a lock.
+                1 => new HttpResponseMessage(System.Net.HttpStatusCode.UnprocessableEntity)
+                {
+                    Content = new StringContent(
+                        """{"errors": {"bill_items.0.total_value": [{"message": "is not a number"}]}}""",
+                        System.Text.Encoding.UTF8, "application/json"),
+                },
+                _ => throw new InvalidOperationException("Unexpected request."),
+            });
+        var client = TestClientFactory.Create(handler);
+        var reconciler = new FreeAgentBillReconciler(client);
+
+        var result = await reconciler.ReconcileItemAmountAsync(
+            new FreeAgentBillIdentity(BillUrl),
+            new FreeAgentBillItemIdentity(ItemUrl),
+            new Money(125.50m, "GBP"));
+
+        Assert.True(result is FreeAgentRemoteRejected, $"Expected FreeAgentRemoteRejected but got {result}.");
+    }
+
+    [Fact]
+    public async Task ReconcileItemAmountAsync_ReturnsVerificationFailed_WhenReturnedItemTotalDoesNotMatchRequest()
+    {
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillJson(status: "Open", items: [ItemUrl])),
+                // FreeAgent returns 200 but the item's total_value is unchanged (121.00, not the
+                // requested 125.50) - must not be trusted as a successful reconciliation.
+                1 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], totalValue: "121.00")),
+                _ => throw new InvalidOperationException("Unexpected request."),
+            });
+        var client = TestClientFactory.Create(handler);
+        var reconciler = new FreeAgentBillReconciler(client);
+
+        var result = await reconciler.ReconcileItemAmountAsync(
+            new FreeAgentBillIdentity(BillUrl),
+            new FreeAgentBillItemIdentity(ItemUrl),
+            new Money(125.50m, "GBP"));
+
+        Assert.True(result is FreeAgentVerificationFailed, $"Expected FreeAgentVerificationFailed but got {result}.");
+    }
+
+    [Fact]
+    public async Task ReconcileDateAsync_ReturnsVerificationFailed_WhenBillDateDoesNotReflectChange()
+    {
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], datedOn: "2026-08-02", dueOn: "2026-08-30")),
+                // FreeAgent's PUT succeeds and item URLs/due_on/status are preserved, but the
+                // date itself was not actually changed - must not be trusted as reconciled.
+                1 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], datedOn: "2026-08-02", dueOn: "2026-08-30")),
+                2 => JsonResponse(BillJson(status: "Open", items: [ItemUrl], datedOn: "2026-08-02", dueOn: "2026-08-30")),
+                _ => throw new InvalidOperationException("Unexpected request."),
+            });
+        var client = TestClientFactory.Create(handler);
+        var reconciler = new FreeAgentBillReconciler(client);
+
+        var result = await reconciler.ReconcileDateAsync(new FreeAgentBillIdentity(BillUrl), new DateOnly(2026, 8, 3));
+
+        Assert.True(result is FreeAgentVerificationFailed, $"Expected FreeAgentVerificationFailed but got {result}.");
+    }
+
+    [Fact]
     public async Task ReconcileDateAsync_VerifiesItemUrlsPreserved_AfterChangingDate()
     {
         var handler = new StubHttpMessageHandler((request, index) =>

@@ -56,8 +56,8 @@ public sealed class FreeAgentAttachmentUploaderTests
             index switch
             {
                 0 => JsonResponse(BillWithoutAttachmentJson()),
-                1 => JsonResponse(BillWithAttachmentJson("invoice.pdf", 1024)),
-                2 => JsonResponse(BillWithAttachmentJson("invoice.pdf", 1024)),
+                1 => JsonResponse(BillWithAttachmentJson("invoice.pdf", 3)),
+                2 => JsonResponse(BillWithAttachmentJson("invoice.pdf", 3)),
                 _ => throw new InvalidOperationException("Unexpected request."),
             });
         var client = TestClientFactory.Create(handler);

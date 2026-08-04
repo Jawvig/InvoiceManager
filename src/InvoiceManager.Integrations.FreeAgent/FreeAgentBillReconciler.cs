@@ -47,6 +47,13 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
                 "Changing dated_on unexpectedly altered bill item URLs, due_on, or status.");
         }
 
+        var newDatedOnText = newDatedOn.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        if (!string.Equals(after.DatedOn, newDatedOnText, StringComparison.Ordinal))
+        {
+            return new FreeAgentVerificationFailed(
+                "FreeAgent accepted the dated_on change but the bill's date does not reflect it.");
+        }
+
         return new FreeAgentReconciled(FreeAgentBillMapping.ToSnapshot(after));
     }
 
@@ -68,6 +75,17 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
 
         if (result.Value is not { } updated)
             return new FreeAgentRemoteRejected("FreeAgent did not return an updated bill.");
+
+        // Verify the specific item actually reflects the requested total - a 200 response
+        // does not by itself guarantee FreeAgent applied the change.
+        var updatedItem = (updated.BillItems ?? []).FirstOrDefault(i => string.Equals(i.Url, item.ItemUrl, StringComparison.Ordinal));
+        if (updatedItem?.TotalValue is not { } updatedTotalText ||
+            !decimal.TryParse(updatedTotalText, System.Globalization.CultureInfo.InvariantCulture, out var updatedTotal) ||
+            updatedTotal != newTotalValue.Amount)
+        {
+            return new FreeAgentVerificationFailed(
+                "FreeAgent accepted the item amount change but the item's total_value does not reflect it.");
+        }
 
         // Accept FreeAgent's VAT/net/rounding values as-is - never recompute locally.
         return new FreeAgentReconciled(FreeAgentBillMapping.ToSnapshot(updated));

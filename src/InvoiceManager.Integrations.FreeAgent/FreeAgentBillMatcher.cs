@@ -60,6 +60,9 @@ internal sealed class FreeAgentBillMatcher : IFreeAgentBillMatcher
             !decimal.TryParse(totalValueText, System.Globalization.CultureInfo.InvariantCulture, out var totalValue))
             return false;
 
+        if (!string.Equals(bill.Currency, criteria.ExpectedAmount.Currency.Code, StringComparison.OrdinalIgnoreCase))
+            return false;
+
         var expected = criteria.ExpectedAmount.Amount;
         return Math.Abs(totalValue - expected) <= criteria.AmountTolerance;
     }
