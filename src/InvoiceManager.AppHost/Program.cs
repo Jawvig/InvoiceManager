@@ -33,14 +33,15 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WaitFor(cosmos);
 
     // Microsoft delegated auth settings shared by the admin website and the Functions app.
-    // TenantId/ClientId/KeyVaultUri come from AppHost user-secrets and are required: fail fast
-    // here rather than forward placeholders that only defer the failure to the running apps.
-    // ClientSecret is deliberately NOT forwarded: both apps load it (and any other
-    // MicrosoftAuthorization secret) from Key Vault via DefaultAzureCredential, so it never
-    // passes through the AppHost environment.
+    // TenantId/ClientId come from AppHost user-secrets and are required: fail fast here rather
+    // than forward placeholders that only defer the failure to the running apps. ClientSecret is
+    // deliberately NOT forwarded: both apps load it (and any other MicrosoftAuthorization
+    // secret) from Key Vault via DefaultAzureCredential, so it never passes through the AppHost
+    // environment. KeyVaultUri is shared (not Microsoft-specific) - both apps also use it to
+    // load FreeAgentAuthorization secrets.
     var microsoftAuthTenantId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:TenantId");
     var microsoftAuthClientId = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:ClientId");
-    var microsoftAuthKeyVaultUri = builder.Configuration.GetRequiredValue("MicrosoftAuthorization:KeyVaultUri");
+    var keyVaultUri = builder.Configuration.GetRequiredValue("KeyVault:Uri");
     var adminGroupObjectId = builder.Configuration.GetRequiredValue("AdminAuthorization:GroupObjectId");
     // The Document Intelligence resource is provisioned by Terraform, not Aspire (there is no
     // local emulator for it), so its endpoint must point at a real deployed resource, the same
@@ -58,7 +59,7 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         // (for the shared token cache and the ClientSecret) instead of a placeholder.
         .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
         .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
-        .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
+        .WithEnvironment("KeyVault__Uri", keyVaultUri)
         .WithEnvironment("DocumentIntelligence__Endpoint", documentIntelligenceEndpoint)
         .WaitFor(cosmos)
         .WaitForCompletion(seeder)
@@ -69,7 +70,7 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithReference(cosmos)
         .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
         .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
-        .WithEnvironment("MicrosoftAuthorization__KeyVaultUri", microsoftAuthKeyVaultUri)
+        .WithEnvironment("KeyVault__Uri", keyVaultUri)
         .WithEnvironment("AdminAuthorization__GroupObjectId", adminGroupObjectId)
         .WithEnvironment("Functions__BaseUrl", functions.GetEndpoint("http"))
         .WaitFor(cosmos)

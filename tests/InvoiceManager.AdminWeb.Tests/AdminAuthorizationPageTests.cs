@@ -1,3 +1,4 @@
+using InvoiceManager.Infrastructure;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.AdminWeb.Pages;
 using InvoiceManager.AdminWeb.Services;
@@ -184,7 +185,7 @@ public sealed class AdminAuthorizationPageTests
                         ["MicrosoftAuthorization:TenantId"] = "11111111-1111-1111-1111-111111111111",
                         ["MicrosoftAuthorization:ClientId"] = "22222222-2222-2222-2222-222222222222",
                         ["MicrosoftAuthorization:ClientSecret"] = "client-secret",
-                        ["MicrosoftAuthorization:KeyVaultUri"] = "https://example.vault.azure.net/",
+                        ["KeyVault:Uri"] = "https://example.vault.azure.net/",
                         ["MicrosoftAuthorization:TokenCacheSecretName"] = "MicrosoftAuthorization--MsalTokenCache",
                         ["AdminAuthorization:GroupObjectId"] = "33333333-3333-3333-3333-333333333333"
                     });
@@ -217,8 +218,11 @@ public sealed class AdminAuthorizationPageTests
             {
                 TenantId = "11111111-1111-1111-1111-111111111111",
                 ClientId = "22222222-2222-2222-2222-222222222222",
-                ClientSecret = "client-secret",
-                KeyVaultUri = new Uri("https://example.vault.azure.net/")
+                ClientSecret = "client-secret"
+            }),
+            Options.Create(new KeyVaultOptions
+            {
+                Uri = new Uri("https://example.vault.azure.net/")
             }));
 
         var identity = isSignedIn

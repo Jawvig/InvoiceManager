@@ -25,6 +25,6 @@ public sealed class UnavailableMicrosoftAuthorizationStore : IMicrosoftAuthoriza
     private static InvalidOperationException CreateConfigurationException()
     {
         return new InvalidOperationException(
-            "MicrosoftAuthorization:KeyVaultUri is required before Microsoft authorization can be persisted.");
+            "KeyVault:Uri is required before Microsoft authorization can be persisted.");
     }
 }

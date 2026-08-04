@@ -28,7 +28,18 @@ param(
 
     # Use an already-published admin website image reference (no build/push). Mutually
     # exclusive with -PublishAdminWebImage; use when the image was pushed out-of-band.
-    [string] $AdminWebImage
+    [string] $AdminWebImage,
+
+    # FreeAgent has no Terraform provider (its OAuth app is registered manually in FreeAgent's
+    # developer dashboard), so its client ID/secret cannot be provisioned the way
+    # MicrosoftAuthorization's are. By default this script prompts for each value only when it
+    # is missing from the target environment's Key Vault, consistent with the rest of the
+    # script's "ensure everything is in place" behaviour. These two flags force re-entry of one
+    # value even when it is already present - separate switches because the client secret
+    # rotates far more often than the client ID.
+    [switch] $PromptFreeAgentClientId,
+
+    [switch] $PromptFreeAgentClientSecret
 )
 
 if ($PublishAdminWebImage -and $AdminWebImage) {
@@ -288,6 +299,100 @@ function Set-ProjectUserSecret {
     )
 }
 
+function Test-KeyVaultSecretExists {
+    param(
+        [string] $VaultName,
+        [string] $SecretName
+    )
+
+    $null = az keyvault secret show --vault-name $VaultName --name $SecretName --output json 2>$null
+    $exists = $LASTEXITCODE -eq 0
+    $global:LASTEXITCODE = 0
+    return $exists
+}
+
+function Set-KeyVaultSecretFromPrompt {
+    param(
+        [string] $VaultName,
+        [string] $SecretName,
+        [string] $PromptText,
+        [switch] $AsSecureString
+    )
+
+    if ($AsSecureString) {
+        $secureValue = Read-Host -Prompt $PromptText -AsSecureString
+        $plainValue = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
+            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureValue))
+    }
+    else {
+        $plainValue = Read-Host -Prompt $PromptText
+    }
+
+    if ([string]::IsNullOrWhiteSpace($plainValue)) {
+        throw "$SecretName was not provided. Re-run and enter a value, or set it directly with 'az keyvault secret set'."
+    }
+
+    try {
+        Invoke-CheckedCommand -Command @(
+            "az", "keyvault", "secret", "set",
+            "--vault-name", $VaultName,
+            "--name", $SecretName,
+            "--value", $plainValue,
+            "--output", "none"
+        )
+    }
+    finally {
+        $plainValue = $null
+    }
+}
+
+function Set-FreeAgentClientCredentials {
+    param(
+        [string] $TerraformRoot,
+        [string] $Environment,
+        [switch] $ForcePromptClientId,
+        [switch] $ForcePromptClientSecret
+    )
+
+    Write-Section "Ensuring FreeAgent client credentials"
+
+    Push-Location $TerraformRoot
+    try {
+        $outputs = Invoke-JsonCommand -Command @("terraform", "output", "-json")
+    }
+    finally {
+        Pop-Location
+    }
+
+    $keyVaultName = $outputs.key_vault_name.value
+    $appName = if ($Environment -eq "production") { "Omnics InvoiceManager" } else { "Omnics InvoiceManager Sandbox" }
+
+    $clientIdSecretName = "FreeAgentAuthorization--ClientId"
+    $clientSecretSecretName = "FreeAgentAuthorization--ClientSecret"
+
+    $needsClientId = $ForcePromptClientId -or -not (Test-KeyVaultSecretExists -VaultName $keyVaultName -SecretName $clientIdSecretName)
+    $needsClientSecret = $ForcePromptClientSecret -or -not (Test-KeyVaultSecretExists -VaultName $keyVaultName -SecretName $clientSecretSecretName)
+
+    if (-not $needsClientId -and -not $needsClientSecret) {
+        Write-Host "FreeAgent client ID and client secret already present in Key Vault '$keyVaultName'."
+        return
+    }
+
+    Write-Host "Register the '$appName' app at https://dev.freeagent.com/ (OAuth identifier and secret) before continuing, if you have not already."
+
+    if ($needsClientId) {
+        Set-KeyVaultSecretFromPrompt -VaultName $keyVaultName -SecretName $clientIdSecretName `
+            -PromptText "FreeAgent OAuth identifier for '$appName'"
+    }
+
+    if ($needsClientSecret) {
+        Set-KeyVaultSecretFromPrompt -VaultName $keyVaultName -SecretName $clientSecretSecretName `
+            -PromptText "FreeAgent OAuth secret for '$appName'" -AsSecureString
+    }
+
+    Write-Host "FreeAgent client credentials stored in Key Vault '$keyVaultName'."
+}
+
 function Set-TestAdminWebLocalConfiguration {
     param(
         [string] $TerraformRoot,
@@ -318,7 +423,7 @@ function Set-TestAdminWebLocalConfiguration {
     foreach ($project in @($adminWebProject, $appHostProject)) {
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:TenantId" -Value $outputs.tenant_id.value
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
-        Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:KeyVaultUri" -Value $outputs.key_vault_uri.value
+        Set-ProjectUserSecret -ProjectPath $project -Key "KeyVault:Uri" -Value $outputs.key_vault_uri.value
         Set-ProjectUserSecret -ProjectPath $project -Key "AdminAuthorization:GroupObjectId" -Value $outputs.adminweb_admin_group_object_id.value
     }
 
@@ -670,6 +775,8 @@ try {
         Write-Host "Terraform plan completed with no changes."
         if (-not $PlanOnly) {
             Remove-InjectedFunctionStorageConnectionString -TerraformRoot $terraformRoot
+            Set-FreeAgentClientCredentials -TerraformRoot $terraformRoot -Environment $Environment `
+                -ForcePromptClientId:$PromptFreeAgentClientId -ForcePromptClientSecret:$PromptFreeAgentClientSecret
             Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
             if ($Environment -eq "test") {
                 Set-TestAdminWebLocalConfiguration -TerraformRoot $terraformRoot -RepoRoot $repoRoot
@@ -715,6 +822,9 @@ try {
     Invoke-CheckedCommand -Command $applyCommand
 
     Remove-InjectedFunctionStorageConnectionString -TerraformRoot $terraformRoot
+
+    Set-FreeAgentClientCredentials -TerraformRoot $terraformRoot -Environment $Environment `
+        -ForcePromptClientId:$PromptFreeAgentClientId -ForcePromptClientSecret:$PromptFreeAgentClientSecret
 
     Invoke-ConfigurationSeeder -TerraformRoot $terraformRoot -RepoRoot $repoRoot -Environment $Environment -ClearDatabase:$ClearDatabase
 

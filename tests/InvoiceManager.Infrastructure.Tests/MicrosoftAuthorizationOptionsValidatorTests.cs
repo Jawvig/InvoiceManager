@@ -12,8 +12,7 @@ public sealed class MicrosoftAuthorizationOptionsValidatorTests
         var result = validator.Validate(null, new MicrosoftAuthorizationOptions
         {
             ClientId = "client-id",
-            ClientSecret = "client-secret",
-            KeyVaultUri = new Uri("https://example.vault.azure.net/")
+            ClientSecret = "client-secret"
         });
 
         Assert.True(result.Failed);
@@ -29,8 +28,7 @@ public sealed class MicrosoftAuthorizationOptionsValidatorTests
         var result = validator.Validate(null, new MicrosoftAuthorizationOptions
         {
             TenantId = "tenant-id",
-            ClientSecret = "client-secret",
-            KeyVaultUri = new Uri("https://example.vault.azure.net/")
+            ClientSecret = "client-secret"
         });
 
         Assert.True(result.Failed);
@@ -46,30 +44,12 @@ public sealed class MicrosoftAuthorizationOptionsValidatorTests
         var result = validator.Validate(null, new MicrosoftAuthorizationOptions
         {
             TenantId = "tenant-id",
-            ClientId = "client-id",
-            KeyVaultUri = new Uri("https://example.vault.azure.net/")
+            ClientId = "client-id"
         });
 
         Assert.True(result.Failed);
         Assert.Contains(
             "MicrosoftAuthorization:ClientSecret is required.",
-            result.Failures);
-    }
-
-    [Fact]
-    public void Validate_Fails_WhenKeyVaultUriIsMissing()
-    {
-        var validator = new MicrosoftAuthorizationOptionsValidator();
-        var result = validator.Validate(null, new MicrosoftAuthorizationOptions
-        {
-            TenantId = "tenant-id",
-            ClientId = "client-id",
-            ClientSecret = "client-secret"
-        });
-
-        Assert.True(result.Failed);
-        Assert.Contains(
-            "MicrosoftAuthorization:KeyVaultUri is required.",
             result.Failures);
     }
 
@@ -81,8 +61,7 @@ public sealed class MicrosoftAuthorizationOptionsValidatorTests
         {
             TenantId = "tenant-id",
             ClientId = "client-id",
-            ClientSecret = "client-secret",
-            KeyVaultUri = new Uri("https://example.vault.azure.net/")
+            ClientSecret = "client-secret"
         });
 
         Assert.Equal(ValidateOptionsResult.Success, result);
@@ -96,6 +75,6 @@ public sealed class MicrosoftAuthorizationOptionsValidatorTests
         Assert.False(await store.HasTokenCacheAsync());
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => store.SaveTokenCacheAsync([1, 2, 3]));
-        Assert.Contains("MicrosoftAuthorization:KeyVaultUri is required", exception.Message);
+        Assert.Contains("KeyVault:Uri is required", exception.Message);
     }
 }
