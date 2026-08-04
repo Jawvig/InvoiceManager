@@ -20,6 +20,11 @@ terraform {
       version = "~> 6.0"
     }
 
+    namecheap = {
+      source  = "namecheap/namecheap"
+      version = "~> 2.7"
+    }
+
     time = {
       source  = "hashicorp/time"
       version = "~> 0.13"

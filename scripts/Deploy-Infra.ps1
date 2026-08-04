@@ -39,7 +39,10 @@ param(
     # rotates far more often than the client ID.
     [switch] $PromptFreeAgentClientId,
 
-    [switch] $PromptFreeAgentClientSecret
+    [switch] $PromptFreeAgentClientSecret,
+
+    # Replace the current user's repository-specific Namecheap API key credential.
+    [switch] $PromptNamecheapApiKey
 )
 
 if ($PublishAdminWebImage -and $AdminWebImage) {
@@ -132,6 +135,226 @@ function Invoke-CheckedCommand {
     & $Command[0] @arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Command failed: $($Command -join ' ')"
+    }
+}
+
+$script:NamecheapCredentialTarget = "InvoiceManager/NamecheapApiKey"
+
+function Initialize-WindowsCredentialManagerInterop {
+    if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+            [System.Runtime.InteropServices.OSPlatform]::Windows)) {
+        throw "Namecheap API key persistence requires Windows Credential Manager. Run this deployment script on Windows."
+    }
+
+    if ($null -ne ("InvoiceManager.Deployment.WindowsCredentialManager" -as [type])) {
+        return
+    }
+
+    $null = Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security;
+
+namespace InvoiceManager.Deployment
+{
+    public static class WindowsCredentialManager
+    {
+        private const uint CredentialTypeGeneric = 1;
+        private const uint CredentialPersistLocalMachine = 2;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct NativeCredential
+        {
+            public uint Flags;
+            public uint Type;
+            public string TargetName;
+            public string Comment;
+            public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+            public uint CredentialBlobSize;
+            public IntPtr CredentialBlob;
+            public uint Persist;
+            public uint AttributeCount;
+            public IntPtr Attributes;
+            public string TargetAlias;
+            public string UserName;
+        }
+
+        [DllImport("advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CredWrite(ref NativeCredential credential, uint flags);
+
+        [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CredRead(string target, uint type, uint flags, out IntPtr credential);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern void CredFree(IntPtr credential);
+
+        public static void Write(string target, SecureString value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                throw new ArgumentException("Credential value must not be empty.", "value");
+            }
+
+            IntPtr valuePointer = Marshal.SecureStringToGlobalAllocUnicode(value);
+            try
+            {
+                var credential = new NativeCredential
+                {
+                    Type = CredentialTypeGeneric,
+                    TargetName = target,
+                    CredentialBlobSize = checked((uint)value.Length * 2),
+                    CredentialBlob = valuePointer,
+                    Persist = CredentialPersistLocalMachine,
+                    UserName = "InvoiceManager deployment"
+                };
+
+                if (!CredWrite(ref credential, 0))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(),
+                        "Windows Credential Manager could not store the Namecheap API key.");
+                }
+            }
+            finally
+            {
+                Marshal.ZeroFreeGlobalAllocUnicode(valuePointer);
+            }
+        }
+
+        public static SecureString Read(string target)
+        {
+            IntPtr credentialPointer;
+            if (!CredRead(target, CredentialTypeGeneric, 0, out credentialPointer))
+            {
+                int error = Marshal.GetLastWin32Error();
+                if (error == 1168) // ERROR_NOT_FOUND
+                {
+                    return null;
+                }
+
+                throw new Win32Exception(error,
+                    "Windows Credential Manager could not retrieve the Namecheap API key.");
+            }
+
+            try
+            {
+                var credential = (NativeCredential)Marshal.PtrToStructure(
+                    credentialPointer, typeof(NativeCredential));
+                var value = new SecureString();
+                int characterCount = checked((int)credential.CredentialBlobSize / 2);
+                for (int index = 0; index < characterCount; index++)
+                {
+                    value.AppendChar((char)Marshal.ReadInt16(credential.CredentialBlob, index * 2));
+                }
+
+                value.MakeReadOnly();
+                return value;
+            }
+            finally
+            {
+                CredFree(credentialPointer);
+            }
+        }
+    }
+}
+"@
+}
+
+function Get-NamecheapApiKey {
+    param([switch] $ForcePrompt)
+
+    Initialize-WindowsCredentialManagerInterop
+
+    if (-not $ForcePrompt) {
+        try {
+            $storedValue = [InvoiceManager.Deployment.WindowsCredentialManager]::Read($script:NamecheapCredentialTarget)
+        }
+        catch {
+            throw "Failed to retrieve '$script:NamecheapCredentialTarget' from Windows Credential Manager for the current user. Remove the credential and re-run the script to recreate it. $($_.Exception.Message)"
+        }
+
+        if ($null -ne $storedValue -and $storedValue.Length -gt 0) {
+            Write-Host "Using the Namecheap API key stored for the current Windows user."
+            return $storedValue
+        }
+
+        if ($null -ne $storedValue) {
+            $storedValue.Dispose()
+        }
+    }
+
+    $promptAction = if ($ForcePrompt) { "replacement" } else { "initial" }
+    $secureValue = Read-Host -Prompt "Enter the $promptAction Namecheap API key" -AsSecureString
+    if ($secureValue.Length -eq 0) {
+        $secureValue.Dispose()
+        throw "No Namecheap API key was entered. Re-run the script and enter the key."
+    }
+
+    try {
+        [InvoiceManager.Deployment.WindowsCredentialManager]::Write(
+            $script:NamecheapCredentialTarget,
+            $secureValue)
+    }
+    catch {
+        $secureValue.Dispose()
+        throw "Failed to save '$script:NamecheapCredentialTarget' in Windows Credential Manager for the current user. $($_.Exception.Message)"
+    }
+
+    Write-Host "Stored the Namecheap API key in Windows Credential Manager for the current user."
+    return $secureValue
+}
+
+function Initialize-NamecheapNonSecretEnvironment {
+    $settings = @(
+        @{ Name = "NAMECHEAP_USER_NAME"; Prompt = "Namecheap account user name" },
+        @{ Name = "NAMECHEAP_API_USER"; Prompt = "Namecheap API user" },
+        @{ Name = "NAMECHEAP_CLIENT_IP"; Prompt = "Whitelisted public IPv4 address for this machine" }
+    )
+
+    foreach ($setting in $settings) {
+        $name = $setting.Name
+        $processValue = [Environment]::GetEnvironmentVariable($name, "Process")
+        $userValue = [Environment]::GetEnvironmentVariable($name, "User")
+        $value = if (-not [string]::IsNullOrWhiteSpace($processValue)) {
+            $processValue.Trim()
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($userValue)) {
+            $userValue.Trim()
+        }
+        else {
+            (Read-Host -Prompt $setting.Prompt).Trim()
+        }
+
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            throw "$name is required by the Namecheap Terraform provider."
+        }
+
+        if ($name -eq "NAMECHEAP_CLIENT_IP") {
+            $parsedAddress = $null
+            $isIpAddress = [System.Net.IPAddress]::TryParse($value, [ref] $parsedAddress)
+            if (-not $isIpAddress -or
+                $parsedAddress.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+                throw "NAMECHEAP_CLIENT_IP must be the whitelisted public IPv4 address for this machine."
+            }
+        }
+
+        if ($userValue -ne $value) {
+            $persist = Read-Host -Prompt "Persist $name for the current Windows user? [Y/n]"
+            if ([string]::IsNullOrWhiteSpace($persist) -or $persist -match "^[Yy]") {
+                try {
+                    [Environment]::SetEnvironmentVariable($name, $value, "User")
+                    Write-Host "Stored $name as a current-user environment variable."
+                }
+                catch {
+                    throw "Could not persist $name for the current Windows user. $($_.Exception.Message)"
+                }
+            }
+        }
+
+        # Refresh this process even when the value was just written at User scope.
+        [Environment]::SetEnvironmentVariable($name, $value, "Process")
     }
 }
 
@@ -645,6 +868,9 @@ if (-not $SkipGitHubManagement -and -not (Test-Command "gh")) {
 Write-Host "Terraform: $(terraform version -json | ConvertFrom-Json | Select-Object -ExpandProperty terraform_version)"
 Write-Host "Azure CLI: $(az version --query '\"azure-cli\"' --output tsv)"
 
+Write-Section "Configuring Namecheap access"
+Initialize-NamecheapNonSecretEnvironment
+
 Write-Section "Checking Azure login"
 $account = Ensure-AzureLogin
 $activeSubscriptionId = $account.id
@@ -737,6 +963,17 @@ Ensure-StorageContainer -Name $stateContainer -StorageAccount $stateStorageAccou
 Write-Section "Running Terraform"
 
 $env:ARM_ACCESS_KEY = $stateStorageKey
+$namecheapApiKey = Get-NamecheapApiKey -ForcePrompt:$PromptNamecheapApiKey
+$previousNamecheapApiKey = [Environment]::GetEnvironmentVariable("NAMECHEAP_API_KEY", "Process")
+$namecheapApiKeyPointer = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($namecheapApiKey)
+try {
+    $namecheapApiKeyPlaintext = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($namecheapApiKeyPointer)
+    [Environment]::SetEnvironmentVariable("NAMECHEAP_API_KEY", $namecheapApiKeyPlaintext, "Process")
+}
+finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($namecheapApiKeyPointer)
+    $namecheapApiKeyPlaintext = $null
+}
 
 Push-Location $terraformRoot
 try {
@@ -859,4 +1096,12 @@ finally {
     Pop-Location
     Remove-Item Env:\ARM_ACCESS_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue
+    if ($null -eq $previousNamecheapApiKey) {
+        Remove-Item Env:\NAMECHEAP_API_KEY -ErrorAction SilentlyContinue
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("NAMECHEAP_API_KEY", $previousNamecheapApiKey, "Process")
+    }
+    $previousNamecheapApiKey = $null
+    $namecheapApiKey.Dispose()
 }

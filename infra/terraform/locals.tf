@@ -39,16 +39,18 @@ locals {
   document_intelligence_name = "${local.resource_name_prefix}-docintel"
 
   container_app_environment_name = "${local.resource_name_prefix}-cae"
-  # A stable app name lets us precompute the ingress FQDN for the OIDC redirect URI
-  # from the environment default domain, avoiding a dependency cycle with the app
-  # registration (see main.tf, azuread_application redirect_uris).
+  # Stable names let us precompute both ingress FQDNs for the OIDC redirect URIs,
+  # avoiding a dependency cycle with the app registration (see main.tf).
   adminweb_container_app_name = "adminweb"
-  # Precomputed from the environment default domain (not the app resource) to avoid a
-  # dependency cycle with the app registration that consumes it as a redirect URI.
-  adminweb_fqdn                  = "${local.adminweb_container_app_name}.${azurerm_container_app_environment.main.default_domain}"
-  adminweb_signin_redirect_uri   = "https://${local.adminweb_fqdn}/signin-oidc"
-  adminweb_workflow_redirect_uri = "https://${local.adminweb_fqdn}/workflow-signin-oidc"
-  workflow_redirect_uris         = [for uri in var.redirect_uris : replace(uri, "/signin-oidc", "/workflow-signin-oidc")]
+  adminweb_custom_hostname    = "${lower(var.adminweb_hostname_base)}${local.environment_suffix}"
+  adminweb_custom_fqdn        = "${local.adminweb_custom_hostname}.${var.adminweb_dns_zone}"
+  adminweb_default_fqdn       = "${local.adminweb_container_app_name}.${azurerm_container_app_environment.main.default_domain}"
+
+  adminweb_signin_redirect_uri           = "https://${local.adminweb_custom_fqdn}/signin-oidc"
+  adminweb_workflow_redirect_uri         = "https://${local.adminweb_custom_fqdn}/workflow-signin-oidc"
+  adminweb_default_signin_redirect_uri   = "https://${local.adminweb_default_fqdn}/signin-oidc"
+  adminweb_default_workflow_redirect_uri = "https://${local.adminweb_default_fqdn}/workflow-signin-oidc"
+  workflow_redirect_uris                 = [for uri in var.redirect_uris : replace(uri, "/signin-oidc", "/workflow-signin-oidc")]
 
   # Built-in Cosmos DB SQL data-plane role definition ids (fixed GUIDs on every account).
   cosmos_data_contributor_role_id = "00000000-0000-0000-0000-000000000002"
