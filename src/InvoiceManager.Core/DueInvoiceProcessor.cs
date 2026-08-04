@@ -125,7 +125,9 @@ public sealed class DueInvoiceProcessor(
         ProcessingNoMatch => "no_match",
         ProcessingNotFound => "not_found",
         ProcessingFailed => "failed",
-        _ => "unknown",
+        ProcessingFreeAgentAmbiguous => "freeagent_ambiguous",
+        ProcessingFreeAgentInterventionRequired => "freeagent_intervention_required",
+        ProcessingFreeAgentConflict => "freeagent_conflict",
     };
 
     private async Task<DueInvoiceProcessingResult> ProcessAsync(
@@ -604,18 +606,27 @@ public sealed class DueInvoiceProcessor(
         activity.SetTag("invoice.no_match_count", results.Count(r => r is ProcessingNoMatch));
         activity.SetTag("invoice.not_found_count", results.Count(r => r is ProcessingNotFound));
         activity.SetTag("invoice.failed_count", results.Count(r => r is ProcessingFailed));
+        activity.SetTag("invoice.freeagent_ambiguous_count", results.Count(r => r is ProcessingFreeAgentAmbiguous));
+        activity.SetTag(
+            "invoice.freeagent_intervention_required_count", results.Count(r => r is ProcessingFreeAgentInterventionRequired));
+        activity.SetTag("invoice.freeagent_conflict_count", results.Count(r => r is ProcessingFreeAgentConflict));
     }
 
     private void LogRunSummary(IReadOnlyList<DueInvoiceProcessingResult> results)
     {
         logger.LogInformation(
             "Due invoice processing run complete: {ProcessedCount} processed, {SavedCount} saved, " +
-            "{ReconciledCount} reconciled, {NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed.",
+            "{ReconciledCount} reconciled, {NoMatchCount} no match yet, {NotFoundCount} not found, {FailedCount} failed, " +
+            "{FreeAgentAmbiguousCount} FreeAgent ambiguous, {FreeAgentInterventionCount} FreeAgent intervention required, " +
+            "{FreeAgentConflictCount} FreeAgent conflict.",
             results.Count,
             results.Count(r => r is ProcessingSucceeded),
             results.Count(r => r is ProcessingReconciled),
             results.Count(r => r is ProcessingNoMatch),
             results.Count(r => r is ProcessingNotFound),
-            results.Count(r => r is ProcessingFailed));
+            results.Count(r => r is ProcessingFailed),
+            results.Count(r => r is ProcessingFreeAgentAmbiguous),
+            results.Count(r => r is ProcessingFreeAgentInterventionRequired),
+            results.Count(r => r is ProcessingFreeAgentConflict));
     }
 }
