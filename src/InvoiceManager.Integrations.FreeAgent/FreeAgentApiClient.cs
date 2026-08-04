@@ -175,15 +175,20 @@ internal sealed class FreeAgentApiClient
 
         // url is frequently an absolute resource URL echoed back by FreeAgent itself (a bill's
         // own "url" field, an explanation/transaction url, ...) rather than a path relative to
-        // BaseAddress. HttpClient only enforces BaseAddress for relative URIs, so an absolute
-        // URI bypasses it entirely - verify the host explicitly before ever attaching the
-        // bearer token, so this boundary's host allowlist actually holds for every request.
-        if (request.RequestUri is { IsAbsoluteUri: true } absolute &&
-            (!string.Equals(absolute.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-             !string.Equals(absolute.Host, httpClient.BaseAddress!.Host, StringComparison.OrdinalIgnoreCase)))
+        // BaseAddress. Resolve against BaseAddress exactly as HttpClient itself will, rather than
+        // checking request.RequestUri.IsAbsoluteUri directly - a scheme-relative reference like
+        // "//attacker.example/bills/1" is NOT absolute on its own (no scheme), so it would skip
+        // an IsAbsoluteUri-gated check, but RFC 3986 URI-combining rules mean HttpClient still
+        // resolves it against BaseAddress by replacing the entire host, not just appending a
+        // path. Resolving here first closes that gap and holds for every request shape.
+        var resolved = request.RequestUri!.IsAbsoluteUri
+            ? request.RequestUri
+            : new Uri(httpClient.BaseAddress!, request.RequestUri);
+        if (!string.Equals(resolved.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(resolved.Host, httpClient.BaseAddress!.Host, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                $"Refusing to call FreeAgent host '{absolute.Scheme}://{absolute.Host}': expected 'https://{httpClient.BaseAddress!.Host}'.");
+                $"Refusing to call FreeAgent host '{resolved.Scheme}://{resolved.Host}': expected 'https://{httpClient.BaseAddress!.Host}'.");
         }
 
         var token = await tokenProvider.AcquireTokenAsync(cancellationToken);
