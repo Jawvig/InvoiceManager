@@ -144,14 +144,36 @@ internal sealed class FreeAgentApiClient
         return body?.BankAccounts.Select(a => a.Url).OfType<string>().ToList() ?? [];
     }
 
+    private const int ExplanationsPageSize = 100;
+
     public async Task<IReadOnlyList<BankTransactionExplanationWire>> GetExplanationsAsync(
         string bankAccountUrl, CancellationToken cancellationToken)
     {
-        var url = $"bank_transaction_explanations?bank_account={Uri.EscapeDataString(bankAccountUrl)}";
-        using var response = await SendAsync(HttpMethod.Get, url, content: null, cancellationToken);
-        await EnsureSuccessAsync(response, "listing bank transaction explanations", cancellationToken);
-        var body = await response.Content.ReadFromJsonAsync<BankTransactionExplanationsResponseWire>(SerializerOptions, cancellationToken);
-        return body?.Explanations ?? [];
+        // Paginated exactly like GetBillsPageAsync's caller pages bills - a bank account can
+        // carry far more than one page of explanations, and a Guess beyond the first page must
+        // still be found, not silently missed and misreported as a generic lock.
+        var explanations = new List<BankTransactionExplanationWire>();
+        var page = 1;
+        while (true)
+        {
+            var url =
+                $"bank_transaction_explanations?bank_account={Uri.EscapeDataString(bankAccountUrl)}" +
+                $"&page={page}&per_page={ExplanationsPageSize}";
+            using var response = await SendAsync(HttpMethod.Get, url, content: null, cancellationToken);
+            await EnsureSuccessAsync(response, "listing bank transaction explanations", cancellationToken);
+            var body = await response.Content.ReadFromJsonAsync<BankTransactionExplanationsResponseWire>(SerializerOptions, cancellationToken);
+            var pageResults = body?.Explanations ?? [];
+            if (pageResults.Count == 0)
+                break;
+
+            explanations.AddRange(pageResults);
+            if (pageResults.Count < ExplanationsPageSize)
+                break;
+
+            page++;
+        }
+
+        return explanations;
     }
 
     public async Task DeleteExplanationAsync(string explanationUrl, CancellationToken cancellationToken)
