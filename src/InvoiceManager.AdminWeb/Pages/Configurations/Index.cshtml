@@ -5,7 +5,7 @@
     <div class="page-heading"><p class="eyebrow">Operations</p><h1>Invoice configurations</h1>
         <p class="summary">Manage recurring invoice expectations. Changes apply only to future expected records.</p></div>
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="notice">@Model.StatusMessage</div> }
-    @if (!Model.HasWorkflowAuthorization) { <div class="notice warning">Workflow authorization is not captured. You may list configurations and inspect history, but configuration changes are disabled.</div> }
+    @if (!Model.HasWorkflowAuthorization) { <div class="notice warning">Microsoft authorization is not captured. You may list configurations and inspect history, but configuration changes are disabled.</div> }
     <div class="actions">
         @if (Model.EditingEnabled)
         {
@@ -14,7 +14,7 @@
         }
         else
         {
-            <button type="button" class="primary-action" disabled title="Capture workflow authorization before creating configurations.">Create</button>
+            <button type="button" class="primary-action" disabled title="Capture Microsoft authorization before creating configurations.">Create</button>
         }
     </div>
     <div class="configuration-list">

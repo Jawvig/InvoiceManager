@@ -29,6 +29,6 @@ public sealed class AdminWebSignInSmokeTests(AdminWebAppHostFixture appHost)
         await page.GotoAsync(new Uri(appHost.AdminWebUrl, "/Authorization").ToString());
 
         Assert.DoesNotContain("/signin-oidc", page.Url, StringComparison.OrdinalIgnoreCase);
-        await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync("Microsoft authorization");
+        await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync("Authorization");
     }
 }

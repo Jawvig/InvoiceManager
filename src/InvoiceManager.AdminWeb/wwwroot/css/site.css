@@ -198,6 +198,10 @@ h1 {
   gap: 16px;
 }
 
+.status-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .status-panel {
   min-height: 160px;
   padding: 20px;
@@ -206,10 +210,26 @@ h1 {
   background: var(--panel);
 }
 
-.status-panel h2 {
+.status-panel h2,
+.status-panel h3 {
   margin: 0 0 16px;
   font-size: 1rem;
   font-weight: 650;
+}
+
+.auth-subsection {
+  margin-bottom: 32px;
+}
+
+.auth-subsection h2 {
+  font-size: 1.4rem;
+  margin: 0 0 16px;
+}
+
+.section-divider {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 40px 0;
 }
 
 .status-value {

@@ -441,6 +441,10 @@ resource "azurerm_container_app" "adminweb" {
         value = azurerm_key_vault.invoice_manager.vault_uri
       }
       env {
+        name  = "FreeAgent__Environment"
+        value = local.freeagent_environment
+      }
+      env {
         name  = "AdminAuthorization__GroupObjectId"
         value = azuread_group.adminweb_administrators.object_id
       }

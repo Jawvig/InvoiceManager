@@ -446,6 +446,8 @@ function Set-TestAdminWebLocalConfiguration {
         Set-ProjectUserSecret -ProjectPath $project -Key "MicrosoftAuthorization:ClientId" -Value $outputs.application_client_id.value
         Set-ProjectUserSecret -ProjectPath $project -Key "KeyVault:Uri" -Value $outputs.key_vault_uri.value
         Set-ProjectUserSecret -ProjectPath $project -Key "AdminAuthorization:GroupObjectId" -Value $outputs.adminweb_admin_group_object_id.value
+        # Always Sandbox here: this whole block only runs for the "test" environment.
+        Set-ProjectUserSecret -ProjectPath $project -Key "FreeAgent:Environment" -Value "Sandbox"
     }
 
     # Only the AppHost forwards this to the Functions project (see AppHost/Program.cs); the

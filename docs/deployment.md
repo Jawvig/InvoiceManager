@@ -383,7 +383,12 @@ dotnet user-secrets set "MicrosoftAuthorization:TenantId" "<tenant-id>" --projec
 dotnet user-secrets set "MicrosoftAuthorization:ClientId" "<application-client-id>" --project src/InvoiceManager.AdminWeb
 dotnet user-secrets set "KeyVault:Uri" "https://<key-vault-name>.vault.azure.net/" --project src/InvoiceManager.AdminWeb
 dotnet user-secrets set "AdminAuthorization:GroupObjectId" "<admin-group-object-id>" --project src/InvoiceManager.AdminWeb
+dotnet user-secrets set "FreeAgent:Environment" "Sandbox" --project src/InvoiceManager.AdminWeb
 ```
+
+`FreeAgentAuthorization:ClientId`/`ClientSecret` are not set here — like
+`MicrosoftAuthorization:ClientSecret`, they are loaded from Key Vault at
+startup, never from local user-secrets.
 
 `KeyVault:Uri` is shared, application-wide configuration (not specific to
 Microsoft authorization) — every secret-backed store, including the FreeAgent
@@ -408,6 +413,35 @@ validating the final authentication configuration.
 Local developers must be signed in to Azure with access to the test Key Vault.
 Key Vault access is controlled through Azure RBAC rather than legacy vault
 access policies.
+
+#### FreeAgent authorization
+
+The `/Authorization` page also has a FreeAgent section, structurally parallel
+to the Microsoft one above but visually separated and backed by its own form.
+It registers a second named OAuth scheme (`FreeAgentWorkflowAuthorization`,
+via `AddOAuth`) whose authorization/token endpoints are derived from
+`FreeAgent:Environment` (`Sandbox` or `Production` — see `FreeAgentHosts`),
+never from a separately configurable URL. On successful authorization, the
+refresh token is written straight to Key Vault
+(`FreeAgentAuthorization--RefreshToken`, via `IFreeAgentAuthorizationStore`)
+and never placed in the authentication cookie.
+
+Two separate FreeAgent OAuth apps exist, registered manually at
+[dev.freeagent.com](https://dev.freeagent.com/) (no Terraform provider — see
+`Deploy-Infra.ps1`'s FreeAgent client-credential provisioning above):
+
+- **`Omnics InvoiceManager Sandbox`** — used by the test environment and by
+  opt-in sandbox integration tests. Redirect URI:
+  `https://<test-adminweb-fqdn>/freeagent-authorization/callback`, plus
+  `https://localhost:5001/freeagent-authorization/callback` for local dev.
+- **`Omnics InvoiceManager`** — used by production. Redirect URI:
+  `https://<production-adminweb-fqdn>/freeagent-authorization/callback`.
+
+Each app's client ID/secret are provisioned into that environment's Key Vault
+by `Deploy-Infra.ps1` (`FreeAgentAuthorization--ClientId`/`--ClientSecret`);
+the refresh token is captured separately, once, by an administrator
+completing the FreeAgent authorization section on that environment's
+`/Authorization` page.
 
 The admin website administers invoice configurations and append-only history.
 Every invoice record is created with a required routing snapshot, so no record
@@ -620,11 +654,13 @@ Example secrets in Key Vault:
 
 - `MicrosoftAuthorization--ClientSecret`
 - `MicrosoftAuthorization--MsalTokenCache`
+- `FreeAgentAuthorization--ClientId`
+- `FreeAgentAuthorization--ClientSecret`
+- `FreeAgentAuthorization--RefreshToken`
 - `InvoiceIntegrations--AzureTenantId`
 - `InvoiceIntegrations--AzureClientId`
 - `InvoiceIntegrations--AzureClientSecret`
 - `InvoiceIntegrations--OpenAiApiKey`
-- `FreeAgent--ApiKey`
 - `OneDrive--ClientId`
 
 #### Cosmos DB Connection

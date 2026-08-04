@@ -1,4 +1,5 @@
 using InvoiceManager.Infrastructure;
+using InvoiceManager.Infrastructure.FreeAgentAuthorization;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.AdminWeb.Pages;
 using InvoiceManager.AdminWeb.Services;
@@ -6,7 +7,9 @@ using InvoiceManager.Core.Repositories;
 using InvoiceManager.TestSupport;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -68,6 +71,25 @@ public sealed class AdminAuthorizationPageTests
     }
 
     [Fact]
+    public async Task FreeAgentSignIn_UsesATransientSignInScheme_SoItNeverOverwritesTheAdminSession()
+    {
+        // The generic OAuth handler used for FreeAgent adds no claims in OnCreatingTicket (unlike
+        // the Microsoft OIDC flow, which re-derives real claims from an ID token) - if this ever
+        // regresses to the default SignInScheme, completing FreeAgent authorization would replace
+        // the operator's authenticated admin cookie with a claimless principal and fail the
+        // AdminGroup policy on the very next request.
+        await using var factory = CreateConfiguredFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var options = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<OAuthOptions>>()
+            .Get("FreeAgentWorkflowAuthorization");
+
+        Assert.Equal("FreeAgentTransientSignIn", options.SignInScheme);
+        Assert.NotEqual(CookieAuthenticationDefaults.AuthenticationScheme, options.SignInScheme);
+    }
+
+    [Fact]
     public async Task SignedInUserOutsideAdminGroup_IsForbidden()
     {
         await using var factory = CreateConfiguredFactory(isGroupMember: false);
@@ -119,10 +141,13 @@ public sealed class AdminAuthorizationPageTests
 
         response.EnsureSuccessStatusCode();
         Assert.Contains("Microsoft authorization", body);
+        Assert.Contains("FreeAgent authorization", body);
         Assert.Contains("Not captured", body);
-        Assert.Contains("Capture workflow authorization", body);
+        Assert.Contains("Capture Microsoft authorization", body);
+        Assert.Contains("Capture FreeAgent authorization", body);
         Assert.DoesNotContain("Reset authorization", body);
         Assert.DoesNotContain("Set MicrosoftAuthorization", body);
+        Assert.DoesNotContain("Set FreeAgentAuthorization", body);
     }
 
     [Fact]
@@ -136,9 +161,37 @@ public sealed class AdminAuthorizationPageTests
 
         response.EnsureSuccessStatusCode();
         Assert.Contains("Ready", body);
-        Assert.Contains("Replace workflow authorization", body);
+        Assert.Contains("Replace Microsoft authorization", body);
         Assert.Contains("Reset authorization", body);
-        Assert.DoesNotContain("Capture workflow authorization", body);
+        Assert.DoesNotContain("Capture Microsoft authorization", body);
+    }
+
+    [Fact]
+    public async Task AuthorizationPage_RendersFreeAgentReadyAndResetAction_WhenFreeAgentAuthorizationIsCaptured()
+    {
+        await using var factory = CreateConfiguredFactory(hasFreeAgentRefreshToken: true);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/Authorization");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.EnsureSuccessStatusCode();
+        Assert.Contains("Replace FreeAgent authorization", body);
+        Assert.DoesNotContain("Capture FreeAgent authorization", body);
+    }
+
+    [Fact]
+    public async Task AuthorizationPage_TreatsMicrosoftAndFreeAgentCaptureStateIndependently()
+    {
+        await using var factory = CreateConfiguredFactory(hasTokenCache: true, hasFreeAgentRefreshToken: false);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/Authorization");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.EnsureSuccessStatusCode();
+        Assert.Contains("Replace Microsoft authorization", body);
+        Assert.Contains("Capture FreeAgent authorization", body);
     }
 
     [Fact]
@@ -149,26 +202,44 @@ public sealed class AdminAuthorizationPageTests
         await model.OnGetAsync();
 
         Assert.True(model.ShowAuthorizeButton);
-        Assert.Equal("Capture workflow authorization", model.AuthorizeButtonCaption);
+        Assert.Equal("Capture Microsoft authorization", model.AuthorizeButtonCaption);
         Assert.True(model.IsSignedIn);
         Assert.False(model.IsAuthorizationCaptured);
+        Assert.True(model.ShowFreeAgentAuthorizeButton);
+        Assert.Equal("Capture FreeAgent authorization", model.FreeAgentAuthorizeButtonCaption);
+        Assert.False(model.IsFreeAgentAuthorizationCaptured);
     }
 
     [Fact]
     public async Task AuthorizationPageModel_OffersExplicitReplacement_WhenAuthorizationIsCaptured()
     {
-        var model = CreateAuthorizationModel(hasTokenCache: true, isSignedIn: true);
+        var model = CreateAuthorizationModel(hasTokenCache: true, isSignedIn: true, hasFreeAgentRefreshToken: true);
 
         await model.OnGetAsync();
 
         Assert.True(model.ShowAuthorizeButton);
-        Assert.Equal("Replace workflow authorization", model.AuthorizeButtonCaption);
+        Assert.Equal("Replace Microsoft authorization", model.AuthorizeButtonCaption);
         Assert.True(model.IsSignedIn);
         Assert.True(model.IsAuthorizationCaptured);
+        Assert.True(model.ShowFreeAgentAuthorizeButton);
+        Assert.Equal("Replace FreeAgent authorization", model.FreeAgentAuthorizeButtonCaption);
+        Assert.True(model.IsFreeAgentAuthorizationCaptured);
+    }
+
+    [Fact]
+    public async Task AuthorizationPageModel_OnPostResetFreeAgent_ClearsRefreshTokenAndSetsStatusMessage()
+    {
+        var freeAgentStore = new FakeFreeAgentAuthorizationStore(hasRefreshToken: true);
+        var model = CreateAuthorizationModel(hasTokenCache: false, isSignedIn: true, freeAgentAuthorizationStore: freeAgentStore);
+
+        await model.OnPostResetFreeAgentAsync();
+
+        Assert.False(await freeAgentStore.HasRefreshTokenAsync());
     }
 
     private static WebApplicationFactory<Program> CreateConfiguredFactory(
         bool hasTokenCache = false,
+        bool hasFreeAgentRefreshToken = false,
         bool isGroupMember = true,
         bool isAuthenticated = true,
         bool useTestAuthentication = true)
@@ -187,13 +258,17 @@ public sealed class AdminAuthorizationPageTests
                         ["MicrosoftAuthorization:ClientSecret"] = "client-secret",
                         ["KeyVault:Uri"] = "https://example.vault.azure.net/",
                         ["MicrosoftAuthorization:TokenCacheSecretName"] = "MicrosoftAuthorization--MsalTokenCache",
-                        ["AdminAuthorization:GroupObjectId"] = "33333333-3333-3333-3333-333333333333"
+                        ["AdminAuthorization:GroupObjectId"] = "33333333-3333-3333-3333-333333333333",
+                        ["FreeAgentAuthorization:ClientId"] = "freeagent-client-id",
+                        ["FreeAgentAuthorization:ClientSecret"] = "freeagent-client-secret"
                     });
                 });
                 builder.ConfigureTestServices(services =>
                 {
                     services.AddSingleton<IMicrosoftAuthorizationStore>(
                         new FakeMicrosoftAuthorizationStore(hasTokenCache));
+                    services.AddSingleton<IFreeAgentAuthorizationStore>(
+                        new FakeFreeAgentAuthorizationStore(hasFreeAgentRefreshToken));
                     if (useTestAuthentication)
                     {
                         services.AddSingleton(new TestIdentity(isAuthenticated, isGroupMember));
@@ -210,7 +285,9 @@ public sealed class AdminAuthorizationPageTests
 
     private static AuthorizationModel CreateAuthorizationModel(
         bool hasTokenCache,
-        bool isSignedIn)
+        bool isSignedIn,
+        bool hasFreeAgentRefreshToken = false,
+        IFreeAgentAuthorizationStore? freeAgentAuthorizationStore = null)
     {
         var model = new AuthorizationModel(
             new FakeMicrosoftAuthorizationStore(hasTokenCache),
@@ -223,6 +300,12 @@ public sealed class AdminAuthorizationPageTests
             Options.Create(new KeyVaultOptions
             {
                 Uri = new Uri("https://example.vault.azure.net/")
+            }),
+            freeAgentAuthorizationStore ?? new FakeFreeAgentAuthorizationStore(hasFreeAgentRefreshToken),
+            Options.Create(new FreeAgentAuthorizationOptions
+            {
+                ClientId = "freeagent-client-id",
+                ClientSecret = "freeagent-client-secret"
             }));
 
         var identity = isSignedIn
@@ -283,6 +366,38 @@ public sealed class AdminAuthorizationPageTests
         }
     }
 
+    private sealed class FakeFreeAgentAuthorizationStore : IFreeAgentAuthorizationStore
+    {
+        private bool hasRefreshToken;
+
+        public FakeFreeAgentAuthorizationStore(bool hasRefreshToken)
+        {
+            this.hasRefreshToken = hasRefreshToken;
+        }
+
+        public Task<bool> HasRefreshTokenAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(hasRefreshToken);
+        }
+
+        public Task<string?> ReadRefreshTokenAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<string?>(hasRefreshToken ? "refresh-token" : null);
+        }
+
+        public Task SaveRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
+        {
+            hasRefreshToken = true;
+            return Task.CompletedTask;
+        }
+
+        public Task ClearRefreshTokenAsync(CancellationToken cancellationToken = default)
+        {
+            hasRefreshToken = false;
+            return Task.CompletedTask;
+        }
+    }
+
     [Fact]
     public async Task ConfigurationList_RemainsAvailableWithoutWorkflowAuthorization_WhileMutationsAreDisabled()
     {
@@ -300,7 +415,7 @@ public sealed class AdminAuthorizationPageTests
 
         response.EnsureSuccessStatusCode();
         Assert.Contains("Test Invoice", body);
-        Assert.Contains("Workflow authorization is not captured", body);
+        Assert.Contains("Microsoft authorization is not captured", body);
         Assert.Contains("<button type=\"button\" class=\"primary-action\" disabled", body);
     }
 

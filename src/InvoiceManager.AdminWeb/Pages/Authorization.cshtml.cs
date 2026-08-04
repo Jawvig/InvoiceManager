@@ -1,5 +1,6 @@
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Infrastructure;
+using InvoiceManager.Infrastructure.FreeAgentAuthorization;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -15,15 +16,21 @@ public class AuthorizationModel : PageModel
     private readonly IMicrosoftAuthorizationStore authorizationStore;
     private readonly MicrosoftAuthorizationOptions authorizationOptions;
     private readonly KeyVaultOptions keyVaultOptions;
+    private readonly IFreeAgentAuthorizationStore freeAgentAuthorizationStore;
+    private readonly FreeAgentAuthorizationOptions freeAgentAuthorizationOptions;
 
     public AuthorizationModel(
         IMicrosoftAuthorizationStore authorizationStore,
         IOptions<MicrosoftAuthorizationOptions> authorizationOptions,
-        IOptions<KeyVaultOptions> keyVaultOptions)
+        IOptions<KeyVaultOptions> keyVaultOptions,
+        IFreeAgentAuthorizationStore freeAgentAuthorizationStore,
+        IOptions<FreeAgentAuthorizationOptions> freeAgentAuthorizationOptions)
     {
         this.authorizationStore = authorizationStore;
         this.authorizationOptions = authorizationOptions.Value;
         this.keyVaultOptions = keyVaultOptions.Value;
+        this.freeAgentAuthorizationStore = freeAgentAuthorizationStore;
+        this.freeAgentAuthorizationOptions = freeAgentAuthorizationOptions.Value;
     }
 
     public bool IsSignedIn { get; private set; }
@@ -41,14 +48,34 @@ public class AuthorizationModel : PageModel
         get
         {
             return IsAuthorizationCaptured
-                ? "Replace workflow authorization"
-                : "Capture workflow authorization";
+                ? "Replace Microsoft authorization"
+                : "Capture Microsoft authorization";
         }
     }
 
     public string? StatusMessage { get; private set; }
 
     public IReadOnlyList<string> ConfigurationMessages { get; private set; } = [];
+
+    public bool IsFreeAgentAuthorizationCaptured { get; private set; }
+
+    public bool CanAuthorizeFreeAgent { get; private set; }
+
+    public bool ShowFreeAgentAuthorizeButton => CanAuthorizeFreeAgent;
+
+    public string FreeAgentAuthorizeButtonCaption
+    {
+        get
+        {
+            return IsFreeAgentAuthorizationCaptured
+                ? "Replace FreeAgent authorization"
+                : "Capture FreeAgent authorization";
+        }
+    }
+
+    public string? FreeAgentStatusMessage { get; private set; }
+
+    public IReadOnlyList<string> FreeAgentConfigurationMessages { get; private set; } = [];
 
     public async Task OnGetAsync(string? status = null)
     {
@@ -91,6 +118,35 @@ public class AuthorizationModel : PageModel
             CookieAuthenticationDefaults.AuthenticationScheme);
     }
 
+    public IActionResult OnPostAuthorizeFreeAgent(bool confirmed)
+    {
+        if (!confirmed)
+        {
+            TempData["FreeAgentStatusMessage"] = "Confirm that you intend to replace the FreeAgent account used by the unattended workflow.";
+            return RedirectToPage();
+        }
+
+        var configurationMessages = GetFreeAgentConfigurationMessages();
+        if (configurationMessages.Count > 0)
+        {
+            TempData["FreeAgentStatusMessage"] = configurationMessages[0];
+            return RedirectToPage();
+        }
+
+        var redirectUri = Url.Page("/Authorization", null, new { status = "freeagent-authorized" })
+            ?? "/Authorization";
+        return Challenge(
+            new AuthenticationProperties { RedirectUri = redirectUri },
+            FreeAgentOAuthOptionsSetup.WorkflowAuthorizationScheme);
+    }
+
+    public async Task<IActionResult> OnPostResetFreeAgentAsync()
+    {
+        await freeAgentAuthorizationStore.ClearRefreshTokenAsync(HttpContext.RequestAborted);
+        TempData["FreeAgentStatusMessage"] = "FreeAgent authorization was reset.";
+        return RedirectToPage();
+    }
+
     private async Task LoadPageStateAsync(string? status)
     {
         IsSignedIn = User.Identity?.IsAuthenticated == true;
@@ -107,6 +163,17 @@ public class AuthorizationModel : PageModel
         {
             StatusMessage = "Microsoft authorization was captured.";
         }
+
+        IsFreeAgentAuthorizationCaptured = await freeAgentAuthorizationStore.HasRefreshTokenAsync(HttpContext.RequestAborted);
+
+        FreeAgentConfigurationMessages = GetFreeAgentConfigurationMessages();
+        CanAuthorizeFreeAgent = FreeAgentConfigurationMessages.Count == 0;
+
+        FreeAgentStatusMessage = TempData["FreeAgentStatusMessage"] as string;
+        if (status == "freeagent-authorized")
+        {
+            FreeAgentStatusMessage = "FreeAgent authorization was captured.";
+        }
     }
 
     private List<string> GetConfigurationMessages()
@@ -121,6 +188,23 @@ public class AuthorizationModel : PageModel
         if (!authorizationOptions.HasClientSecret)
         {
             messages.Add("Set MicrosoftAuthorization:ClientSecret before authorizing Microsoft.");
+        }
+
+        if (!keyVaultOptions.HasPersistentStore)
+        {
+            messages.Add("Set KeyVault:Uri before captured authorization can be saved.");
+        }
+
+        return messages;
+    }
+
+    private List<string> GetFreeAgentConfigurationMessages()
+    {
+        var messages = new List<string>();
+
+        if (!freeAgentAuthorizationOptions.HasClientConfiguration)
+        {
+            messages.Add("Set FreeAgentAuthorization:ClientId and FreeAgentAuthorization:ClientSecret before authorizing FreeAgent.");
         }
 
         if (!keyVaultOptions.HasPersistentStore)

@@ -71,6 +71,8 @@ if (builder.Configuration.GetValue("AppHost:IncludeApplications", true))
         .WithEnvironment("MicrosoftAuthorization__TenantId", microsoftAuthTenantId)
         .WithEnvironment("MicrosoftAuthorization__ClientId", microsoftAuthClientId)
         .WithEnvironment("KeyVault__Uri", keyVaultUri)
+        // Local development is always against the FreeAgent sandbox company.
+        .WithEnvironment("FreeAgent__Environment", "Sandbox")
         .WithEnvironment("AdminAuthorization__GroupObjectId", adminGroupObjectId)
         .WithEnvironment("Functions__BaseUrl", functions.GetEndpoint("http"))
         .WaitFor(cosmos)
