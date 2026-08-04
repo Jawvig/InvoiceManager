@@ -1,0 +1,63 @@
+using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
+
+namespace InvoiceManager.Integrations.FreeAgent;
+
+/// <summary>
+/// Uploads/replaces a FreeAgent bill's attachment. Idempotent: compares the
+/// bill's existing attachment against the record's own last-known-good upload
+/// before deciding whether to call the (replacing) upload endpoint at all.
+/// </summary>
+internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
+{
+    private readonly FreeAgentApiClient client;
+
+    public FreeAgentAttachmentUploader(FreeAgentApiClient client)
+    {
+        this.client = client;
+    }
+
+    public async Task<FreeAgentAttachmentResult> UploadAsync(
+        FreeAgentBillIdentity bill,
+        byte[] pdfContent,
+        string fileName,
+        Option<FreeAgentAttachmentMetadata> expectedExisting,
+        CancellationToken cancellationToken = default)
+    {
+        var current = await client.GetBillAsync(bill.BillUrl, cancellationToken);
+        var existingAttachment = current.Attachment;
+
+        if (existingAttachment is not null)
+        {
+            var existingMetadata = FreeAgentBillMapping.ToAttachmentMetadata(existingAttachment);
+
+            var matchesOwnLastUpload =
+                expectedExisting is FreeAgentAttachmentMetadata expected &&
+                string.Equals(expected.FileName, existingMetadata.FileName, StringComparison.Ordinal) &&
+                expected.FileSizeBytes == existingMetadata.FileSizeBytes;
+
+            if (matchesOwnLastUpload)
+                return new FreeAgentAttachmentAlreadyCorrect(existingMetadata);
+
+            // An attachment is present that doesn't match our own last-known-good upload
+            // (or we have none recorded) - someone attached something else directly in
+            // FreeAgent. Do not touch it; surface for manual investigation.
+            return new FreeAgentAttachmentUnexpectedExisting(existingMetadata);
+        }
+
+        var uploaded = await client.PostAttachmentAsync(bill.BillUrl, pdfContent, fileName, cancellationToken);
+        var newMetadata = FreeAgentBillMapping.ToAttachmentMetadata(uploaded);
+
+        // Verify by reading the bill back rather than trusting the upload response alone.
+        var verify = await client.GetBillAsync(bill.BillUrl, cancellationToken);
+        if (verify.Attachment is not { } verifiedAttachment ||
+            !string.Equals(verifiedAttachment.FileName, fileName, StringComparison.Ordinal))
+        {
+            return new FreeAgentVerificationFailed("The uploaded attachment could not be verified after upload.");
+        }
+
+        return existingAttachment is null
+            ? new FreeAgentAttachmentUploaded(newMetadata)
+            : new FreeAgentAttachmentReplaced(FreeAgentBillMapping.ToAttachmentMetadata(existingAttachment), newMetadata);
+    }
+}
