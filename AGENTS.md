@@ -102,3 +102,20 @@ Be careful with:
   end-to-end (e.g. a GUID-suffixed string) over selecting an arbitrary
   existing one, and when a shared resource must be used, select the specific
   one the test's assertions actually depend on rather than "the first one."
+
+## Reviewing a Pull Request
+
+When performing a code review on a PR in this repository (any reviewing
+agent, human-triggered or automated):
+
+- Examine existing comment threads on the PR before posting new ones — do not
+  add a comment that duplicates an existing thread's point, even if you
+  arrived at it independently.
+- If you disagree with the stated reason a thread was resolved without a
+  code change, re-open that thread and explain why. A resolved thread is
+  collapsed by default and excluded by an "unresolved" filter, so a comment
+  left on a thread that stays resolved is easy for the PR author to miss
+  entirely — do not rely on it as your only signal. Only fall back to a
+  fresh comment (explicitly linking back to the original thread) if the
+  tooling available to you genuinely cannot unresolve a thread; do not use it
+  as a default choice between equally good options.
