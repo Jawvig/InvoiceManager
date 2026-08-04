@@ -101,8 +101,13 @@ internal sealed class FreeAgentApiClient
         if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            var lockedDetail = ExtractLockedFieldDetail(errorBody);
-            return new FreeAgentApiResult<BillWire>(default, IsLocked: true, lockedDetail, response.StatusCode);
+            if (ExtractLockedFieldDetail(errorBody) is { } lockedDetail)
+                return new FreeAgentApiResult<BillWire>(default, IsLocked: true, lockedDetail, response.StatusCode);
+
+            // A 422 without the proven locked-field signal is a normal validation rejection
+            // (e.g. an invalid date/amount), not a lock - report it as a non-locked, valueless
+            // result so the caller translates it to a remote-rejected outcome, never a lock.
+            return new FreeAgentApiResult<BillWire>(default, IsLocked: false, null, response.StatusCode);
         }
 
         await EnsureSuccessAsync(response, "updating a bill", cancellationToken);
@@ -166,8 +171,21 @@ internal sealed class FreeAgentApiClient
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string url, HttpContent? content, CancellationToken cancellationToken)
     {
-        var token = await tokenProvider.AcquireTokenAsync(cancellationToken);
         using var request = new HttpRequestMessage(method, url) { Content = content };
+
+        // url is frequently an absolute resource URL echoed back by FreeAgent itself (a bill's
+        // own "url" field, an explanation/transaction url, ...) rather than a path relative to
+        // BaseAddress. HttpClient only enforces BaseAddress for relative URIs, so an absolute
+        // URI bypasses it entirely - verify the host explicitly before ever attaching the
+        // bearer token, so this boundary's host allowlist actually holds for every request.
+        if (request.RequestUri is { IsAbsoluteUri: true } absolute &&
+            !string.Equals(absolute.Host, httpClient.BaseAddress!.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Refusing to call FreeAgent host '{absolute.Host}': expected '{httpClient.BaseAddress.Host}'.");
+        }
+
+        var token = await tokenProvider.AcquireTokenAsync(cancellationToken);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return await httpClient.SendAsync(request, cancellationToken);
     }
@@ -186,14 +204,15 @@ internal sealed class FreeAgentApiClient
     /// <summary>
     /// Looks for the proven locked-field substrings ("cached_total_value" /
     /// "bill_items.total_value") in a 422 body. Returns a short, redacted detail
-    /// string - never the raw body, which could contain other request context.
+    /// string - never the raw body, which could contain other request context - or
+    /// null if the body carries no locked-field signal (a normal validation 422).
     /// </summary>
-    private static string ExtractLockedFieldDetail(string errorBody)
+    private static string? ExtractLockedFieldDetail(string errorBody)
     {
         if (errorBody.Contains("cached_total_value", StringComparison.OrdinalIgnoreCase))
             return "cached_total_value is locked";
         if (errorBody.Contains("bill_items.total_value", StringComparison.OrdinalIgnoreCase))
             return "bill_items.total_value is locked";
-        return "locked (unrecognised field)";
+        return null;
     }
 }
