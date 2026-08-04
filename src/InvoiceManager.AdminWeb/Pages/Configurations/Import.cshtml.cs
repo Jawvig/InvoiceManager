@@ -113,7 +113,7 @@ public sealed class ImportModel(
         InvoiceConfiguration configuration;
         try
         {
-            configuration = Input.Build(false, BillingAccounts, currentBillingAccountId: null, folder);
+            configuration = Input.Build(false, BillingAccounts, currentBillingAccountId: null, folder, Option.None);
         }
         catch (ArgumentException ex)
         {
