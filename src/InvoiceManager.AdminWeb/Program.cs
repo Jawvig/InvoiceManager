@@ -5,6 +5,7 @@ using InvoiceManager.Core;
 using InvoiceManager.Core.Repositories;
 using InvoiceManager.Infrastructure;
 using InvoiceManager.Infrastructure.CosmosDb;
+using InvoiceManager.Infrastructure.FreeAgentAuthorization;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.Azure.Cosmos;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -50,6 +51,13 @@ builder.Services.AddOptions<AdminAuthorizationOptions>()
     .Bind(builder.Configuration.GetSection(AdminAuthorizationOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddOptions<FreeAgentOptions>()
+    .Bind(builder.Configuration.GetSection(FreeAgentOptions.SectionName));
+builder.Services
+    .AddOptions<FreeAgentAuthorizationOptions>()
+    .Bind(builder.Configuration.GetSection(FreeAgentAuthorizationOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<FreeAgentAuthorizationOptions>, FreeAgentAuthorizationOptionsValidator>();
 
 builder.Services.AddSingleton<IMicrosoftAuthorizationStore>(serviceProvider =>
 {
@@ -58,6 +66,14 @@ builder.Services.AddSingleton<IMicrosoftAuthorizationStore>(serviceProvider =>
     return new KeyVaultMicrosoftAuthorizationStore(
         secretStoreClient,
         serviceProvider.GetRequiredService<IOptions<MicrosoftAuthorizationOptions>>());
+});
+builder.Services.AddSingleton<IFreeAgentAuthorizationStore>(serviceProvider =>
+{
+    var keyVaultUri = serviceProvider.GetRequiredService<IOptions<KeyVaultOptions>>().Value.Uri;
+    var secretStoreClient = new AzureKeyVaultSecretStoreClient(keyVaultUri);
+    return new KeyVaultFreeAgentAuthorizationStore(
+        secretStoreClient,
+        serviceProvider.GetRequiredService<IOptions<FreeAgentAuthorizationOptions>>());
 });
 
 builder.Services
@@ -69,8 +85,10 @@ builder.Services
     })
     .AddCookie()
     .AddOpenIdConnect()
-    .AddOpenIdConnect(MicrosoftOpenIdConnectOptionsSetup.WorkflowAuthorizationScheme, _ => { });
+    .AddOpenIdConnect(MicrosoftOpenIdConnectOptionsSetup.WorkflowAuthorizationScheme, _ => { })
+    .AddOAuth(FreeAgentOAuthOptionsSetup.WorkflowAuthorizationScheme, _ => { });
 builder.Services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, MicrosoftOpenIdConnectOptionsSetup>();
+builder.Services.AddSingleton<IConfigureOptions<OAuthOptions>, FreeAgentOAuthOptionsSetup>();
 
 var adminGroupPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
     .RequireAuthenticatedUser()
@@ -255,6 +273,63 @@ internal sealed class MicrosoftOpenIdConnectOptionsSetup
     }
 
     public void Configure(OpenIdConnectOptions options)
+    {
+        Configure(Options.DefaultName, options);
+    }
+}
+
+internal sealed class FreeAgentOAuthOptionsSetup : IConfigureNamedOptions<OAuthOptions>
+{
+    public const string WorkflowAuthorizationScheme = "FreeAgentWorkflowAuthorization";
+
+    private readonly IOptions<FreeAgentOptions> freeAgentOptions;
+    private readonly IOptions<FreeAgentAuthorizationOptions> authorizationOptions;
+
+    public FreeAgentOAuthOptionsSetup(
+        IOptions<FreeAgentOptions> freeAgentOptions,
+        IOptions<FreeAgentAuthorizationOptions> authorizationOptions)
+    {
+        this.freeAgentOptions = freeAgentOptions;
+        this.authorizationOptions = authorizationOptions;
+    }
+
+    public void Configure(string? name, OAuthOptions options)
+    {
+        if (name != WorkflowAuthorizationScheme)
+        {
+            return;
+        }
+
+        var environment = freeAgentOptions.Value.Environment;
+        var currentAuthorizationOptions = authorizationOptions.Value;
+
+        options.ClientId = currentAuthorizationOptions.ClientId ?? string.Empty;
+        options.ClientSecret = currentAuthorizationOptions.ClientSecret ?? string.Empty;
+        options.AuthorizationEndpoint = FreeAgentHosts.AuthorizationEndpoint(environment).ToString();
+        options.TokenEndpoint = FreeAgentHosts.TokenEndpoint(environment).ToString();
+        options.CallbackPath = "/freeagent-authorization/callback";
+        // FreeAgent's OAuth app is a confidential client (it has a client secret); PKCE is for
+        // public clients and isn't part of FreeAgent's documented authorization-code flow.
+        options.UsePkce = false;
+        // Never persist the raw OAuth tokens in the auth cookie/properties - the refresh token is
+        // written straight to Key Vault below instead.
+        options.SaveTokens = false;
+
+        options.Events.OnCreatingTicket = async context =>
+        {
+            if (string.IsNullOrWhiteSpace(context.RefreshToken))
+            {
+                throw new InvalidOperationException(
+                    "FreeAgent's token response did not include a refresh token.");
+            }
+
+            var authorizationStore = context.HttpContext.RequestServices
+                .GetRequiredService<IFreeAgentAuthorizationStore>();
+            await authorizationStore.SaveRefreshTokenAsync(context.RefreshToken, context.HttpContext.RequestAborted);
+        };
+    }
+
+    public void Configure(OAuthOptions options)
     {
         Configure(Options.DefaultName, options);
     }

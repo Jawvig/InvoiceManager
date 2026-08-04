@@ -1,69 +1,121 @@
 @page
 @model AuthorizationModel
 @{
-    ViewData["Title"] = "Microsoft Authorization";
+    ViewData["Title"] = "Authorization";
 }
 
 <section class="admin-shell">
     <div class="page-heading">
         <p class="eyebrow">InvoiceManager Admin</p>
-        <h1>Microsoft authorization</h1>
+        <h1>Authorization</h1>
         <p class="summary">
-            Capture delegated Microsoft access for the unattended invoice workflow.
+            Capture delegated access for the unattended invoice workflow.
         </p>
     </div>
 
-    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
-    {
-        <div class="notice">@Model.StatusMessage</div>
-    }
+    <section class="auth-subsection">
+        <h2>Microsoft authorization</h2>
 
-    @if (Model.ConfigurationMessages.Count > 0)
-    {
-        <div class="notice warning">
-            @foreach (var message in Model.ConfigurationMessages)
-            {
-                <p>@message</p>
-            }
+        @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+        {
+            <div class="notice">@Model.StatusMessage</div>
+        }
+
+        @if (Model.ConfigurationMessages.Count > 0)
+        {
+            <div class="notice warning">
+                @foreach (var message in Model.ConfigurationMessages)
+                {
+                    <p>@message</p>
+                }
+            </div>
+        }
+
+        <div class="status-grid">
+            <section class="status-panel">
+                <h3>Signed-in operator</h3>
+                <p class="status-value">@Model.DisplayName</p>
+                <p class="status-label">This administrator session does not alter the unattended workflow account.</p>
+            </section>
+
+            <section class="status-panel">
+                <h3>Captured authorization</h3>
+                <p class="status-value">@(Model.IsAuthorizationCaptured ? "Ready" : "Not captured")</p>
+                <p class="status-label">The MSAL token cache is stored in Azure Key Vault.</p>
+            </section>
         </div>
-    }
 
-    <div class="status-grid">
-        <section class="status-panel">
-            <h2>Signed-in operator</h2>
-            <p class="status-value">@Model.DisplayName</p>
-            <p class="status-label">This administrator session does not alter the unattended workflow account.</p>
-        </section>
+        <form method="post" class="actions">
+            @if (Model.ShowAuthorizeButton)
+            {
+                <label>
+                    <input type="checkbox" name="confirmed" value="true" />
+                    I understand this will replace the delegated account used by the unattended workflow.
+                </label>
+                <button asp-page-handler="Authorize" class="primary-action">
+                    @Model.AuthorizeButtonCaption
+                </button>
+            }
+            @if (Model.IsAuthorizationCaptured)
+            {
+                <button asp-page-handler="Reset" class="secondary-action">
+                    Reset authorization
+                </button>
+            }
+            @if (Model.IsSignedIn)
+            {
+                <button asp-page-handler="SignOut" class="secondary-action">
+                    Sign out
+                </button>
+            }
+        </form>
+    </section>
 
-        <section class="status-panel">
-            <h2>Captured authorization</h2>
-            <p class="status-value">@(Model.IsAuthorizationCaptured ? "Ready" : "Not captured")</p>
-            <p class="status-label">The MSAL token cache is stored in Azure Key Vault.</p>
-        </section>
-    </div>
+    <hr class="section-divider" />
 
-    <form method="post" class="actions">
-        @if (Model.ShowAuthorizeButton)
+    <section class="auth-subsection">
+        <h2>FreeAgent authorization</h2>
+
+        @if (!string.IsNullOrWhiteSpace(Model.FreeAgentStatusMessage))
         {
-            <label>
-                <input type="checkbox" name="confirmed" value="true" />
-                I understand this will replace the delegated account used by the unattended workflow.
-            </label>
-            <button asp-page-handler="Authorize" class="primary-action">
-                @Model.AuthorizeButtonCaption
-            </button>
+            <div class="notice">@Model.FreeAgentStatusMessage</div>
         }
-        @if (Model.IsAuthorizationCaptured)
+
+        @if (Model.FreeAgentConfigurationMessages.Count > 0)
         {
-            <button asp-page-handler="Reset" class="secondary-action">
-                Reset authorization
-            </button>
+            <div class="notice warning">
+                @foreach (var message in Model.FreeAgentConfigurationMessages)
+                {
+                    <p>@message</p>
+                }
+            </div>
         }
-        @if (Model.IsSignedIn)
-        {
-            <button asp-page-handler="SignOut" class="secondary-action">
-                Sign out
-            </button>
-        }
-    </form>
+
+        <div class="status-grid status-grid-single">
+            <section class="status-panel">
+                <h3>Captured authorization</h3>
+                <p class="status-value">@(Model.IsFreeAgentAuthorizationCaptured ? "Ready" : "Not captured")</p>
+                <p class="status-label">The refresh token is stored in Azure Key Vault.</p>
+            </section>
+        </div>
+
+        <form method="post" class="actions">
+            @if (Model.ShowFreeAgentAuthorizeButton)
+            {
+                <label>
+                    <input type="checkbox" name="confirmed" value="true" />
+                    I understand this will replace the FreeAgent account used by the unattended workflow.
+                </label>
+                <button asp-page-handler="AuthorizeFreeAgent" class="primary-action">
+                    @Model.FreeAgentAuthorizeButtonCaption
+                </button>
+            }
+            @if (Model.IsFreeAgentAuthorizationCaptured)
+            {
+                <button asp-page-handler="ResetFreeAgent" class="secondary-action">
+                    Reset authorization
+                </button>
+            }
+        </form>
+    </section>
 </section>

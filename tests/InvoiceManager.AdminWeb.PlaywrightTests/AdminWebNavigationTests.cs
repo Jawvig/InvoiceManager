@@ -62,7 +62,7 @@ public sealed class AdminWebNavigationTests(AdminWebAppHostFixture appHost)
 
     [Theory]
     [InlineData("Home", "Home")]
-    [InlineData("Reauthorization", "Microsoft authorization")]
+    [InlineData("Reauthorization", "Authorization")]
     [InlineData("Invoice configurations", "Invoice configurations")]
     [InlineData("Health status", "Health status")]
     public async Task NavMenu_NavigatesToExpectedPage(string linkName, string expectedHeading)
