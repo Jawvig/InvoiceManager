@@ -143,7 +143,7 @@ public sealed class AdminAuthorizationPageTests
         Assert.Contains("Microsoft authorization", body);
         Assert.Contains("FreeAgent authorization", body);
         Assert.Contains("Not captured", body);
-        Assert.Contains("Capture workflow authorization", body);
+        Assert.Contains("Capture Microsoft authorization", body);
         Assert.Contains("Capture FreeAgent authorization", body);
         Assert.DoesNotContain("Reset authorization", body);
         Assert.DoesNotContain("Set MicrosoftAuthorization", body);
@@ -161,9 +161,9 @@ public sealed class AdminAuthorizationPageTests
 
         response.EnsureSuccessStatusCode();
         Assert.Contains("Ready", body);
-        Assert.Contains("Replace workflow authorization", body);
+        Assert.Contains("Replace Microsoft authorization", body);
         Assert.Contains("Reset authorization", body);
-        Assert.DoesNotContain("Capture workflow authorization", body);
+        Assert.DoesNotContain("Capture Microsoft authorization", body);
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public sealed class AdminAuthorizationPageTests
         var body = await response.Content.ReadAsStringAsync();
 
         response.EnsureSuccessStatusCode();
-        Assert.Contains("Replace workflow authorization", body);
+        Assert.Contains("Replace Microsoft authorization", body);
         Assert.Contains("Capture FreeAgent authorization", body);
     }
 
@@ -202,7 +202,7 @@ public sealed class AdminAuthorizationPageTests
         await model.OnGetAsync();
 
         Assert.True(model.ShowAuthorizeButton);
-        Assert.Equal("Capture workflow authorization", model.AuthorizeButtonCaption);
+        Assert.Equal("Capture Microsoft authorization", model.AuthorizeButtonCaption);
         Assert.True(model.IsSignedIn);
         Assert.False(model.IsAuthorizationCaptured);
         Assert.True(model.ShowFreeAgentAuthorizeButton);
@@ -218,7 +218,7 @@ public sealed class AdminAuthorizationPageTests
         await model.OnGetAsync();
 
         Assert.True(model.ShowAuthorizeButton);
-        Assert.Equal("Replace workflow authorization", model.AuthorizeButtonCaption);
+        Assert.Equal("Replace Microsoft authorization", model.AuthorizeButtonCaption);
         Assert.True(model.IsSignedIn);
         Assert.True(model.IsAuthorizationCaptured);
         Assert.True(model.ShowFreeAgentAuthorizeButton);
@@ -415,7 +415,7 @@ public sealed class AdminAuthorizationPageTests
 
         response.EnsureSuccessStatusCode();
         Assert.Contains("Test Invoice", body);
-        Assert.Contains("Workflow authorization is not captured", body);
+        Assert.Contains("Microsoft authorization is not captured", body);
         Assert.Contains("<button type=\"button\" class=\"primary-action\" disabled", body);
     }
 

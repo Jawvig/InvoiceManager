@@ -38,7 +38,7 @@ public sealed class IndexModel(
     {
         if (!await authorizationStore.HasTokenCacheAsync(HttpContext.RequestAborted))
         {
-            TempData["StatusMessage"] = "Capture workflow authorization before changing configuration state.";
+            TempData["StatusMessage"] = "Capture Microsoft authorization before changing configuration state.";
             return RedirectToPage();
         }
         var current = await service.GetAsync(new(id), integrationType, HttpContext.RequestAborted);

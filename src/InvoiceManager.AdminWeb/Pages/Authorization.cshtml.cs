@@ -48,8 +48,8 @@ public class AuthorizationModel : PageModel
         get
         {
             return IsAuthorizationCaptured
-                ? "Replace workflow authorization"
-                : "Capture workflow authorization";
+                ? "Replace Microsoft authorization"
+                : "Capture Microsoft authorization";
         }
     }
 
