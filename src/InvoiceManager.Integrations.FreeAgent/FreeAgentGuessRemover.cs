@@ -79,7 +79,14 @@ internal sealed class FreeAgentGuessRemover : IFreeAgentGuessRemover
 
         return retryResult switch
         {
-            FreeAgentReconciled reconciled => new FreeAgentGuessRemoved(reconciled.Bill),
+            // The reconciler verified the item itself reflects the requested amount, but the
+            // actual goal is the bill's aggregate total matching what the intervention proposed -
+            // verify that explicitly, same as the unattended reconciliation path does, rather
+            // than assuming the two always move together (VAT/rounding could leave them apart).
+            FreeAgentReconciled reconciled when reconciled.Bill.TotalValue.Amount == intervention.ProposedBillAmount.Amount =>
+                new FreeAgentGuessRemoved(reconciled.Bill),
+            FreeAgentReconciled => new FreeAgentGuessRemovalRetryFailed(
+                "The retried bill update was accepted but the bill's aggregate total still does not match the proposed amount; remaining state preserved."),
             _ => new FreeAgentGuessRemovalRetryFailed(
                 "The retried bill update did not succeed after removing the Guess; remaining state preserved."),
         };
