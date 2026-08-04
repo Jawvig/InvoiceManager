@@ -69,8 +69,20 @@ variable "github_owner" {
   default     = ""
 }
 
+variable "github_owner_id" {
+  description = "Numeric id of the GitHub account/organization from github_owner. Must be provided by Deploy-Infra.ps1 (derived from `gh api repos/{owner}/{repo}`); required when manage_github is true. Used in the OIDC federated credential's immutable subject so a repo/org rename or transfer can't be replayed by a new owner of the recycled name."
+  type        = string
+  default     = ""
+}
+
 variable "github_repository" {
   description = "GitHub repository name. Must be provided by Deploy-Infra.ps1 (derived from `gh repo view`); required when manage_github is true."
+  type        = string
+  default     = ""
+}
+
+variable "github_repository_id" {
+  description = "Numeric id of the GitHub repository from github_repository. Must be provided by Deploy-Infra.ps1 (derived from `gh api repos/{owner}/{repo}`); required when manage_github is true. Used in the OIDC federated credential's immutable subject; see github_owner_id."
   type        = string
   default     = ""
 }

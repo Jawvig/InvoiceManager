@@ -569,7 +569,7 @@ else {
     # hardcoded in Terraform (see [[feedback-no-hardcoded-account-identity]]).
     Push-Location $repoRoot
     try {
-        $repoInfo = Invoke-JsonCommand -Command @("gh", "repo", "view", "--json", "owner,name")
+        $repoInfo = Invoke-JsonCommand -Command @("gh", "api", "repos/{owner}/{repo}")
         $currentUser = Invoke-JsonCommand -Command @("gh", "api", "user")
     }
     finally {
@@ -577,7 +577,9 @@ else {
     }
 
     $githubOwner = $repoInfo.owner.login
+    $githubOwnerId = $repoInfo.owner.id
     $githubRepository = $repoInfo.name
+    $githubRepositoryId = $repoInfo.id
     $productionReviewer = $currentUser.login
 
     Write-Host "GitHub repository: $githubOwner/$githubRepository"
@@ -634,7 +636,9 @@ try {
     }
     else {
         $planArgs += "-var=github_owner=$githubOwner"
+        $planArgs += "-var=github_owner_id=$githubOwnerId"
         $planArgs += "-var=github_repository=$githubRepository"
+        $planArgs += "-var=github_repository_id=$githubRepositoryId"
         $planArgs += "-var=production_reviewer=$productionReviewer"
     }
 

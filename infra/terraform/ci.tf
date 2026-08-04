@@ -24,9 +24,13 @@ resource "azuread_application_federated_identity_credential" "github_actions" {
   issuer         = "https://token.actions.githubusercontent.com"
   audiences      = ["api://AzureADTokenExchange"]
 
-  # Matches the subject GitHub presents for a job bound to this deploy
-  # environment, e.g. repo:omnics/InvoiceManager:environment:test.
-  subject = "repo:${var.github_owner}/${var.github_repository}:environment:${var.environment}"
+  # Matches GitHub's immutable subject format (owner/repo ids pinned alongside the
+  # names) for a job bound to this deploy environment, e.g.
+  # repo:omnics@117590014/InvoiceManager@1263133759:environment:test. GitHub moved
+  # transferred repos to this format so a recycled owner/repo name can't replay a
+  # stale trust relationship - see
+  # https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/.
+  subject = "repo:${var.github_owner}@${var.github_owner_id}/${var.github_repository}@${var.github_repository_id}:environment:${var.environment}"
 }
 
 # Contributor on this environment's resource group only. Sufficient for both the

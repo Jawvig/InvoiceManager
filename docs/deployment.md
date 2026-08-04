@@ -209,9 +209,12 @@ The script:
 2. Prompts for Azure CLI login when needed.
 3. Confirms `gh` is authenticated and sources `GITHUB_TOKEN` from
    `gh auth token` so the `github` Terraform provider can manage the deploy
-   environment. It also derives `github_owner` / `github_repository` (from
-   `gh repo view`) and `production_reviewer` (from `gh api user`) and passes
-   them to Terraform as `-var`, so no account identity is hardcoded. Under
+   environment. It also derives `github_owner` / `github_owner_id` /
+   `github_repository` / `github_repository_id` (from
+   `gh api repos/{owner}/{repo}`) and `production_reviewer` (from
+   `gh api user`) and passes them to Terraform as `-var`, so no account
+   identity is hardcoded. The owner/repository ids feed the OIDC federated
+   credential's immutable subject. Under
    `-SkipGitHubManagement` this whole step is skipped and Terraform runs with
    `-var=manage_github=false`.
 4. Creates the environment-specific Terraform state resource group, storage
