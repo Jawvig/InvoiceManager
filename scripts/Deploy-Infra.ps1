@@ -321,8 +321,17 @@ function Set-KeyVaultSecretFromPrompt {
 
     if ($AsSecureString) {
         $secureValue = Read-Host -Prompt $PromptText -AsSecureString
-        $plainValue = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-            [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureValue))
+        # SecureStringToBSTR always produces a UTF-16, length-prefixed BSTR - PtrToStringBSTR is
+        # the correct decode (respects the length prefix rather than scanning for a null
+        # terminator, so it can't mis-decode or truncate). ZeroFreeBSTR then zeroes and frees the
+        # unmanaged buffer so the secret doesn't linger in memory longer than necessary.
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureValue)
+        try {
+            $plainValue = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        }
+        finally {
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
     }
     else {
         $plainValue = Read-Host -Prompt $PromptText
