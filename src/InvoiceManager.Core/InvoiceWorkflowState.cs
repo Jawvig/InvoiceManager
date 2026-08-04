@@ -1,3 +1,5 @@
+using InvoiceManager.Core.Integrations.FreeAgent;
+
 namespace InvoiceManager.Core;
 
 /// <summary>
@@ -42,6 +44,50 @@ public sealed record ReconciledFromOneDrive(
 public sealed record SavedToOneDrive(ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails);
 
 /// <summary>
+/// The retrieved/reconciled invoice has been matched to a FreeAgent bill, but no
+/// reconciliation or attachment has happened yet for this run.
+/// </summary>
+public sealed record FreeAgentBillMatched(
+    ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, FreeAgentBillIdentity Bill);
+
+/// <summary>
+/// The FreeAgent bill's date and/or amount have been reconciled and verified. Only
+/// the bill identity is persisted - the full verified snapshot is transient
+/// workflow-step output (logged at the time), not durable state; a later step
+/// re-reads the bill fresh rather than trusting a stored snapshot to still be current.
+/// </summary>
+public sealed record FreeAgentBillReconciled(
+    ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, FreeAgentBillIdentity Bill);
+
+/// <summary>
+/// The invoice PDF has been uploaded/replaced on the matched FreeAgent bill and its
+/// attachment metadata verified. Terminal success state for records whose
+/// configuration uses FreeAgent.
+/// </summary>
+public sealed record FreeAgentAttached(
+    ActualInvoiceDetails ActualDetails,
+    OneDriveDetails OneDriveDetails,
+    FreeAgentBillIdentity Bill,
+    FreeAgentAttachmentMetadata Attachment);
+
+/// <summary>
+/// FreeAgent processing could not continue automatically and needs an
+/// administrator decision (a Guess-removal intervention). The record stays here -
+/// not retried automatically - until a decision is recorded against
+/// <see cref="InterventionId"/> and a later run re-attempts reconciliation.
+/// </summary>
+public sealed record FreeAgentInterventionPending(
+    ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, FreeAgentInterventionId InterventionId);
+
+/// <summary>
+/// A FreeAgent step failed technically, hit a lock/conflict, or returned a
+/// business-rule rejection that isn't a normal match/no-match outcome. Always
+/// retried on a later run, mirroring <see cref="RetrievalError"/>.
+/// </summary>
+public sealed record FreeAgentError(
+    ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, string ErrorMessage);
+
+/// <summary>
 /// The current state of an invoice record as it moves through retrieval,
 /// reconciliation, and save steps. Each case carries exactly the data valid
 /// in that state, so a record cannot exist in a state without the values that
@@ -53,4 +99,9 @@ public union InvoiceWorkflowState(
     RetrievalError,
     Retrieved,
     ReconciledFromOneDrive,
-    SavedToOneDrive);
+    SavedToOneDrive,
+    FreeAgentBillMatched,
+    FreeAgentBillReconciled,
+    FreeAgentAttached,
+    FreeAgentInterventionPending,
+    FreeAgentError);

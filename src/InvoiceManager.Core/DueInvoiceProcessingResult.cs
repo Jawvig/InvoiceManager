@@ -2,7 +2,8 @@ namespace InvoiceManager.Core;
 
 /// <summary>
 /// The due invoice was retrieved and saved to OneDrive, and the next expected
-/// record was created.
+/// record was created. If the configuration uses FreeAgent, the bill was also
+/// matched, reconciled, and attached.
 /// </summary>
 public sealed record ProcessingSucceeded(InvoiceRecordId RecordId);
 
@@ -33,10 +34,22 @@ public sealed record ProcessingNotFound(InvoiceRecordId RecordId);
 /// </summary>
 public sealed record ProcessingFailed(InvoiceRecordId RecordId, Exception Exception);
 
+/// <summary>More than one FreeAgent bill matched; the record stays at its last save/reconcile state for retry.</summary>
+public sealed record ProcessingFreeAgentAmbiguous(InvoiceRecordId RecordId, int CandidateCount);
+
+/// <summary>A FreeAgent Guess-removal intervention was created; the record is <see cref="FreeAgentInterventionPending"/>.</summary>
+public sealed record ProcessingFreeAgentInterventionRequired(InvoiceRecordId RecordId, FreeAgentInterventionId InterventionId);
+
+/// <summary>A FreeAgent step hit a lock, rejection, or verification failure; the record is <see cref="FreeAgentError"/> for retry.</summary>
+public sealed record ProcessingFreeAgentConflict(InvoiceRecordId RecordId, string Reason);
+
 /// <summary>The outcome of processing a single due invoice record.</summary>
 public union DueInvoiceProcessingResult(
     ProcessingSucceeded,
     ProcessingReconciled,
     ProcessingNoMatch,
     ProcessingNotFound,
-    ProcessingFailed);
+    ProcessingFailed,
+    ProcessingFreeAgentAmbiguous,
+    ProcessingFreeAgentInterventionRequired,
+    ProcessingFreeAgentConflict);

@@ -14,7 +14,8 @@ public sealed record InvoiceConfiguration(
     bool IsActive,
     OneDriveFolder OneDriveFolder,
     DateOnly StartDate,
-    int DateToleranceDays)
+    int DateToleranceDays,
+    Option<FreeAgentBillMatching> FreeAgentMatching)
 {
     /// <summary>The integration type this configuration uses, derived from <see cref="IntegrationConfiguration"/>.</summary>
     public IntegrationType IntegrationType => IntegrationConfiguration.ToIntegrationType();
