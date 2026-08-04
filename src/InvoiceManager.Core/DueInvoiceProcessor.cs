@@ -361,26 +361,26 @@ public sealed class DueInvoiceProcessor(
                 return await CompleteFreeAgentAttachAsync(
                     reconciledRecord, actualDetails, oneDriveDetails, billIdentity, already.Existing, recordActivity, cancellationToken);
             case FreeAgentAttachmentUnexpectedExisting:
-            {
-                const string reason = "The FreeAgent bill already has an attachment that does not match this invoice's last known upload.";
-                await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
-            }
+                {
+                    const string reason = "The FreeAgent bill already has an attachment that does not match this invoice's last known upload.";
+                    await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
+                    return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
+                }
             case FreeAgentBillLocked locked:
-            {
-                var reason = $"FreeAgent bill locked: {locked.Reason}.";
-                await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
-            }
+                {
+                    var reason = $"FreeAgent bill locked: {locked.Reason}.";
+                    await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
+                    return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
+                }
             case FreeAgentVerificationFailed verificationFailed:
                 await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, verificationFailed.Detail, cancellationToken);
                 return new ProcessingFreeAgentConflict(reconciledRecord.Id, verificationFailed.Detail);
             default:
-            {
-                const string reason = "Unrecognised attachment result.";
-                await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
-            }
+                {
+                    const string reason = "Unrecognised attachment result.";
+                    await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
+                    return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
+                }
         }
     }
 
@@ -409,11 +409,11 @@ public sealed class DueInvoiceProcessor(
                 conflictResult = new ProcessingFreeAgentConflict(matchedRecord.Id, $"FreeAgent bill locked: {locked.Reason}.");
                 break;
             case FreeAgentPaymentInterventionRequired interventionRequired:
-            {
-                var interventionOutcome = await CreateFreeAgentInterventionAsync(
-                    matchedRecord, actualDetails, oneDriveDetails, interventionRequired.Intervention, cancellationToken);
-                return interventionOutcome;
-            }
+                {
+                    var interventionOutcome = await CreateFreeAgentInterventionAsync(
+                        matchedRecord, actualDetails, oneDriveDetails, interventionRequired.Intervention, cancellationToken);
+                    return interventionOutcome;
+                }
             case FreeAgentVerificationFailed verificationFailed:
                 await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, verificationFailed.Detail, cancellationToken);
                 conflictResult = new ProcessingFreeAgentConflict(matchedRecord.Id, verificationFailed.Detail);
