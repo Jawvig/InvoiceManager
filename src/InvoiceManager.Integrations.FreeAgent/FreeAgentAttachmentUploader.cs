@@ -45,12 +45,13 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
             return new FreeAgentAttachmentUnexpectedExisting(existingMetadata);
         }
 
-        var uploaded = await client.PostAttachmentAsync(bill.BillUrl, pdfContent, fileName, cancellationToken);
-        var newMetadata = FreeAgentBillMapping.ToAttachmentMetadata(uploaded);
+        await client.PostAttachmentAsync(bill.BillUrl, pdfContent, fileName, cancellationToken);
 
         // Verify by reading the bill back rather than trusting the upload response alone -
         // check every field that forms the persisted last-known-good metadata, not just the
-        // filename, so a stale or truncated attachment under the right filename is caught.
+        // filename, so a stale or truncated attachment under the right filename is caught. The
+        // metadata persisted as this record's last-known-good upload also comes from this
+        // verified read, never the upload response, in case that response itself is stale.
         var verify = await client.GetBillAsync(bill.BillUrl, cancellationToken);
         if (verify.Attachment is not { } verifiedAttachment ||
             !string.Equals(verifiedAttachment.FileName, fileName, StringComparison.Ordinal) ||
@@ -59,8 +60,7 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
             return new FreeAgentVerificationFailed("The uploaded attachment could not be verified after upload.");
         }
 
-        return existingAttachment is null
-            ? new FreeAgentAttachmentUploaded(newMetadata)
-            : new FreeAgentAttachmentReplaced(FreeAgentBillMapping.ToAttachmentMetadata(existingAttachment), newMetadata);
+        var newMetadata = FreeAgentBillMapping.ToAttachmentMetadata(verifiedAttachment);
+        return new FreeAgentAttachmentUploaded(newMetadata);
     }
 }
