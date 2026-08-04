@@ -143,6 +143,34 @@ public sealed class FreeAgentBillReconcilerTests
     }
 
     [Fact]
+    public async Task ReconcileItemAmountAsync_ReturnsRemoteRejected_WhenTheLockedFieldNameAppearsWithoutLockedWording()
+    {
+        // Same field name FreeAgent's proven locked response uses, but a normal validation
+        // message rather than "is locked" - must not be classified as a lock on field name alone.
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillJson(status: "Open", items: [ItemUrl])),
+                1 => new HttpResponseMessage(System.Net.HttpStatusCode.UnprocessableEntity)
+                {
+                    Content = new StringContent(
+                        """{"errors": {"bill_items.total_value": [{"message": "must be a positive number"}]}}""",
+                        System.Text.Encoding.UTF8, "application/json"),
+                },
+                _ => throw new InvalidOperationException("Unexpected request."),
+            });
+        var client = TestClientFactory.Create(handler);
+        var reconciler = new FreeAgentBillReconciler(client);
+
+        var result = await reconciler.ReconcileItemAmountAsync(
+            new FreeAgentBillIdentity(BillUrl),
+            new FreeAgentBillItemIdentity(ItemUrl),
+            new Money(125.50m, "GBP"));
+
+        Assert.True(result is FreeAgentRemoteRejected, $"Expected FreeAgentRemoteRejected but got {result}.");
+    }
+
+    [Fact]
     public async Task ReconcileItemAmountAsync_ReturnsVerificationFailed_WhenReturnedItemTotalDoesNotMatchRequest()
     {
         var handler = new StubHttpMessageHandler((request, index) =>
@@ -163,6 +191,30 @@ public sealed class FreeAgentBillReconcilerTests
             new Money(125.50m, "GBP"));
 
         Assert.True(result is FreeAgentVerificationFailed, $"Expected FreeAgentVerificationFailed but got {result}.");
+    }
+
+    [Fact]
+    public async Task ReconcileDateAsync_ReturnsRemoteRejected_WhenA422HasNoLockedFieldSignal()
+    {
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(BillJson(status: "Open", items: [ItemUrl])),
+                1 => new HttpResponseMessage(System.Net.HttpStatusCode.UnprocessableEntity)
+                {
+                    Content = new StringContent(
+                        """{"errors": {"dated_on": [{"message": "is not a valid date"}]}}""",
+                        System.Text.Encoding.UTF8, "application/json"),
+                },
+                _ => throw new InvalidOperationException("Unexpected request."),
+            });
+        var client = TestClientFactory.Create(handler);
+        var reconciler = new FreeAgentBillReconciler(client);
+
+        var result = await reconciler.ReconcileDateAsync(new FreeAgentBillIdentity(BillUrl), new DateOnly(2026, 8, 3));
+
+        Assert.True(result is FreeAgentRemoteRejected, $"Expected FreeAgentRemoteRejected but got {result}.");
+        Assert.Equal(2, handler.Requests.Count); // GET + failed PUT only, no re-GET
     }
 
     [Fact]

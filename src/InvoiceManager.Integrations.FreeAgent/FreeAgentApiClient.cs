@@ -179,10 +179,11 @@ internal sealed class FreeAgentApiClient
         // URI bypasses it entirely - verify the host explicitly before ever attaching the
         // bearer token, so this boundary's host allowlist actually holds for every request.
         if (request.RequestUri is { IsAbsoluteUri: true } absolute &&
-            !string.Equals(absolute.Host, httpClient.BaseAddress!.Host, StringComparison.OrdinalIgnoreCase))
+            (!string.Equals(absolute.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+             !string.Equals(absolute.Host, httpClient.BaseAddress!.Host, StringComparison.OrdinalIgnoreCase)))
         {
             throw new InvalidOperationException(
-                $"Refusing to call FreeAgent host '{absolute.Host}': expected '{httpClient.BaseAddress.Host}'.");
+                $"Refusing to call FreeAgent host '{absolute.Scheme}://{absolute.Host}': expected 'https://{httpClient.BaseAddress!.Host}'.");
         }
 
         var token = await tokenProvider.AcquireTokenAsync(cancellationToken);
@@ -203,12 +204,17 @@ internal sealed class FreeAgentApiClient
 
     /// <summary>
     /// Looks for the proven locked-field substrings ("cached_total_value" /
-    /// "bill_items.total_value") in a 422 body. Returns a short, redacted detail
-    /// string - never the raw body, which could contain other request context - or
-    /// null if the body carries no locked-field signal (a normal validation 422).
+    /// "bill_items.total_value") in a 422 body, alongside the "locked" wording FreeAgent's
+    /// proven locked response always carries (e.g. "is locked and cannot be changed") - the
+    /// field name alone is not enough, since the same field name is also used for ordinary
+    /// validation errors (e.g. "is not a number") that must not be misreported as a lock.
+    /// Returns a short, redacted detail string - never the raw body, which could contain other
+    /// request context - or null if the body carries no locked-field signal.
     /// </summary>
     private static string? ExtractLockedFieldDetail(string errorBody)
     {
+        if (!errorBody.Contains("locked", StringComparison.OrdinalIgnoreCase))
+            return null;
         if (errorBody.Contains("cached_total_value", StringComparison.OrdinalIgnoreCase))
             return "cached_total_value is locked";
         if (errorBody.Contains("bill_items.total_value", StringComparison.OrdinalIgnoreCase))

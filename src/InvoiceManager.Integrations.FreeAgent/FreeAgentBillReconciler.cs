@@ -36,6 +36,13 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
             return new FreeAgentBillLocked(FreeAgentLockReason.Unknown);
         }
 
+        if (result.Value is null)
+        {
+            // A non-locked 422 (a normal validation rejection) - never proceed to re-read and
+            // verify the bill as though the mutation might have succeeded.
+            return new FreeAgentRemoteRejected("FreeAgent rejected the dated_on change.");
+        }
+
         var after = await client.GetBillAsync(bill.BillUrl, cancellationToken);
 
         // Verify the proven invariant explicitly rather than trusting it: changing dated_on
