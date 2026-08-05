@@ -73,6 +73,7 @@ public sealed class ConfigurationFormInput
 
     public bool HasFreeAgentAmountReconciliation { get; set; }
 
+    [Range(typeof(decimal), "0", "79228162514264337593543950335")]
     public decimal FreeAgentAmountTolerance { get; set; }
 
     // Populated by the OneDrive folder picker (see _OneDriveFolderPicker.cshtml /
@@ -150,7 +151,7 @@ public sealed class ConfigurationFormInput
             FreeAgentContactIdentity contactUrl;
             try
             {
-                contactUrl = new FreeAgentContactIdentity(FreeAgentContactUrl.Trim());
+                contactUrl = new FreeAgentContactIdentity(FreeAgentContactUrl?.Trim() ?? "");
             }
             catch (ArgumentException)
             {

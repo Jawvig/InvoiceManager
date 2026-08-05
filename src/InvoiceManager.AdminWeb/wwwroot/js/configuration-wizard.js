@@ -29,6 +29,9 @@
     const freeAgentDateFields = document.getElementById("freeagent-date-fields");
     const hasFreeAgentAmountReconciliationCheckbox = document.getElementById("Input_HasFreeAgentAmountReconciliation");
     const freeAgentAmountFields = document.getElementById("freeagent-amount-fields");
+    const freeAgentContactUrlInput = document.getElementById("Input_FreeAgentContactUrl");
+    const freeAgentDateToleranceInput = document.getElementById("Input_FreeAgentDateToleranceDays");
+    const freeAgentAmountToleranceInput = document.getElementById("Input_FreeAgentAmountTolerance");
 
     let billingAccountsRequested = false;
 
@@ -128,7 +131,12 @@
 
     // Same progressive-disclosure treatment for FreeAgent bill matching: the contact URL and
     // each reconciliation's tolerance are only meaningful (and only validated server-side) when
-    // their enabling checkbox is checked.
+    // their enabling checkbox is checked. Unchecking a box also clears its paired input(s) -
+    // Build() already ignores a stray value regardless, but clearing means a value typed before
+    // unchecking can't resurface unnoticed if the box is checked again later in the same visit.
+    // Numeric inputs are reset to "0" rather than "" - both DateToleranceDays/AmountTolerance
+    // (int/decimal, non-nullable) reject an empty posted value at model-binding time regardless
+    // of the box being unchecked, and 0 is within both fields' valid range.
     function applyFreeAgentMatchingVisibility() {
         if (freeAgentMatchingFields) freeAgentMatchingFields.hidden = !hasFreeAgentMatchingCheckbox?.checked;
     }
@@ -138,9 +146,26 @@
     function applyFreeAgentAmountReconciliationVisibility() {
         if (freeAgentAmountFields) freeAgentAmountFields.hidden = !hasFreeAgentAmountReconciliationCheckbox?.checked;
     }
-    hasFreeAgentMatchingCheckbox?.addEventListener("change", applyFreeAgentMatchingVisibility);
-    hasFreeAgentDateReconciliationCheckbox?.addEventListener("change", applyFreeAgentDateReconciliationVisibility);
-    hasFreeAgentAmountReconciliationCheckbox?.addEventListener("change", applyFreeAgentAmountReconciliationVisibility);
+    hasFreeAgentMatchingCheckbox?.addEventListener("change", () => {
+        if (!hasFreeAgentMatchingCheckbox.checked) {
+            if (freeAgentContactUrlInput) freeAgentContactUrlInput.value = "";
+            if (hasFreeAgentDateReconciliationCheckbox) hasFreeAgentDateReconciliationCheckbox.checked = false;
+            if (freeAgentDateToleranceInput) freeAgentDateToleranceInput.value = "0";
+            if (hasFreeAgentAmountReconciliationCheckbox) hasFreeAgentAmountReconciliationCheckbox.checked = false;
+            if (freeAgentAmountToleranceInput) freeAgentAmountToleranceInput.value = "0";
+        }
+        applyFreeAgentMatchingVisibility();
+        applyFreeAgentDateReconciliationVisibility();
+        applyFreeAgentAmountReconciliationVisibility();
+    });
+    hasFreeAgentDateReconciliationCheckbox?.addEventListener("change", () => {
+        if (!hasFreeAgentDateReconciliationCheckbox.checked && freeAgentDateToleranceInput) freeAgentDateToleranceInput.value = "0";
+        applyFreeAgentDateReconciliationVisibility();
+    });
+    hasFreeAgentAmountReconciliationCheckbox?.addEventListener("change", () => {
+        if (!hasFreeAgentAmountReconciliationCheckbox.checked && freeAgentAmountToleranceInput) freeAgentAmountToleranceInput.value = "0";
+        applyFreeAgentAmountReconciliationVisibility();
+    });
     applyFreeAgentMatchingVisibility();
     applyFreeAgentDateReconciliationVisibility();
     applyFreeAgentAmountReconciliationVisibility();

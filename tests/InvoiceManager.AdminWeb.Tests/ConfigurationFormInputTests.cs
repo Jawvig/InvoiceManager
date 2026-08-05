@@ -201,6 +201,24 @@ public sealed class ConfigurationFormInputTests
     }
 
     [Fact]
+    public void Build_RejectsBlankFreeAgentContactUrl_WithoutThrowingNullReferenceException()
+    {
+        // The model binder can assign null to a string property despite its non-nullable
+        // initializer (an absent/blank posted field) - Build() must still report this as an
+        // ArgumentException the page handler turns into a form error, not crash with a 500.
+        var input = new ConfigurationFormInput
+        {
+            Id = "billing-invoice",
+            IntegrationType = IntegrationType.MicrosoftBilling,
+            BillingAccountId = "stored-id",
+            HasFreeAgentMatching = true,
+            FreeAgentContactUrl = null!,
+        };
+
+        Assert.ThrowsAny<ArgumentException>(() => input.Build(false, [], currentBillingAccountId: "stored-id", Folder));
+    }
+
+    [Fact]
     public void From_RoundTripsFreeAgentMatching()
     {
         var existing = new FreeAgentBillMatching(
