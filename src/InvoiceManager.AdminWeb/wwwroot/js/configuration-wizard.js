@@ -23,6 +23,12 @@
     const amountMatchingFields = document.getElementById("amount-matching-fields");
     const bodyPatternInput = document.getElementById("Input_BodyPattern");
     const bodyPatternStatus = document.getElementById("body-pattern-status");
+    const hasFreeAgentMatchingCheckbox = document.getElementById("Input_HasFreeAgentMatching");
+    const freeAgentMatchingFields = document.getElementById("freeagent-matching-fields");
+    const hasFreeAgentDateReconciliationCheckbox = document.getElementById("Input_HasFreeAgentDateReconciliation");
+    const freeAgentDateFields = document.getElementById("freeagent-date-fields");
+    const hasFreeAgentAmountReconciliationCheckbox = document.getElementById("Input_HasFreeAgentAmountReconciliation");
+    const freeAgentAmountFields = document.getElementById("freeagent-amount-fields");
 
     let billingAccountsRequested = false;
 
@@ -119,6 +125,25 @@
     }
     hasExpectedAmountCheckbox?.addEventListener("change", applyAmountMatchingVisibility);
     applyAmountMatchingVisibility();
+
+    // Same progressive-disclosure treatment for FreeAgent bill matching: the contact URL and
+    // each reconciliation's tolerance are only meaningful (and only validated server-side) when
+    // their enabling checkbox is checked.
+    function applyFreeAgentMatchingVisibility() {
+        if (freeAgentMatchingFields) freeAgentMatchingFields.hidden = !hasFreeAgentMatchingCheckbox?.checked;
+    }
+    function applyFreeAgentDateReconciliationVisibility() {
+        if (freeAgentDateFields) freeAgentDateFields.hidden = !hasFreeAgentDateReconciliationCheckbox?.checked;
+    }
+    function applyFreeAgentAmountReconciliationVisibility() {
+        if (freeAgentAmountFields) freeAgentAmountFields.hidden = !hasFreeAgentAmountReconciliationCheckbox?.checked;
+    }
+    hasFreeAgentMatchingCheckbox?.addEventListener("change", applyFreeAgentMatchingVisibility);
+    hasFreeAgentDateReconciliationCheckbox?.addEventListener("change", applyFreeAgentDateReconciliationVisibility);
+    hasFreeAgentAmountReconciliationCheckbox?.addEventListener("change", applyFreeAgentAmountReconciliationVisibility);
+    applyFreeAgentMatchingVisibility();
+    applyFreeAgentDateReconciliationVisibility();
+    applyFreeAgentAmountReconciliationVisibility();
 
     // Give immediate feedback on an invalid body-pattern regex rather than waiting for a
     // server round-trip on Save. JavaScript's RegExp syntax isn't identical to .NET's, so this

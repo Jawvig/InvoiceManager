@@ -93,8 +93,7 @@ public sealed class InvoiceConfigurationExportTests
             false,
             [new InvoiceManager.Infrastructure.MicrosoftAuthorization.BillingAccountChoice("billing-account-1", "Name", "Business")],
             currentBillingAccountId: null,
-            new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Promoted"),
-            Option.None);
+            new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Promoted"));
 
         Assert.Equal(configuration.InvoiceDescription, rebuilt.InvoiceDescription);
         Assert.False(rebuilt.IsActive);
