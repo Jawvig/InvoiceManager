@@ -7,12 +7,12 @@ namespace InvoiceManager.Core.Integrations.FreeAgent;
 /// a retrieved or reconciled invoice.
 /// </summary>
 public sealed record FreeAgentBillSearchCriteria(
-    string ContactUrl,
+    FreeAgentContactIdentity ContactUrl,
     DateOnly ExpectedDate,
     int DateToleranceDays,
     Money ExpectedAmount,
     decimal AmountTolerance,
-    string SourceInvoiceReference);
+    SourceInvoiceId SourceInvoiceReference);
 
 /// <summary>No FreeAgent bill matched the search criteria.</summary>
 public sealed record NoFreeAgentBillMatch;

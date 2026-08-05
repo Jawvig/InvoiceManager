@@ -23,6 +23,19 @@ public sealed record FreeAgentBillItemIdentity(string ItemUrl)
         : throw new ArgumentException("FreeAgentBillItemIdentity cannot be null or empty.", nameof(ItemUrl));
 }
 
+/// <summary>
+/// An opaque, InvoiceManager-owned reference to a FreeAgent contact's resource URL -
+/// used both to search for a contact's bills (<see cref="FreeAgentBillSearchCriteria"/>)
+/// and to report which contact a matched bill belongs to. A typed wrapper rather than a
+/// bare string so it can never be swapped with a bill or item identity at a call site.
+/// </summary>
+public sealed record FreeAgentContactIdentity(string ContactUrl)
+{
+    public string ContactUrl { get; } = !string.IsNullOrWhiteSpace(ContactUrl)
+        ? ContactUrl
+        : throw new ArgumentException("FreeAgentContactIdentity cannot be null or empty.", nameof(ContactUrl));
+}
+
 /// <summary>The status of a FreeAgent bill, enumerated rather than left as FreeAgent's raw string.</summary>
 public enum FreeAgentBillStatus
 {
@@ -62,7 +75,7 @@ public sealed record FreeAgentBillSnapshot(
     Money PaidValue,
     Money DueValue,
     Option<DateOnly> PaidOn,
-    string ContactUrl,
+    FreeAgentContactIdentity ContactUrl,
     string Reference,
     IReadOnlyList<FreeAgentBillItem> Items,
     Option<FreeAgentAttachmentMetadata> Attachment);

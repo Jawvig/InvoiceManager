@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using NodaMoney;
 
 namespace InvoiceManager.Infrastructure.CosmosDb;
@@ -128,13 +129,13 @@ internal sealed class FreeAgentBillMatchingDocument
 
     public FreeAgentBillMatching ToMatching() =>
         new(
-            ContactUrl,
+            new FreeAgentContactIdentity(ContactUrl),
             DateReconciliation is { } dateReconciliation ? dateReconciliation.ToReconciliation() : Option.None,
             AmountReconciliation is { } amountReconciliation ? amountReconciliation.ToReconciliation() : Option.None);
 
     public static FreeAgentBillMatchingDocument FromMatching(FreeAgentBillMatching matching) => new()
     {
-        ContactUrl = matching.ContactUrl,
+        ContactUrl = matching.ContactUrl.ContactUrl,
         DateReconciliation = matching.DateReconciliation switch
         {
             FreeAgentDateReconciliation dateReconciliation => FreeAgentDateReconciliationDocument.FromReconciliation(dateReconciliation),

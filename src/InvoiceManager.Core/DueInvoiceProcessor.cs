@@ -260,7 +260,7 @@ public sealed class DueInvoiceProcessor(
             dateToleranceDays,
             actualDetails.ActualAmount,
             amountTolerance,
-            actualDetails.SourceInvoiceId.Value);
+            actualDetails.SourceInvoiceId);
 
         var matchResult = await freeAgentBillMatcher.FindBillAsync(criteria, cancellationToken);
         recordActivity?.AddEvent(new ActivityEvent("freeagent_match_attempted"));

@@ -30,7 +30,7 @@ internal sealed class FreeAgentBillMatcher : IFreeAgentBillMatcher
         while (true)
         {
             var pageResults = await client.GetBillsPageAsync(
-                fromDate, toDate, criteria.ContactUrl, page, PageSize, cancellationToken);
+                fromDate, toDate, criteria.ContactUrl.ContactUrl, page, PageSize, cancellationToken);
             if (pageResults.Count == 0)
                 break;
 
@@ -67,12 +67,7 @@ internal sealed class FreeAgentBillMatcher : IFreeAgentBillMatcher
         return Math.Abs(totalValue - expected) <= criteria.AmountTolerance;
     }
 
-    private static bool MatchesReference(BillWire bill, FreeAgentBillSearchCriteria criteria)
-    {
-        if (string.IsNullOrWhiteSpace(criteria.SourceInvoiceReference))
-            return true;
-
-        return bill.Reference is { } reference &&
-            reference.Contains(criteria.SourceInvoiceReference, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool MatchesReference(BillWire bill, FreeAgentBillSearchCriteria criteria) =>
+        bill.Reference is { } reference &&
+            reference.Contains(criteria.SourceInvoiceReference.Value, StringComparison.OrdinalIgnoreCase);
 }

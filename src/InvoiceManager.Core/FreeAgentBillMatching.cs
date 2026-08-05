@@ -1,3 +1,5 @@
+using InvoiceManager.Core.Integrations.FreeAgent;
+
 namespace InvoiceManager.Core;
 
 /// <summary>
@@ -12,7 +14,7 @@ namespace InvoiceManager.Core;
 /// <c>IFreeAgentTokenProvider</c>/<c>FreeAgentApiHost</c>).
 /// </remarks>
 public sealed record FreeAgentBillMatching(
-    string ContactUrl,
+    FreeAgentContactIdentity ContactUrl,
     Option<FreeAgentDateReconciliation> DateReconciliation,
     Option<FreeAgentAmountReconciliation> AmountReconciliation);
 
