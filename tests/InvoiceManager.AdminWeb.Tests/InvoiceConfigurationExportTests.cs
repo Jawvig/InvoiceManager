@@ -1,6 +1,7 @@
 using System.Text.Json;
 using InvoiceManager.AdminWeb.Pages.Configurations;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.TestSupport;
 
 namespace InvoiceManager.AdminWeb.Tests;
@@ -112,6 +113,43 @@ public sealed class InvoiceConfigurationExportTests
         Assert.Equal("billing@example.com", input.SenderEmailAddress);
         Assert.Equal("Invoice \\d+", input.BodyPattern);
         Assert.Equal("", input.BillingAccountId);
+    }
+
+    [Fact]
+    public void FromConfiguration_ThenToFormInput_RoundTripsFreeAgentMatching()
+    {
+        var freeAgentMatching = new FreeAgentBillMatching(
+            new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"),
+            DateReconciliation: new FreeAgentDateReconciliation(3),
+            AmountReconciliation: new FreeAgentAmountReconciliation(0.01m));
+        var configuration = Configurations.Build(freeAgentMatching: freeAgentMatching);
+
+        var export = InvoiceConfigurationExport.FromConfiguration(configuration);
+        var json = JsonSerializer.Serialize(export, InvoiceConfigurationExportJson.Options);
+        var roundTripped = JsonSerializer.Deserialize<InvoiceConfigurationExport>(json, InvoiceConfigurationExportJson.Options)!;
+        var input = roundTripped.ToFormInput();
+
+        Assert.True(input.HasFreeAgentMatching);
+        Assert.Equal("https://api.sandbox.freeagent.com/v2/contacts/1", input.FreeAgentContactUrl);
+        Assert.True(input.HasFreeAgentDateReconciliation);
+        Assert.Equal(3, input.FreeAgentDateToleranceDays);
+        Assert.True(input.HasFreeAgentAmountReconciliation);
+        Assert.Equal(0.01m, input.FreeAgentAmountTolerance);
+    }
+
+    [Fact]
+    public void FromConfiguration_OmitsFreeAgentMatching_WhenNotSet()
+    {
+        var configuration = Configurations.Build();
+
+        var json = JsonSerializer.Serialize(
+            InvoiceConfigurationExport.FromConfiguration(configuration), InvoiceConfigurationExportJson.Options);
+        using var document = JsonDocument.Parse(json);
+
+        Assert.False(document.RootElement.TryGetProperty("freeAgentMatching", out _));
+
+        var input = InvoiceConfigurationExport.FromConfiguration(configuration).ToFormInput();
+        Assert.False(input.HasFreeAgentMatching);
     }
 
     [Fact]
