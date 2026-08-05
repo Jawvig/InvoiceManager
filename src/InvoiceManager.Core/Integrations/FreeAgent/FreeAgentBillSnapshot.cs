@@ -10,17 +10,17 @@ namespace InvoiceManager.Core.Integrations.FreeAgent;
 /// </summary>
 public sealed record FreeAgentBillIdentity(string BillUrl)
 {
-    public string BillUrl { get; } = !string.IsNullOrWhiteSpace(BillUrl)
+    public string BillUrl { get; } = Uri.TryCreate(BillUrl, UriKind.Absolute, out _)
         ? BillUrl
-        : throw new ArgumentException("FreeAgentBillIdentity cannot be null or empty.", nameof(BillUrl));
+        : throw new ArgumentException("FreeAgentBillIdentity must be an absolute URI.", nameof(BillUrl));
 }
 
 /// <summary>An opaque, InvoiceManager-owned reference to a FreeAgent bill item's resource URL.</summary>
 public sealed record FreeAgentBillItemIdentity(string ItemUrl)
 {
-    public string ItemUrl { get; } = !string.IsNullOrWhiteSpace(ItemUrl)
+    public string ItemUrl { get; } = Uri.TryCreate(ItemUrl, UriKind.Absolute, out _)
         ? ItemUrl
-        : throw new ArgumentException("FreeAgentBillItemIdentity cannot be null or empty.", nameof(ItemUrl));
+        : throw new ArgumentException("FreeAgentBillItemIdentity must be an absolute URI.", nameof(ItemUrl));
 }
 
 /// <summary>
@@ -31,9 +31,9 @@ public sealed record FreeAgentBillItemIdentity(string ItemUrl)
 /// </summary>
 public sealed record FreeAgentContactIdentity(string ContactUrl)
 {
-    public string ContactUrl { get; } = !string.IsNullOrWhiteSpace(ContactUrl)
+    public string ContactUrl { get; } = Uri.TryCreate(ContactUrl, UriKind.Absolute, out _)
         ? ContactUrl
-        : throw new ArgumentException("FreeAgentContactIdentity cannot be null or empty.", nameof(ContactUrl));
+        : throw new ArgumentException("FreeAgentContactIdentity must be an absolute URI.", nameof(ContactUrl));
 }
 
 /// <summary>The status of a FreeAgent bill, enumerated rather than left as FreeAgent's raw string.</summary>
