@@ -119,3 +119,13 @@ agent, human-triggered or automated):
   fresh comment (explicitly linking back to the original thread) if the
   tooling available to you genuinely cannot unresolve a thread; do not use it
   as a default choice between equally good options.
+- Explicitly check new/changed domain and document types against
+  [docs/coding-standards.md](docs/coding-standards.md) — in particular "make
+  invalid states unrepresentable with strong typing": a bare `string`/`Uri`
+  field standing in for something more specific, a boolean paired with a
+  sibling value that is only meaningful when the boolean is true (prefer an
+  `Option<T>` wrapping a record that carries both), or a nullable field
+  without a corresponding `Option<T>` domain type. This check is easy to skip
+  when a change otherwise looks correct and well-tested, so treat it as a
+  mandatory step rather than something to fall back on only when something
+  else looks off.

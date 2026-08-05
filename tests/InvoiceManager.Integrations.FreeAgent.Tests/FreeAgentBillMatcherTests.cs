@@ -1,3 +1,4 @@
+using InvoiceManager.Core;
 using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.TestSupport;
 using NodaMoney;
@@ -22,13 +23,12 @@ public sealed class FreeAgentBillMatcherTests
         var matcher = new FreeAgentBillMatcher(client);
 
         var criteria = new FreeAgentBillSearchCriteria(
-            "https://api.sandbox.freeagent.com/v2/company",
-            ContactUrl,
+            new FreeAgentContactIdentity(ContactUrl),
             new DateOnly(2026, 8, 1),
             3,
             new Money(121.00m, "GBP"),
             0.01m,
-            "REF-1");
+            new SourceInvoiceId("REF-1"));
 
         var result = await matcher.FindBillAsync(criteria);
 
@@ -50,13 +50,12 @@ public sealed class FreeAgentBillMatcherTests
         var matcher = new FreeAgentBillMatcher(client);
 
         var criteria = new FreeAgentBillSearchCriteria(
-            "https://api.sandbox.freeagent.com/v2/company",
-            ContactUrl,
+            new FreeAgentContactIdentity(ContactUrl),
             new DateOnly(2026, 8, 1),
             3,
             new Money(121.00m, "GBP"),
             0.01m,
-            "REF-1");
+            new SourceInvoiceId("REF-1"));
 
         var result = await matcher.FindBillAsync(criteria);
 
