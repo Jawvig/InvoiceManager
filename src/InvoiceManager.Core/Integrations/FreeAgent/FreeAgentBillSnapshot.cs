@@ -10,17 +10,13 @@ namespace InvoiceManager.Core.Integrations.FreeAgent;
 /// </summary>
 public sealed record FreeAgentBillIdentity(string BillUrl)
 {
-    public string BillUrl { get; } = Uri.TryCreate(BillUrl, UriKind.Absolute, out _)
-        ? BillUrl
-        : throw new ArgumentException("FreeAgentBillIdentity must be an absolute URI.", nameof(BillUrl));
+    public string BillUrl { get; } = FreeAgentResourceUrl.Validate(BillUrl, nameof(FreeAgentBillIdentity), nameof(BillUrl));
 }
 
 /// <summary>An opaque, InvoiceManager-owned reference to a FreeAgent bill item's resource URL.</summary>
 public sealed record FreeAgentBillItemIdentity(string ItemUrl)
 {
-    public string ItemUrl { get; } = Uri.TryCreate(ItemUrl, UriKind.Absolute, out _)
-        ? ItemUrl
-        : throw new ArgumentException("FreeAgentBillItemIdentity must be an absolute URI.", nameof(ItemUrl));
+    public string ItemUrl { get; } = FreeAgentResourceUrl.Validate(ItemUrl, nameof(FreeAgentBillItemIdentity), nameof(ItemUrl));
 }
 
 /// <summary>
@@ -31,9 +27,22 @@ public sealed record FreeAgentBillItemIdentity(string ItemUrl)
 /// </summary>
 public sealed record FreeAgentContactIdentity(string ContactUrl)
 {
-    public string ContactUrl { get; } = Uri.TryCreate(ContactUrl, UriKind.Absolute, out _)
-        ? ContactUrl
-        : throw new ArgumentException("FreeAgentContactIdentity must be an absolute URI.", nameof(ContactUrl));
+    public string ContactUrl { get; } = FreeAgentResourceUrl.Validate(ContactUrl, nameof(FreeAgentContactIdentity), nameof(ContactUrl));
+}
+
+/// <summary>
+/// Shared validation for FreeAgent resource-URL identity wrappers. Requires an absolute
+/// <c>https</c> URI rather than merely <see cref="UriKind.Absolute"/> - on Unix,
+/// <see cref="Uri.TryCreate(string?, UriKind, out Uri?)"/> happily parses a leading-slash
+/// path like <c>/v2/bills/1</c> as an absolute <c>file</c> URI, which is never a valid
+/// FreeAgent API resource URL.
+/// </summary>
+file static class FreeAgentResourceUrl
+{
+    public static string Validate(string value, string typeName, string paramName) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+            ? value
+            : throw new ArgumentException($"{typeName} must be an absolute https URI.", paramName);
 }
 
 /// <summary>The status of a FreeAgent bill, enumerated rather than left as FreeAgent's raw string.</summary>
