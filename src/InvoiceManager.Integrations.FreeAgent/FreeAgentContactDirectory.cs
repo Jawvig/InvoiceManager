@@ -49,12 +49,29 @@ internal sealed class FreeAgentContactDirectory(FreeAgentApiClient client) : IFr
     public async Task<Option<FreeAgentContact>> GetAsync(
         FreeAgentContactIdentity url, CancellationToken cancellationToken = default)
     {
-        var wire = await client.GetContactAsync(url.Url.OriginalString, cancellationToken);
-        return wire is not null ? wire.ToContact() : Option.None;
+        // A caller-supplied URL (Edit/Import re-validating a stored or imported contact) can be
+        // syntactically valid but wrong for this environment - e.g. a sandbox URL posted against
+        // a production deployment, which SendAsync's host allowlist rejects with an exception
+        // rather than an HTTP response, or a URL that resolves to a 400. Both are "this contact
+        // doesn't resolve here" from the caller's point of view, exactly like a 404 - translate
+        // them at this boundary into the same None outcome rather than letting an unrelated
+        // exception surface as an unhandled 500 from the AdminWeb save handler.
+        try
+        {
+            var wire = await client.GetContactAsync(url.Url.OriginalString, cancellationToken);
+            return wire is not null ? wire.ToContact() : Option.None;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Option.None;
+        }
     }
 
     private static bool Matches(ContactWire wire, string query) =>
-        Contains(wire.OrganisationName, query) || Contains(wire.FirstName, query) || Contains(wire.LastName, query);
+        Contains(wire.OrganisationName, query) ||
+        Contains(wire.FirstName, query) ||
+        Contains(wire.LastName, query) ||
+        Contains($"{wire.FirstName} {wire.LastName}".Trim(), query);
 
     private static bool Contains(string? value, string query) =>
         value is not null && value.Contains(query, StringComparison.OrdinalIgnoreCase);

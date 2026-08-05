@@ -69,6 +69,44 @@ public sealed class FreeAgentContactDirectoryTests
     }
 
     [Fact]
+    public async Task SearchAsync_MatchesCombinedPersonName()
+    {
+        // The picker displays "Jane Smith" (see ContactWireExtensions.DisplayName), so a search
+        // for that full displayed name must match even though neither FirstName nor LastName
+        // alone contains it.
+        var handler = new StubHttpMessageHandler((request, index) =>
+            index switch
+            {
+                0 => JsonResponse(ContactsPageJson((null, "Jane", "Smith"))),
+                _ => JsonResponse(EmptyPageJson()),
+            });
+        var client = TestClientFactory.Create(handler);
+        var directory = new FreeAgentContactDirectory(client);
+
+        var results = await directory.SearchAsync("jane smith");
+
+        var contact = Assert.Single(results);
+        Assert.Equal("Jane Smith", contact.DisplayName);
+    }
+
+    [Fact]
+    public async Task GetAsync_ReturnsNone_WhenApiClientThrows()
+    {
+        // A stored/imported contact URL can be syntactically valid but wrong for this environment
+        // (e.g. a sandbox URL posted against a production deployment) - FreeAgentApiClient's host
+        // allowlist rejects that with an exception rather than an HTTP response. GetAsync must
+        // translate it into the same "doesn't resolve here" outcome as a 404, not let it surface
+        // as an unhandled exception to the caller (AdminWeb's Edit/Import save handler).
+        var handler = new StubHttpMessageHandler((request, index) => throw new InvalidOperationException("Refusing to call FreeAgent host."));
+        var client = TestClientFactory.Create(handler);
+        var directory = new FreeAgentContactDirectory(client);
+
+        var result = await directory.GetAsync(new FreeAgentContactIdentity(ContactUrl));
+
+        Assert.True(result is InvoiceManager.Core.None, $"Expected None but got {result}.");
+    }
+
+    [Fact]
     public async Task GetAsync_ReturnsSome_WhenContactExists()
     {
         var handler = new StubHttpMessageHandler((request, index) => JsonResponse(ContactJson("Acme Widgets Ltd", null, null)));
