@@ -61,7 +61,7 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
                 "FreeAgent accepted the dated_on change but the bill's date does not reflect it.");
         }
 
-        return new FreeAgentReconciled(FreeAgentBillMapping.ToSnapshot(after));
+        return new FreeAgentReconciled(after.ToSnapshot());
     }
 
     public async Task<FreeAgentReconciliationResult> ReconcileItemAmountAsync(
@@ -97,7 +97,7 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
         }
 
         // Accept FreeAgent's VAT/net/rounding values as-is - never recompute locally.
-        return new FreeAgentReconciled(FreeAgentBillMapping.ToSnapshot(updated));
+        return new FreeAgentReconciled(updated.ToSnapshot());
     }
 
     /// <summary>

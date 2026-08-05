@@ -214,6 +214,40 @@ application.
 **Why:** A dictionary's shape isn't visible in any signature; the only way to
 know what keys it needs is to read every place that reads or writes it.
 
+## Prefer extension declarations over the classic extension method form
+
+C# 14 (used throughout this codebase) introduces extension declarations - an
+`extension(...)` block nested in a `static class`, naming a receiver
+parameter once for every member declared inside it:
+
+```csharp
+public static class BillWireExtensions
+{
+    extension(BillWire wire)
+    {
+        public FreeAgentBillSnapshot ToSnapshot() => ...;
+    }
+}
+```
+
+Prefer this form over the classic extension method form (a `static` method
+whose first parameter is prefixed with `this`) for new extension members.
+Extension declarations also support `static` extension members - members
+callable on the receiver type itself rather than an instance of it - which
+the classic form cannot express at all.
+
+**Why:** The classic form repeats the receiver type as the first parameter of
+every method in the class, which extension declarations factor out once.
+Grouping every member for a given receiver inside one `extension(...)` block
+also makes a file with several receiver types (e.g. one extension class per
+wire-to-domain mapping) easier to scan than a flat list of `this`-prefixed
+methods.
+
+**How to apply:** Write new extension members using `extension(...)` blocks.
+There is no need to migrate existing classic-form extension methods just to
+match this preference - convert them only if you are already touching that
+code for another reason.
+
 ## Enumerate external failure modes explicitly
 
 When translating an external HTTP API's failures into domain outcomes

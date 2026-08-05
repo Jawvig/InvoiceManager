@@ -29,7 +29,7 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
 
         if (existingAttachment is not null)
         {
-            var existingMetadata = FreeAgentBillMapping.ToAttachmentMetadata(existingAttachment);
+            var existingMetadata = existingAttachment.ToAttachmentMetadata();
 
             var matchesOwnLastUpload =
                 expectedExisting is FreeAgentAttachmentMetadata expected &&
@@ -62,7 +62,7 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
             return new FreeAgentVerificationFailed("The uploaded attachment could not be verified after upload.");
         }
 
-        var newMetadata = FreeAgentBillMapping.ToAttachmentMetadata(verifiedAttachment);
+        var newMetadata = verifiedAttachment.ToAttachmentMetadata();
         return new FreeAgentAttachmentUploaded(newMetadata);
     }
 }
