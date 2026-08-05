@@ -14,11 +14,14 @@ internal sealed class FreeAgentContactDirectory(FreeAgentApiClient client) : IFr
 {
     private const int PageSize = 100;
 
-    // Deliberately bounded rather than exhaustive: this backs a live, debounced autocomplete box
-    // (see freeagent-contact-picker.js), so a query that doesn't narrow the first 500 contacts
-    // down to a handful of matches is expected to be refined further by the administrator typing
-    // more of the name, not answered by scanning an entire large contact list on every keystroke.
-    private const int MaxPagesScanned = 5;
+    // FreeAgent has no server-side text filter, so every page is the same fixed,
+    // alphabetically-sorted slice of contacts regardless of query - narrowing the query only
+    // changes how many of an already-fetched page's contacts match, never which pages get
+    // fetched. A low cap here would therefore make contacts past it permanently unreachable no
+    // matter what the administrator types, not just "findable with a more specific search" - so
+    // this is a generous safety bound against a runaway loop on a pathologically large or
+    // misbehaving contact list, not a usability tradeoff.
+    private const int MaxPagesScanned = 50;
     private const int MaxResults = 20;
 
     public async Task<IReadOnlyList<FreeAgentContact>> SearchAsync(
