@@ -129,9 +129,18 @@ public sealed class ConfigurationFormPageModelHandlerTests
     }
 
     [Fact]
-    public async Task OnPostAsync_DoesNotRefreshFreeAgentContact_SinceThePickerAlreadyVerifiedIt()
+    public async Task OnPostAsync_RevalidatesFreeAgentContact_EvenThoughThePickerAlreadyVerifiedIt()
     {
-        var contactDirectory = new FakeFreeAgentContactDirectory();
+        // The posted URL/display name are hidden inputs a forged request could set directly, and
+        // even a genuine picker selection can go stale between search and submission - so Create
+        // must re-confirm the contact on save exactly like Edit/Import, not trust the picker
+        // outright.
+        var contactDirectory = new FakeFreeAgentContactDirectory
+        {
+            GetResult = new InvoiceManager.Core.Integrations.FreeAgent.FreeAgentContact(
+                new InvoiceManager.Core.Integrations.FreeAgent.FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"),
+                "Acme Widgets Ltd"),
+        };
         var model = CreateModel(
             hasTokenCache: true,
             verifiedFolder: new OneDriveFolder("drive-1", "Drive", "folder-1", "/Bills"),
@@ -154,7 +163,36 @@ public sealed class ConfigurationFormPageModelHandlerTests
         var result = await model.OnPostAsync();
 
         Assert.IsType<RedirectToPageResult>(result);
-        Assert.Empty(contactDirectory.GetRequests);
+        Assert.Single(contactDirectory.GetRequests);
+    }
+
+    [Fact]
+    public async Task OnPostAsync_RejectsCreate_WhenFreeAgentContactDoesNotResolve()
+    {
+        var contactDirectory = new FakeFreeAgentContactDirectory { GetResult = Option.None };
+        var model = CreateModel(
+            hasTokenCache: true,
+            verifiedFolder: new OneDriveFolder("drive-1", "Drive", "folder-1", "/Bills"),
+            contactDirectory: contactDirectory);
+        model.Input = new ConfigurationFormInput
+        {
+            Id = "email-invoice",
+            IntegrationType = IntegrationType.GraphEmail,
+            SenderEmailAddress = "billing@example.com",
+            BodyPattern = "Invoice \\d+",
+            HasFreeAgentMatching = true,
+            FreeAgentContactUrl = "https://api.sandbox.freeagent.com/v2/contacts/1",
+            FreeAgentContactDisplayName = "Acme Widgets Ltd",
+            DriveId = "drive-1",
+            DriveName = "Drive",
+            FolderItemId = "folder-1",
+            FolderPath = "/Bills",
+        };
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<PageResult>(result);
+        Assert.False(model.ModelState.IsValid);
     }
 
     private static CreateModel CreateModel(

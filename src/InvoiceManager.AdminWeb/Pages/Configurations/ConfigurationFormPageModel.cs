@@ -127,12 +127,14 @@ public abstract class ConfigurationFormPageModel(
     /// <summary>
     /// Confirms the posted FreeAgent contact URL still resolves against FreeAgent and refreshes
     /// <see cref="ConfigurationFormInput.FreeAgentContactDisplayName"/> from the live result -
-    /// covers both a contact renamed since it was last picked, and a contact URL that (for Import)
-    /// never went through the picker in this environment at all. Called from Edit/Import's
-    /// OnPostAsync before <see cref="ConfigurationFormInput.Build"/>, only when
-    /// <see cref="ConfigurationFormInput.HasFreeAgentMatching"/> is set - Create never calls this,
-    /// since its contact URL/display name just came straight out of a live picker search result.
-    /// Adds a model error and returns false when the URL is malformed or doesn't resolve.
+    /// covers a contact renamed since it was last picked, a contact deleted between picker search
+    /// and submission, a contact URL that (for Import) never went through the picker in this
+    /// environment at all, and a forged request that sets the hidden URL/display-name fields
+    /// directly without using the picker - the same trust-boundary concern
+    /// <see cref="ResolveFolderAsync"/> documents for the OneDrive folder fields. Called from every
+    /// save path's OnPostAsync (Create, Edit, Import) before <see cref="ConfigurationFormInput.Build"/>,
+    /// only when <see cref="ConfigurationFormInput.HasFreeAgentMatching"/> is set. Adds a model
+    /// error and returns false when the URL is malformed or doesn't resolve.
     /// </summary>
     protected async Task<bool> RefreshFreeAgentContactAsync(CancellationToken cancellationToken)
     {
