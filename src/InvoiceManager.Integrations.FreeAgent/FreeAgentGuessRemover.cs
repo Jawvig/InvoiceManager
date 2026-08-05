@@ -35,12 +35,12 @@ internal sealed class FreeAgentGuessRemover : IFreeAgentGuessRemover
         // confirmed asynchronously.
         var bankAccountUrls = await client.GetBankAccountUrlsAsync(cancellationToken);
         var lookup = await FreeAgentPaymentGuard.FindGuessForBillAsync(
-            client, bankAccountUrls, intervention.Bill.BillUrl, cancellationToken);
+            client, bankAccountUrls, intervention.Bill.Url.OriginalString, cancellationToken);
 
         if (lookup.Outcome != GuessLookup.ExactlyOne || lookup.Explanation is not { } explanation)
             return new FreeAgentGuessRevalidationFailed("No single matching, marked-for-review explanation was found on re-check.");
 
-        if (!string.Equals(explanation.Url, intervention.GuessExplanationUrl, StringComparison.Ordinal))
+        if (!string.Equals(explanation.Url?.OriginalString, intervention.GuessExplanationUrl, StringComparison.Ordinal))
             return new FreeAgentGuessRevalidationFailed("The matching explanation's URL no longer matches the intervention.");
 
         if (!explanation.IsDeletable || explanation.IsLocked)
@@ -48,7 +48,7 @@ internal sealed class FreeAgentGuessRemover : IFreeAgentGuessRemover
 
         try
         {
-            await client.DeleteExplanationAsync(explanation.Url!, cancellationToken);
+            await client.DeleteExplanationAsync(explanation.Url!.OriginalString, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

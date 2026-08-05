@@ -135,7 +135,7 @@ internal sealed class FreeAgentBillMatchingDocument
 
     public static FreeAgentBillMatchingDocument FromMatching(FreeAgentBillMatching matching) => new()
     {
-        ContactUrl = matching.ContactUrl.ContactUrl,
+        ContactUrl = matching.ContactUrl.Url.OriginalString,
         DateReconciliation = matching.DateReconciliation switch
         {
             FreeAgentDateReconciliation dateReconciliation => FreeAgentDateReconciliationDocument.FromReconciliation(dateReconciliation),

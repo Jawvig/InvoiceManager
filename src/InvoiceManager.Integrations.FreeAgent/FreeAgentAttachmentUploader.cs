@@ -24,12 +24,12 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
         Option<FreeAgentAttachmentMetadata> expectedExisting,
         CancellationToken cancellationToken = default)
     {
-        var current = await client.GetBillAsync(bill.BillUrl, cancellationToken);
+        var current = await client.GetBillAsync(bill.Url.OriginalString, cancellationToken);
         var existingAttachment = current.Attachment;
 
         if (existingAttachment is not null)
         {
-            var existingMetadata = FreeAgentBillMapping.ToAttachmentMetadata(existingAttachment);
+            var existingMetadata = existingAttachment.ToAttachmentMetadata();
 
             var matchesOwnLastUpload =
                 expectedExisting is FreeAgentAttachmentMetadata expected &&
@@ -46,14 +46,14 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
             return new FreeAgentAttachmentUnexpectedExisting(existingMetadata);
         }
 
-        await client.PostAttachmentAsync(bill.BillUrl, pdfContent, fileName, cancellationToken);
+        await client.PostAttachmentAsync(bill.Url.OriginalString, pdfContent, fileName, cancellationToken);
 
         // Verify by reading the bill back rather than trusting the upload response alone -
         // check every field that forms the persisted last-known-good metadata, not just the
         // filename, so a stale or truncated attachment under the right filename is caught. The
         // metadata persisted as this record's last-known-good upload also comes from this
         // verified read, never the upload response, in case that response itself is stale.
-        var verify = await client.GetBillAsync(bill.BillUrl, cancellationToken);
+        var verify = await client.GetBillAsync(bill.Url.OriginalString, cancellationToken);
         if (verify.Attachment is not { } verifiedAttachment ||
             !string.Equals(verifiedAttachment.FileName, fileName, StringComparison.Ordinal) ||
             verifiedAttachment.FileSize != pdfContent.Length ||
@@ -62,7 +62,7 @@ internal sealed class FreeAgentAttachmentUploader : IFreeAgentAttachmentUploader
             return new FreeAgentVerificationFailed("The uploaded attachment could not be verified after upload.");
         }
 
-        var newMetadata = FreeAgentBillMapping.ToAttachmentMetadata(verifiedAttachment);
+        var newMetadata = verifiedAttachment.ToAttachmentMetadata();
         return new FreeAgentAttachmentUploaded(newMetadata);
     }
 }

@@ -22,12 +22,12 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
     public async Task<FreeAgentReconciliationResult> ReconcileDateAsync(
         FreeAgentBillIdentity bill, DateOnly newDatedOn, CancellationToken cancellationToken = default)
     {
-        var before = await client.GetBillAsync(bill.BillUrl, cancellationToken);
-        var beforeItemUrls = (before.BillItems ?? []).Select(i => i.Url).ToHashSet(StringComparer.Ordinal);
+        var before = await client.GetBillAsync(bill.Url.OriginalString, cancellationToken);
+        var beforeItemUrls = (before.BillItems ?? []).Select(i => i.Url).ToHashSet();
         var beforeDueOn = before.DueOn;
         var beforeStatus = before.Status;
 
-        var result = await client.PutBillDateAsync(bill.BillUrl, newDatedOn, cancellationToken);
+        var result = await client.PutBillDateAsync(bill.Url.OriginalString, newDatedOn, cancellationToken);
         if (result.IsLocked)
         {
             // The POC only proved a payment-related lock for item-amount changes, not date
@@ -43,11 +43,11 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
             return new FreeAgentRemoteRejected("FreeAgent rejected the dated_on change.");
         }
 
-        var after = await client.GetBillAsync(bill.BillUrl, cancellationToken);
+        var after = await client.GetBillAsync(bill.Url.OriginalString, cancellationToken);
 
         // Verify the proven invariant explicitly rather than trusting it: changing dated_on
         // must preserve item URLs and due_on/status.
-        var afterItemUrls = (after.BillItems ?? []).Select(i => i.Url).ToHashSet(StringComparer.Ordinal);
+        var afterItemUrls = (after.BillItems ?? []).Select(i => i.Url).ToHashSet();
         if (!afterItemUrls.SetEquals(beforeItemUrls) || after.DueOn != beforeDueOn || after.Status != beforeStatus)
         {
             return new FreeAgentVerificationFailed(
@@ -61,7 +61,7 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
                 "FreeAgent accepted the dated_on change but the bill's date does not reflect it.");
         }
 
-        return new FreeAgentReconciled(FreeAgentBillMapping.ToSnapshot(after));
+        return new FreeAgentReconciled(after.ToSnapshot());
     }
 
     public async Task<FreeAgentReconciliationResult> ReconcileItemAmountAsync(
@@ -70,13 +70,13 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
         Money newTotalValue,
         CancellationToken cancellationToken = default)
     {
-        var current = await client.GetBillAsync(bill.BillUrl, cancellationToken);
-        var ownsItem = (current.BillItems ?? []).Any(i =>
-            string.Equals(i.Url, item.ItemUrl, StringComparison.Ordinal));
+        var current = await client.GetBillAsync(bill.Url.OriginalString, cancellationToken);
+        var ownsItem = (current.BillItems ?? []).Any(i => i.Url == item.Url);
         if (!ownsItem)
             return new FreeAgentItemNotOnBill();
 
-        var result = await client.PutBillItemAmountAsync(bill.BillUrl, item.ItemUrl, newTotalValue.Amount, cancellationToken);
+        var result = await client.PutBillItemAmountAsync(
+            bill.Url.OriginalString, item.Url.OriginalString, newTotalValue.Amount, cancellationToken);
         if (result.IsLocked)
             return await ClassifyLockedAsync(bill, item, result.LockedFieldDetail!, newTotalValue, cancellationToken);
 
@@ -86,8 +86,8 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
         // Verify against an independent read, not the PUT response body - an optimistic or
         // stale mutation response could echo back what was requested without FreeAgent having
         // actually persisted it, same reasoning as the date and attachment paths' re-GET.
-        var updated = await client.GetBillAsync(bill.BillUrl, cancellationToken);
-        var updatedItem = (updated.BillItems ?? []).FirstOrDefault(i => string.Equals(i.Url, item.ItemUrl, StringComparison.Ordinal));
+        var updated = await client.GetBillAsync(bill.Url.OriginalString, cancellationToken);
+        var updatedItem = (updated.BillItems ?? []).FirstOrDefault(i => i.Url == item.Url);
         if (updatedItem?.TotalValue is not { } updatedTotalText ||
             !decimal.TryParse(updatedTotalText, System.Globalization.CultureInfo.InvariantCulture, out var updatedTotal) ||
             updatedTotal != newTotalValue.Amount)
@@ -97,7 +97,7 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
         }
 
         // Accept FreeAgent's VAT/net/rounding values as-is - never recompute locally.
-        return new FreeAgentReconciled(FreeAgentBillMapping.ToSnapshot(updated));
+        return new FreeAgentReconciled(updated.ToSnapshot());
     }
 
     /// <summary>
@@ -113,12 +113,13 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
         CancellationToken cancellationToken)
     {
         var bankAccountUrls = await client.GetBankAccountUrlsAsync(cancellationToken);
-        var lookup = await FreeAgentPaymentGuard.FindGuessForBillAsync(client, bankAccountUrls, bill.BillUrl, cancellationToken);
+        var lookup = await FreeAgentPaymentGuard.FindGuessForBillAsync(
+            client, bankAccountUrls, bill.Url.OriginalString, cancellationToken);
 
         if (lookup.Outcome != GuessLookup.ExactlyOne || lookup.Explanation is not { } explanation)
             return new FreeAgentBillLocked(FreeAgentLockReason.CachedTotalLocked);
 
-        var currentBill = await client.GetBillAsync(bill.BillUrl, cancellationToken);
+        var currentBill = await client.GetBillAsync(bill.Url.OriginalString, cancellationToken);
         var currency = currentBill.Currency ?? proposedAmount.Currency.Code;
         var currentAmount = decimal.TryParse(currentBill.TotalValue, System.Globalization.CultureInfo.InvariantCulture, out var total)
             ? new Money(total, currency)
@@ -127,8 +128,8 @@ internal sealed class FreeAgentBillReconciler : IFreeAgentBillReconciler
         var details = new FreeAgentPaymentInterventionDetails(
             bill,
             item,
-            explanation.BankTransaction ?? string.Empty,
-            explanation.Url ?? string.Empty,
+            explanation.BankTransaction?.OriginalString ?? string.Empty,
+            explanation.Url?.OriginalString ?? string.Empty,
             currentAmount,
             proposedAmount,
             $"FreeAgent rejected the amount change ({lockedDetail}); an unapproved Guess payment explanation is attached.");

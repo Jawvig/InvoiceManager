@@ -175,6 +175,36 @@ small wrapper type over a primitive for values with their own validation rules
 or meaning (an ID, a currency amount, a slug). Not every string needs a
 wrapper - use judgment for genuinely unstructured text.
 
+## Default to immutable types
+
+Prefer `record`/`sealed record` with `init`-only (or positional) properties
+over mutable classes, and prefer immutable collection types
+(`IReadOnlyList<T>`, `IReadOnlyCollection<T>`, `IReadOnlyDictionary<TKey,
+TValue>`) over their mutable counterparts (`List<T>`, `Dictionary<TKey,
+TValue>`) on any type's public surface - including wire/DTO types that only
+System.Text.Json ever constructs. A `[JsonPropertyName]`/deserialization
+target still works correctly with a `List<T>`-backed `IReadOnlyList<T>`
+property; System.Text.Json creates the concrete list and exposes it through
+the interface. Only use a mutable type where genuine in-place mutation is
+required (a builder, an accumulator local to one method) - never as a public
+property or parameter type "just in case a caller wants to modify it."
+
+**Why:** A mutable public property or a `List<T>` return value invites a
+caller to mutate shared state that the type's owner never intended to expose,
+which is exactly the kind of "invalid state became representable" problem
+[Make invalid states unrepresentable with strong typing](#make-invalid-states-unrepresentable-with-strong-typing)
+above already argues against for primitives - it applies equally to
+collections. It also removes a class of bugs where one caller's edit to a
+returned list silently corrupts what another caller (or the object itself)
+sees next.
+
+**How to apply:** When defining a new type - domain model, wire DTO, options
+class - default to `record`/`init` and `IReadOnlyList<T>`/`IReadOnlyDictionary<TKey,
+TValue>` unless something specific requires otherwise. When touching an
+existing type that already uses a mutable collection on its public surface,
+change it to the read-only equivalent as part of that change rather than
+leaving it as-is.
+
 ## Prefer strongly typed models over loose dictionaries
 
 Prefer strongly typed options classes and domain models over passing
@@ -183,6 +213,40 @@ application.
 
 **Why:** A dictionary's shape isn't visible in any signature; the only way to
 know what keys it needs is to read every place that reads or writes it.
+
+## Prefer extension declarations over the classic extension method form
+
+C# 14 (used throughout this codebase) introduces extension declarations - an
+`extension(...)` block nested in a `static class`, naming a receiver
+parameter once for every member declared inside it:
+
+```csharp
+public static class BillWireExtensions
+{
+    extension(BillWire wire)
+    {
+        public FreeAgentBillSnapshot ToSnapshot() => ...;
+    }
+}
+```
+
+Prefer this form over the classic extension method form (a `static` method
+whose first parameter is prefixed with `this`) for new extension members.
+Extension declarations also support `static` extension members - members
+callable on the receiver type itself rather than an instance of it - which
+the classic form cannot express at all.
+
+**Why:** The classic form repeats the receiver type as the first parameter of
+every method in the class, which extension declarations factor out once.
+Grouping every member for a given receiver inside one `extension(...)` block
+also makes a file with several receiver types (e.g. one extension class per
+wire-to-domain mapping) easier to scan than a flat list of `this`-prefixed
+methods.
+
+**How to apply:** Write new extension members using `extension(...)` blocks.
+There is no need to migrate existing classic-form extension methods just to
+match this preference - convert them only if you are already touching that
+code for another reason.
 
 ## Enumerate external failure modes explicitly
 

@@ -26,7 +26,14 @@ internal sealed record FreeAgentApiResult<T>(T? Value, bool IsLocked, string? Lo
 /// </summary>
 internal sealed class FreeAgentApiClient
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    // snake_case matches FreeAgent's wire format exactly (dated_on, total_value, ...), so every
+    // FreeAgentWireModels property maps without its own JsonPropertyName - see that file for the
+    // couple of properties whose C# name doesn't match the wire field 1:1, which still need one.
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = true,
+    };
 
     private readonly HttpClient httpClient;
     private readonly IFreeAgentTokenProvider tokenProvider;
@@ -141,7 +148,7 @@ internal sealed class FreeAgentApiClient
         using var response = await SendAsync(HttpMethod.Get, "bank_accounts", content: null, cancellationToken);
         await EnsureSuccessAsync(response, "listing bank accounts", cancellationToken);
         var body = await response.Content.ReadFromJsonAsync<BankAccountsResponseWire>(SerializerOptions, cancellationToken);
-        return body?.BankAccounts.Select(a => a.Url).OfType<string>().ToList() ?? [];
+        return body?.BankAccounts.Select(a => a.Url).OfType<Uri>().Select(u => u.OriginalString).ToList() ?? [];
     }
 
     private const int ExplanationsPageSize = 100;

@@ -35,5 +35,11 @@ public sealed class FreeAgentBillSnapshotTests
     public void FreeAgentBillIdentity_Accepts_AbsoluteHttpsUri() =>
         Assert.Equal(
             "https://api.sandbox.freeagent.com/v2/bills/1",
-            new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1").BillUrl);
+            new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1").Url.OriginalString);
+
+    [Fact]
+    public void FreeAgentBillIdentity_Accepts_Uri() =>
+        Assert.Equal(
+            new Uri("https://api.sandbox.freeagent.com/v2/bills/1"),
+            new FreeAgentBillIdentity(new Uri("https://api.sandbox.freeagent.com/v2/bills/1")).Url);
 }

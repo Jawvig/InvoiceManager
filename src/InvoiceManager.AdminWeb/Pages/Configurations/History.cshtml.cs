@@ -93,6 +93,7 @@ public sealed class HistoryModel(
         Add("start date", prior.StartDate, current.StartDate);
         Add("integration configuration", prior.IntegrationConfiguration, current.IntegrationConfiguration);
         Add("date tolerance", prior.DateToleranceDays, current.DateToleranceDays);
+        Add("FreeAgent matching", prior.FreeAgentMatching, current.FreeAgentMatching);
         return changes.Count == 0 ? "No business-field changes" : string.Join("; ", changes);
 
         void Add(string name, object? before, object? after)

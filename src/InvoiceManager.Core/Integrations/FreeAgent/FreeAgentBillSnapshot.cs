@@ -3,20 +3,52 @@ using NodaMoney;
 namespace InvoiceManager.Core.Integrations.FreeAgent;
 
 /// <summary>
+/// Shared base for InvoiceManager-owned, opaque references to a FreeAgent resource's URL.
+/// Stores the resource as a parsed <see cref="Uri"/> rather than a bare string, and
+/// centralizes the "absolute https URI" requirement once here rather than duplicating the
+/// check in every derived type. Requires an absolute <c>https</c> URI rather than merely
+/// <see cref="UriKind.Absolute"/> - on Unix, <see cref="Uri.TryCreate(string?, UriKind, out Uri?)"/>
+/// happily parses a leading-slash path like <c>/v2/bills/1</c> as an absolute <c>file</c>
+/// URI, which is never a valid FreeAgent API resource URL.
+/// </summary>
+public abstract record FreeAgentResourceUrl
+{
+    public Uri Url { get; }
+
+    private protected FreeAgentResourceUrl(string url)
+    {
+        Url = Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+            ? uri
+            : throw new ArgumentException($"{GetType().Name} must be an absolute https URI.", nameof(url));
+    }
+
+    // Accepts an already-parsed Uri (e.g. straight from FreeAgentWireModels' System.Text.Json
+    // deserialization) without re-parsing it - OriginalString is the exact text the Uri was
+    // built from, so this still runs through the single validation path above rather than
+    // duplicating the https/absolute check.
+    private protected FreeAgentResourceUrl(Uri url)
+        : this(url.OriginalString)
+    {
+    }
+}
+
+/// <summary>
 /// An opaque, InvoiceManager-owned reference to a FreeAgent bill's resource URL.
 /// Not a Cosmos document ID (no <see cref="IStringId{TSelf}"/>), but still a typed
 /// wrapper rather than a bare string, so a bill identity and an item identity can
 /// never be swapped at a call site.
 /// </summary>
-public sealed record FreeAgentBillIdentity(string BillUrl)
+public sealed record FreeAgentBillIdentity : FreeAgentResourceUrl
 {
-    public string BillUrl { get; } = FreeAgentResourceUrl.Validate(BillUrl, nameof(FreeAgentBillIdentity), nameof(BillUrl));
+    public FreeAgentBillIdentity(string billUrl) : base(billUrl) { }
+    public FreeAgentBillIdentity(Uri billUrl) : base(billUrl) { }
 }
 
 /// <summary>An opaque, InvoiceManager-owned reference to a FreeAgent bill item's resource URL.</summary>
-public sealed record FreeAgentBillItemIdentity(string ItemUrl)
+public sealed record FreeAgentBillItemIdentity : FreeAgentResourceUrl
 {
-    public string ItemUrl { get; } = FreeAgentResourceUrl.Validate(ItemUrl, nameof(FreeAgentBillItemIdentity), nameof(ItemUrl));
+    public FreeAgentBillItemIdentity(string itemUrl) : base(itemUrl) { }
+    public FreeAgentBillItemIdentity(Uri itemUrl) : base(itemUrl) { }
 }
 
 /// <summary>
@@ -25,24 +57,10 @@ public sealed record FreeAgentBillItemIdentity(string ItemUrl)
 /// and to report which contact a matched bill belongs to. A typed wrapper rather than a
 /// bare string so it can never be swapped with a bill or item identity at a call site.
 /// </summary>
-public sealed record FreeAgentContactIdentity(string ContactUrl)
+public sealed record FreeAgentContactIdentity : FreeAgentResourceUrl
 {
-    public string ContactUrl { get; } = FreeAgentResourceUrl.Validate(ContactUrl, nameof(FreeAgentContactIdentity), nameof(ContactUrl));
-}
-
-/// <summary>
-/// Shared validation for FreeAgent resource-URL identity wrappers. Requires an absolute
-/// <c>https</c> URI rather than merely <see cref="UriKind.Absolute"/> - on Unix,
-/// <see cref="Uri.TryCreate(string?, UriKind, out Uri?)"/> happily parses a leading-slash
-/// path like <c>/v2/bills/1</c> as an absolute <c>file</c> URI, which is never a valid
-/// FreeAgent API resource URL.
-/// </summary>
-file static class FreeAgentResourceUrl
-{
-    public static string Validate(string value, string typeName, string paramName) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
-            ? value
-            : throw new ArgumentException($"{typeName} must be an absolute https URI.", paramName);
+    public FreeAgentContactIdentity(string contactUrl) : base(contactUrl) { }
+    public FreeAgentContactIdentity(Uri contactUrl) : base(contactUrl) { }
 }
 
 /// <summary>The status of a FreeAgent bill, enumerated rather than left as FreeAgent's raw string.</summary>

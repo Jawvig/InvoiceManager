@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using NodaMoney;
@@ -56,6 +57,25 @@ public sealed class ConfigurationFormInput
     [Range(0, 365)]
     public int DateToleranceDays { get; set; } = 5;
 
+    public bool HasFreeAgentMatching { get; set; }
+
+    // Not [Required]: the field is hidden/irrelevant unless HasFreeAgentMatching is checked, and
+    // Build() validates it (via FreeAgentContactIdentity's own https-URI check) only when that's
+    // the case - the same "hidden fieldset, no implicit-required rejection" reasoning as
+    // BillingAccountId/SenderEmailAddress/BodyPattern above.
+    [ValidateNever]
+    public string FreeAgentContactUrl { get; set; } = "";
+
+    public bool HasFreeAgentDateReconciliation { get; set; }
+
+    [Range(0, 365)]
+    public int FreeAgentDateToleranceDays { get; set; }
+
+    public bool HasFreeAgentAmountReconciliation { get; set; }
+
+    [Range(typeof(decimal), "0", "79228162514264337593543950335")]
+    public decimal FreeAgentAmountTolerance { get; set; }
+
     // Populated by the OneDrive folder picker (see _OneDriveFolderPicker.cshtml /
     // onedrive-picker.js) via hidden inputs, not typed in directly.
     [Required]
@@ -88,8 +108,7 @@ public sealed class ConfigurationFormInput
         bool isActive,
         IReadOnlyList<BillingAccountChoice> billingAccounts,
         string? currentBillingAccountId,
-        OneDriveFolder folder,
-        Option<FreeAgentBillMatching> existingFreeAgentMatching)
+        OneDriveFolder folder)
     {
         if (IntegrationType is null)
             throw new ArgumentException("Select an integration.");
@@ -126,6 +145,29 @@ public sealed class ConfigurationFormInput
             }
         }
 
+        Option<FreeAgentBillMatching> freeAgentMatching = Option.None;
+        if (HasFreeAgentMatching)
+        {
+            FreeAgentContactIdentity contactUrl;
+            try
+            {
+                contactUrl = new FreeAgentContactIdentity(FreeAgentContactUrl?.Trim() ?? "");
+            }
+            catch (ArgumentException)
+            {
+                throw new ArgumentException("FreeAgent contact URL must be an absolute https URI.");
+            }
+
+            Option<FreeAgentDateReconciliation> dateReconciliation = HasFreeAgentDateReconciliation
+                ? new FreeAgentDateReconciliation(FreeAgentDateToleranceDays)
+                : Option.None;
+            Option<FreeAgentAmountReconciliation> amountReconciliation = HasFreeAgentAmountReconciliation
+                ? new FreeAgentAmountReconciliation(FreeAgentAmountTolerance)
+                : Option.None;
+
+            freeAgentMatching = new FreeAgentBillMatching(contactUrl, dateReconciliation, amountReconciliation);
+        }
+
         var configuration = new InvoiceConfiguration(
             new InvoiceConfigurationId(Id),
             integrationConfiguration,
@@ -137,11 +179,7 @@ public sealed class ConfigurationFormInput
             folder,
             StartDate,
             DateToleranceDays,
-            // No AdminWeb UI sets this yet - FreeAgent bill matching is configured through a
-            // later PR's dedicated UI. Preserve whatever is already stored on Edit rather than
-            // silently wiping it every time an unrelated field is changed; Create/Import have
-            // nothing to preserve and pass Option.None.
-            existingFreeAgentMatching);
+            freeAgentMatching);
 
         var errors = InvoiceConfigurationValidation.Validate(configuration);
         if (errors.Count > 0)
@@ -185,6 +223,21 @@ public sealed class ConfigurationFormInput
             input.ExpectedAmount = amount.Amount.Amount;
             input.Currency = amount.Amount.Currency.Code;
             input.AmountTolerance = amount.AmountTolerance;
+        }
+        if (configuration.FreeAgentMatching is FreeAgentBillMatching freeAgentMatching)
+        {
+            input.HasFreeAgentMatching = true;
+            input.FreeAgentContactUrl = freeAgentMatching.ContactUrl.Url.OriginalString;
+            if (freeAgentMatching.DateReconciliation is FreeAgentDateReconciliation dateReconciliation)
+            {
+                input.HasFreeAgentDateReconciliation = true;
+                input.FreeAgentDateToleranceDays = dateReconciliation.ToleranceDays;
+            }
+            if (freeAgentMatching.AmountReconciliation is FreeAgentAmountReconciliation amountReconciliation)
+            {
+                input.HasFreeAgentAmountReconciliation = true;
+                input.FreeAgentAmountTolerance = amountReconciliation.AmountTolerance;
+            }
         }
         return input;
     }

@@ -53,9 +53,7 @@ public sealed class EditModel(
         InvoiceConfiguration updated;
         try
         {
-            updated = Input.Build(
-                current.Configuration.IsActive, BillingAccounts, currentBillingAccountId, folder,
-                current.Configuration.FreeAgentMatching);
+            updated = Input.Build(current.Configuration.IsActive, BillingAccounts, currentBillingAccountId, folder);
         }
         catch (ArgumentException ex)
         {

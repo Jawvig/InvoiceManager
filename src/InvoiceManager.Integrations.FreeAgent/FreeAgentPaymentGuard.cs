@@ -29,7 +29,7 @@ internal static class FreeAgentPaymentGuard
         {
             var explanations = await client.GetExplanationsAsync(bankAccountUrl, cancellationToken);
             matches.AddRange(explanations.Where(e =>
-                string.Equals(e.PaidBill, billUrl, StringComparison.Ordinal) && e.MarkedForReview));
+                string.Equals(e.PaidBill?.OriginalString, billUrl, StringComparison.Ordinal) && e.MarkedForReview));
         }
 
         return matches.Count switch

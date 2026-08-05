@@ -30,7 +30,7 @@ internal sealed class FreeAgentBillMatcher : IFreeAgentBillMatcher
         while (true)
         {
             var pageResults = await client.GetBillsPageAsync(
-                fromDate, toDate, criteria.ContactUrl.ContactUrl, page, PageSize, cancellationToken);
+                fromDate, toDate, criteria.ContactUrl.Url.OriginalString, page, PageSize, cancellationToken);
             if (pageResults.Count == 0)
                 break;
 
@@ -48,7 +48,7 @@ internal sealed class FreeAgentBillMatcher : IFreeAgentBillMatcher
         return matches.Count switch
         {
             0 => new NoFreeAgentBillMatch(),
-            1 => new FreeAgentBillFound(FreeAgentBillMapping.ToSnapshot(matches[0])),
+            1 => new FreeAgentBillFound(matches[0].ToSnapshot()),
             _ => new AmbiguousFreeAgentBillMatch(
                 matches.Select(m => new FreeAgentBillIdentity(m.Url!)).ToList()),
         };

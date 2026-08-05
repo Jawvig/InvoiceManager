@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 
 namespace InvoiceManager.AdminWeb.Pages.Configurations;
 
@@ -24,6 +25,7 @@ public sealed record InvoiceConfigurationExport
     public required OneDriveFolderExport OneDriveFolder { get; init; }
     public required DateOnly StartDate { get; init; }
     public required int DateToleranceDays { get; init; }
+    public FreeAgentBillMatchingExport? FreeAgentMatching { get; init; }
 
     public static InvoiceConfigurationExport FromConfiguration(InvoiceConfiguration configuration) => new()
     {
@@ -47,6 +49,9 @@ public sealed record InvoiceConfigurationExport
         OneDriveFolder = OneDriveFolderExport.FromFolder(configuration.OneDriveFolder),
         StartDate = configuration.StartDate,
         DateToleranceDays = configuration.DateToleranceDays,
+        FreeAgentMatching = configuration.FreeAgentMatching is FreeAgentBillMatching freeAgentMatching
+            ? FreeAgentBillMatchingExport.FromMatching(freeAgentMatching)
+            : null,
     };
 
     /// <summary>
@@ -103,6 +108,12 @@ public sealed record InvoiceConfigurationExport
             DriveName = OneDriveFolder.DriveName,
             FolderItemId = OneDriveFolder.FolderItemId,
             FolderPath = OneDriveFolder.FolderPath,
+            HasFreeAgentMatching = FreeAgentMatching is not null,
+            FreeAgentContactUrl = FreeAgentMatching?.ContactUrl ?? "",
+            HasFreeAgentDateReconciliation = FreeAgentMatching?.DateToleranceDays is not null,
+            FreeAgentDateToleranceDays = FreeAgentMatching?.DateToleranceDays ?? 0,
+            HasFreeAgentAmountReconciliation = FreeAgentMatching?.AmountTolerance is not null,
+            FreeAgentAmountTolerance = FreeAgentMatching?.AmountTolerance ?? 0,
         };
     }
 }
@@ -118,6 +129,24 @@ public sealed record AmountMatchingCriteriaExport
         ExpectedAmount = criteria.Amount.Amount,
         Currency = criteria.Amount.Currency.Code,
         AmountTolerance = criteria.AmountTolerance,
+    };
+}
+
+public sealed record FreeAgentBillMatchingExport
+{
+    public required string ContactUrl { get; init; }
+    public int? DateToleranceDays { get; init; }
+    public decimal? AmountTolerance { get; init; }
+
+    public static FreeAgentBillMatchingExport FromMatching(FreeAgentBillMatching matching) => new()
+    {
+        ContactUrl = matching.ContactUrl.Url.OriginalString,
+        DateToleranceDays = matching.DateReconciliation is FreeAgentDateReconciliation dateReconciliation
+            ? dateReconciliation.ToleranceDays
+            : null,
+        AmountTolerance = matching.AmountReconciliation is FreeAgentAmountReconciliation amountReconciliation
+            ? amountReconciliation.AmountTolerance
+            : null,
     };
 }
 
