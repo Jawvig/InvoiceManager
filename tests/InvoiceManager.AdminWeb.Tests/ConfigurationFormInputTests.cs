@@ -130,12 +130,9 @@ public sealed class ConfigurationFormInputTests
             BillingAccountId = "stored-id",
         };
         var existing = new FreeAgentBillMatching(
-            "https://api.sandbox.freeagent.com/v2/company",
             "https://api.sandbox.freeagent.com/v2/contacts/1",
-            DateToleranceDays: 3,
-            AmountTolerance: 0.01m,
-            AllowDateReconciliation: true,
-            AllowAmountReconciliation: true);
+            DateReconciliation: new FreeAgentDateReconciliation(3),
+            AmountReconciliation: new FreeAgentAmountReconciliation(0.01m));
 
         var configuration = input.Build(false, [], currentBillingAccountId: "stored-id", Folder, existing);
 

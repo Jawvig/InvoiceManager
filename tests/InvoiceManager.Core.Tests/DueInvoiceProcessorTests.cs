@@ -451,12 +451,9 @@ public sealed class DueInvoiceProcessorTests
         // though reconciled - a multi-item bill whose total doesn't match the invoice has to be
         // reported as a conflict, not attached with the wrong amount left in place.
         var matching = new FreeAgentBillMatching(
-            "https://api.sandbox.freeagent.com/v2/company",
             "https://api.sandbox.freeagent.com/v2/contacts/1",
-            DateToleranceDays: 3,
-            AmountTolerance: 0.01m,
-            AllowDateReconciliation: false,
-            AllowAmountReconciliation: true);
+            DateReconciliation: Option.None,
+            AmountReconciliation: new FreeAgentAmountReconciliation(0.01m));
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10), freeAgentMatching: matching);
         var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
         var records = new InMemoryInvoiceRecordRepository(dueRecord);

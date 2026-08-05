@@ -7,7 +7,6 @@ namespace InvoiceManager.Core.Integrations.FreeAgent;
 /// a retrieved or reconciled invoice.
 /// </summary>
 public sealed record FreeAgentBillSearchCriteria(
-    string CompanyUrl,
     string ContactUrl,
     DateOnly ExpectedDate,
     int DateToleranceDays,

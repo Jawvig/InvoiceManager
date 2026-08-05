@@ -117,35 +117,62 @@ internal sealed class InvoiceConfigurationDocument
 /// <summary>The Cosmos JSON shape for <see cref="FreeAgentBillMatching"/>.</summary>
 internal sealed class FreeAgentBillMatchingDocument
 {
-    [JsonPropertyName("companyUrl")]
-    public required string CompanyUrl { get; init; }
-
     [JsonPropertyName("contactUrl")]
     public required string ContactUrl { get; init; }
 
-    [JsonPropertyName("dateToleranceDays")]
-    public required int DateToleranceDays { get; init; }
+    [JsonPropertyName("dateReconciliation")]
+    public FreeAgentDateReconciliationDocument? DateReconciliation { get; init; }
 
-    [JsonPropertyName("amountTolerance")]
-    public required decimal AmountTolerance { get; init; }
-
-    [JsonPropertyName("allowDateReconciliation")]
-    public required bool AllowDateReconciliation { get; init; }
-
-    [JsonPropertyName("allowAmountReconciliation")]
-    public required bool AllowAmountReconciliation { get; init; }
+    [JsonPropertyName("amountReconciliation")]
+    public FreeAgentAmountReconciliationDocument? AmountReconciliation { get; init; }
 
     public FreeAgentBillMatching ToMatching() =>
-        new(CompanyUrl, ContactUrl, DateToleranceDays, AmountTolerance, AllowDateReconciliation, AllowAmountReconciliation);
+        new(
+            ContactUrl,
+            DateReconciliation is { } dateReconciliation ? dateReconciliation.ToReconciliation() : Option.None,
+            AmountReconciliation is { } amountReconciliation ? amountReconciliation.ToReconciliation() : Option.None);
 
     public static FreeAgentBillMatchingDocument FromMatching(FreeAgentBillMatching matching) => new()
     {
-        CompanyUrl = matching.CompanyUrl,
         ContactUrl = matching.ContactUrl,
-        DateToleranceDays = matching.DateToleranceDays,
-        AmountTolerance = matching.AmountTolerance,
-        AllowDateReconciliation = matching.AllowDateReconciliation,
-        AllowAmountReconciliation = matching.AllowAmountReconciliation,
+        DateReconciliation = matching.DateReconciliation switch
+        {
+            FreeAgentDateReconciliation dateReconciliation => FreeAgentDateReconciliationDocument.FromReconciliation(dateReconciliation),
+            None => null,
+        },
+        AmountReconciliation = matching.AmountReconciliation switch
+        {
+            FreeAgentAmountReconciliation amountReconciliation => FreeAgentAmountReconciliationDocument.FromReconciliation(amountReconciliation),
+            None => null,
+        },
+    };
+}
+
+/// <summary>The Cosmos JSON shape for <see cref="FreeAgentDateReconciliation"/>.</summary>
+internal sealed class FreeAgentDateReconciliationDocument
+{
+    [JsonPropertyName("toleranceDays")]
+    public required int ToleranceDays { get; init; }
+
+    public FreeAgentDateReconciliation ToReconciliation() => new(ToleranceDays);
+
+    public static FreeAgentDateReconciliationDocument FromReconciliation(FreeAgentDateReconciliation reconciliation) => new()
+    {
+        ToleranceDays = reconciliation.ToleranceDays,
+    };
+}
+
+/// <summary>The Cosmos JSON shape for <see cref="FreeAgentAmountReconciliation"/>.</summary>
+internal sealed class FreeAgentAmountReconciliationDocument
+{
+    [JsonPropertyName("amountTolerance")]
+    public required decimal AmountTolerance { get; init; }
+
+    public FreeAgentAmountReconciliation ToReconciliation() => new(AmountTolerance);
+
+    public static FreeAgentAmountReconciliationDocument FromReconciliation(FreeAgentAmountReconciliation reconciliation) => new()
+    {
+        AmountTolerance = reconciliation.AmountTolerance,
     };
 }
 

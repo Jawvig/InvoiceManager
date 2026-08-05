@@ -22,7 +22,6 @@ public sealed class FreeAgentBillMatcherTests
         var matcher = new FreeAgentBillMatcher(client);
 
         var criteria = new FreeAgentBillSearchCriteria(
-            "https://api.sandbox.freeagent.com/v2/company",
             ContactUrl,
             new DateOnly(2026, 8, 1),
             3,
@@ -50,7 +49,6 @@ public sealed class FreeAgentBillMatcherTests
         var matcher = new FreeAgentBillMatcher(client);
 
         var criteria = new FreeAgentBillSearchCriteria(
-            "https://api.sandbox.freeagent.com/v2/company",
             ContactUrl,
             new DateOnly(2026, 8, 1),
             3,

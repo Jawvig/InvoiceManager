@@ -247,13 +247,19 @@ public sealed class DueInvoiceProcessor(
         Activity? recordActivity,
         CancellationToken cancellationToken)
     {
+        var dateToleranceDays = matching.DateReconciliation is FreeAgentDateReconciliation dateReconciliation
+            ? dateReconciliation.ToleranceDays
+            : 0;
+        var amountTolerance = matching.AmountReconciliation is FreeAgentAmountReconciliation amountReconciliation
+            ? amountReconciliation.AmountTolerance
+            : 0m;
+
         var criteria = new FreeAgentBillSearchCriteria(
-            matching.CompanyUrl,
             matching.ContactUrl,
             actualDetails.ActualInvoiceDate,
-            matching.DateToleranceDays,
+            dateToleranceDays,
             actualDetails.ActualAmount,
-            matching.AmountTolerance,
+            amountTolerance,
             actualDetails.SourceInvoiceId.Value);
 
         var matchResult = await freeAgentBillMatcher.FindBillAsync(criteria, cancellationToken);
@@ -288,7 +294,7 @@ public sealed class DueInvoiceProcessor(
 
         var currentBill = billFound.Bill;
 
-        if (matching.AllowDateReconciliation && currentBill.DatedOn != actualDetails.ActualInvoiceDate)
+        if (matching.DateReconciliation is FreeAgentDateReconciliation && currentBill.DatedOn != actualDetails.ActualInvoiceDate)
         {
             var dateResult = await freeAgentBillReconciler.ReconcileDateAsync(
                 billIdentity, actualDetails.ActualInvoiceDate, cancellationToken);
@@ -305,7 +311,7 @@ public sealed class DueInvoiceProcessor(
         // multi-item bill. A mismatched total on a bill with zero or multiple items is never
         // silently accepted, though - falling through to attach as though reconciled would
         // leave a wrong amount on the bill with no record of the discrepancy.
-        if (matching.AllowAmountReconciliation && currentBill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
+        if (matching.AmountReconciliation is FreeAgentAmountReconciliation && currentBill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
         {
             if (currentBill.Items.Count != 1)
             {
