@@ -57,6 +57,10 @@
         if (debounceHandle) clearTimeout(debounceHandle);
         const query = queryInput.value.trim();
         if (query.length < MIN_QUERY_LENGTH) {
+            // Invalidate any in-flight search too, or its response could still land after this
+            // point (the token check in search() would otherwise accept it) and repopulate the
+            // list with results for a query the box no longer shows.
+            searchToken++;
             listEl.innerHTML = "";
             setStatus("Type at least 3 characters to search.");
             return;
