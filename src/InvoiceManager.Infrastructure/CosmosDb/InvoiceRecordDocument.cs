@@ -267,21 +267,21 @@ internal sealed class InvoiceRecordDocument
             Status = nameof(FreeAgentBillMatched),
             ActualDetails = ActualInvoiceDetailsDocument.FromDetails(matched.ActualDetails),
             OneDriveDetails = OneDriveDetailsDocument.FromDetails(matched.OneDriveDetails),
-            FreeAgentBillUrl = matched.Bill.BillUrl,
+            FreeAgentBillUrl = matched.Bill.Url.OriginalString,
         },
         FreeAgentBillReconciled reconciledBill => new()
         {
             Status = nameof(FreeAgentBillReconciled),
             ActualDetails = ActualInvoiceDetailsDocument.FromDetails(reconciledBill.ActualDetails),
             OneDriveDetails = OneDriveDetailsDocument.FromDetails(reconciledBill.OneDriveDetails),
-            FreeAgentBillUrl = reconciledBill.Bill.BillUrl,
+            FreeAgentBillUrl = reconciledBill.Bill.Url.OriginalString,
         },
         FreeAgentAttached attached => new()
         {
             Status = nameof(FreeAgentAttached),
             ActualDetails = ActualInvoiceDetailsDocument.FromDetails(attached.ActualDetails),
             OneDriveDetails = OneDriveDetailsDocument.FromDetails(attached.OneDriveDetails),
-            FreeAgentBillUrl = attached.Bill.BillUrl,
+            FreeAgentBillUrl = attached.Bill.Url.OriginalString,
             FreeAgentAttachment = FreeAgentAttachmentMetadataDocument.FromMetadata(attached.Attachment),
         },
         FreeAgentInterventionPending pending => new()

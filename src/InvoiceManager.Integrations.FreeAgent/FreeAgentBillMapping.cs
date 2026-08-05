@@ -24,7 +24,7 @@ internal static class FreeAgentBillMapping
             ParseMoney(wire.PaidValue, currency, "paid_value"),
             ParseMoney(wire.DueValue, currency, "due_value"),
             wire.PaidOn is { Length: > 0 } paidOn ? DateOnly.ParseExact(paidOn, "yyyy-MM-dd", CultureInfo.InvariantCulture) : Option.None,
-            wire.Contact is { Length: > 0 } contact
+            wire.Contact is { } contact
                 ? new FreeAgentContactIdentity(contact)
                 : throw new InvalidOperationException("FreeAgent bill is missing 'contact'."),
             wire.Reference ?? string.Empty,

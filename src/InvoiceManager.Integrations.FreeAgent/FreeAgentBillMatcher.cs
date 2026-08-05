@@ -30,7 +30,7 @@ internal sealed class FreeAgentBillMatcher : IFreeAgentBillMatcher
         while (true)
         {
             var pageResults = await client.GetBillsPageAsync(
-                fromDate, toDate, criteria.ContactUrl.ContactUrl, page, PageSize, cancellationToken);
+                fromDate, toDate, criteria.ContactUrl.Url.OriginalString, page, PageSize, cancellationToken);
             if (pageResults.Count == 0)
                 break;
 

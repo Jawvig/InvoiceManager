@@ -151,7 +151,7 @@ public sealed class ConfigurationFormInputTests
         var configuration = input.Build(false, [], currentBillingAccountId: "stored-id", Folder);
 
         var matching = Assert.IsType<FreeAgentBillMatching>(configuration.FreeAgentMatching.Value);
-        Assert.Equal("https://api.sandbox.freeagent.com/v2/contacts/1", matching.ContactUrl.ContactUrl);
+        Assert.Equal("https://api.sandbox.freeagent.com/v2/contacts/1", matching.ContactUrl.Url.OriginalString);
         var dateReconciliation = Assert.IsType<FreeAgentDateReconciliation>(matching.DateReconciliation.Value);
         Assert.Equal(3, dateReconciliation.ToleranceDays);
         var amountReconciliation = Assert.IsType<FreeAgentAmountReconciliation>(matching.AmountReconciliation.Value);

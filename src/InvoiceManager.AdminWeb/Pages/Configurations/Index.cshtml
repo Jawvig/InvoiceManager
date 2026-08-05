@@ -64,7 +64,7 @@
                     <div>
                         <dt>FreeAgent matching</dt>
                         <dd>
-                            Contact: @freeAgentMatching.ContactUrl.ContactUrl<br />
+                            Contact: @freeAgentMatching.ContactUrl.Url<br />
                             Date: @(freeAgentMatching.DateReconciliation is InvoiceManager.Core.FreeAgentDateReconciliation dateReconciliation ? $"reconcile within {dateReconciliation.ToleranceDays} day(s)" : "exact match only")<br />
                             Amount: @(freeAgentMatching.AmountReconciliation is InvoiceManager.Core.FreeAgentAmountReconciliation amountReconciliation ? $"reconcile within {amountReconciliation.AmountTolerance:0.00}" : "exact match only")
                         </dd>

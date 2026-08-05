@@ -227,7 +227,7 @@ public sealed class ConfigurationFormInput
         if (configuration.FreeAgentMatching is FreeAgentBillMatching freeAgentMatching)
         {
             input.HasFreeAgentMatching = true;
-            input.FreeAgentContactUrl = freeAgentMatching.ContactUrl.ContactUrl;
+            input.FreeAgentContactUrl = freeAgentMatching.ContactUrl.Url.OriginalString;
             if (freeAgentMatching.DateReconciliation is FreeAgentDateReconciliation dateReconciliation)
             {
                 input.HasFreeAgentDateReconciliation = true;

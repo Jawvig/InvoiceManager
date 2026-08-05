@@ -80,8 +80,8 @@ internal sealed class FreeAgentInterventionDocument
     {
         Id = intervention.Id.Value,
         RecordId = intervention.RecordId.Value,
-        BillUrl = intervention.Bill.BillUrl,
-        ItemUrl = intervention.Item.ItemUrl,
+        BillUrl = intervention.Bill.Url.OriginalString,
+        ItemUrl = intervention.Item.Url.OriginalString,
         BankTransactionUrl = intervention.BankTransactionUrl,
         GuessExplanationUrl = intervention.GuessExplanationUrl,
         CurrentBillAmount = intervention.CurrentBillAmount.Amount,

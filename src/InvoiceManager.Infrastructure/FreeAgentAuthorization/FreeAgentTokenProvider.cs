@@ -1,5 +1,5 @@
 using System.Net.Http.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace InvoiceManager.Infrastructure.FreeAgentAuthorization;
@@ -16,6 +16,15 @@ namespace InvoiceManager.Infrastructure.FreeAgentAuthorization;
 public sealed class FreeAgentTokenProvider : IFreeAgentTokenProvider
 {
     private static readonly TimeSpan ExpiryBuffer = TimeSpan.FromMinutes(2);
+
+    // FreeAgent's token response is snake_case (access_token, refresh_token, expires_in) - this
+    // policy lets TokenResponseWire's property names map without their own JsonPropertyName,
+    // same as FreeAgentApiClient.SerializerOptions.
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = true,
+    };
 
     private readonly HttpClient httpClient;
     private readonly IFreeAgentAuthorizationStore authorizationStore;
@@ -100,7 +109,7 @@ public sealed class FreeAgentTokenProvider : IFreeAgentTokenProvider
                 $"FreeAgent token refresh failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
         }
 
-        var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponseWire>(cancellationToken)
+        var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponseWire>(SerializerOptions, cancellationToken)
             ?? throw new InvalidOperationException("FreeAgent's token response could not be parsed.");
 
         if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
@@ -120,13 +129,10 @@ public sealed class FreeAgentTokenProvider : IFreeAgentTokenProvider
 
     private sealed class TokenResponseWire
     {
-        [JsonPropertyName("access_token")]
         public string? AccessToken { get; init; }
 
-        [JsonPropertyName("refresh_token")]
         public string? RefreshToken { get; init; }
 
-        [JsonPropertyName("expires_in")]
         public int ExpiresIn { get; init; } = 3600;
     }
 }

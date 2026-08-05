@@ -140,7 +140,7 @@ public sealed record FreeAgentBillMatchingExport
 
     public static FreeAgentBillMatchingExport FromMatching(FreeAgentBillMatching matching) => new()
     {
-        ContactUrl = matching.ContactUrl.ContactUrl,
+        ContactUrl = matching.ContactUrl.Url.OriginalString,
         DateToleranceDays = matching.DateReconciliation is FreeAgentDateReconciliation dateReconciliation
             ? dateReconciliation.ToleranceDays
             : null,

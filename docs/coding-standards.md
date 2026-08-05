@@ -175,6 +175,36 @@ small wrapper type over a primitive for values with their own validation rules
 or meaning (an ID, a currency amount, a slug). Not every string needs a
 wrapper - use judgment for genuinely unstructured text.
 
+## Default to immutable types
+
+Prefer `record`/`sealed record` with `init`-only (or positional) properties
+over mutable classes, and prefer immutable collection types
+(`IReadOnlyList<T>`, `IReadOnlyCollection<T>`, `IReadOnlyDictionary<TKey,
+TValue>`) over their mutable counterparts (`List<T>`, `Dictionary<TKey,
+TValue>`) on any type's public surface - including wire/DTO types that only
+System.Text.Json ever constructs. A `[JsonPropertyName]`/deserialization
+target still works correctly with a `List<T>`-backed `IReadOnlyList<T>`
+property; System.Text.Json creates the concrete list and exposes it through
+the interface. Only use a mutable type where genuine in-place mutation is
+required (a builder, an accumulator local to one method) - never as a public
+property or parameter type "just in case a caller wants to modify it."
+
+**Why:** A mutable public property or a `List<T>` return value invites a
+caller to mutate shared state that the type's owner never intended to expose,
+which is exactly the kind of "invalid state became representable" problem
+[Make invalid states unrepresentable with strong typing](#make-invalid-states-unrepresentable-with-strong-typing)
+above already argues against for primitives - it applies equally to
+collections. It also removes a class of bugs where one caller's edit to a
+returned list silently corrupts what another caller (or the object itself)
+sees next.
+
+**How to apply:** When defining a new type - domain model, wire DTO, options
+class - default to `record`/`init` and `IReadOnlyList<T>`/`IReadOnlyDictionary<TKey,
+TValue>` unless something specific requires otherwise. When touching an
+existing type that already uses a mutable collection on its public surface,
+change it to the read-only equivalent as part of that change rather than
+leaving it as-is.
+
 ## Prefer strongly typed models over loose dictionaries
 
 Prefer strongly typed options classes and domain models over passing
