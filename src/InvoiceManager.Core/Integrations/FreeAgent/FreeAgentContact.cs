@@ -27,7 +27,11 @@ public interface IFreeAgentContactDirectory
     /// <summary>
     /// Looks up a single contact by its resource URL, for confirming an
     /// existing selection still resolves and refreshing its display name.
-    /// <see cref="None"/> if FreeAgent has no contact at that URL.
+    /// <see cref="None"/> both when FreeAgent has no contact at that URL and
+    /// when the lookup itself could not be completed (e.g. FreeAgent
+    /// unreachable, rate limited, or the URL points at the wrong environment) -
+    /// callers treat both as "this contact could not be confirmed right now"
+    /// and reject the save rather than risk persisting an unverified selection.
     /// </summary>
     Task<Option<FreeAgentContact>> GetAsync(FreeAgentContactIdentity url, CancellationToken cancellationToken = default);
 }

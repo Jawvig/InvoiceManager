@@ -13,6 +13,11 @@ namespace InvoiceManager.Integrations.FreeAgent;
 internal sealed class FreeAgentContactDirectory(FreeAgentApiClient client) : IFreeAgentContactDirectory
 {
     private const int PageSize = 100;
+
+    // Deliberately bounded rather than exhaustive: this backs a live, debounced autocomplete box
+    // (see freeagent-contact-picker.js), so a query that doesn't narrow the first 500 contacts
+    // down to a handful of matches is expected to be refined further by the administrator typing
+    // more of the name, not answered by scanning an entire large contact list on every keystroke.
     private const int MaxPagesScanned = 5;
     private const int MaxResults = 20;
 
