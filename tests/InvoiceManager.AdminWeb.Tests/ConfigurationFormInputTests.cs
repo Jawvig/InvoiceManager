@@ -142,6 +142,7 @@ public sealed class ConfigurationFormInputTests
             BillingAccountId = "stored-id",
             HasFreeAgentMatching = true,
             FreeAgentContactUrl = "https://api.sandbox.freeagent.com/v2/contacts/1",
+            FreeAgentContactDisplayName = "Example Contact",
             HasFreeAgentDateReconciliation = true,
             FreeAgentDateToleranceDays = 3,
             HasFreeAgentAmountReconciliation = true,
@@ -151,7 +152,8 @@ public sealed class ConfigurationFormInputTests
         var configuration = input.Build(false, [], currentBillingAccountId: "stored-id", Folder);
 
         var matching = Assert.IsType<FreeAgentBillMatching>(configuration.FreeAgentMatching.Value);
-        Assert.Equal("https://api.sandbox.freeagent.com/v2/contacts/1", matching.ContactUrl.Url.OriginalString);
+        Assert.Equal("https://api.sandbox.freeagent.com/v2/contacts/1", matching.Contact.Url.Url.OriginalString);
+        Assert.Equal("Example Contact", matching.Contact.DisplayName);
         var dateReconciliation = Assert.IsType<FreeAgentDateReconciliation>(matching.DateReconciliation.Value);
         Assert.Equal(3, dateReconciliation.ToleranceDays);
         var amountReconciliation = Assert.IsType<FreeAgentAmountReconciliation>(matching.AmountReconciliation.Value);
@@ -222,7 +224,7 @@ public sealed class ConfigurationFormInputTests
     public void From_RoundTripsFreeAgentMatching()
     {
         var existing = new FreeAgentBillMatching(
-            new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"),
+            new FreeAgentContact(new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Example Contact"),
             DateReconciliation: new FreeAgentDateReconciliation(3),
             AmountReconciliation: new FreeAgentAmountReconciliation(0.01m));
         var stored = new StoredInvoiceConfiguration(
@@ -244,6 +246,7 @@ public sealed class ConfigurationFormInputTests
 
         Assert.True(input.HasFreeAgentMatching);
         Assert.Equal("https://api.sandbox.freeagent.com/v2/contacts/1", input.FreeAgentContactUrl);
+        Assert.Equal("Example Contact", input.FreeAgentContactDisplayName);
         Assert.True(input.HasFreeAgentDateReconciliation);
         Assert.Equal(3, input.FreeAgentDateToleranceDays);
         Assert.True(input.HasFreeAgentAmountReconciliation);

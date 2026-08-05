@@ -255,7 +255,7 @@ public sealed class DueInvoiceProcessor(
             : 0m;
 
         var criteria = new FreeAgentBillSearchCriteria(
-            matching.ContactUrl,
+            matching.Contact.Url,
             actualDetails.ActualInvoiceDate,
             dateToleranceDays,
             actualDetails.ActualAmount,

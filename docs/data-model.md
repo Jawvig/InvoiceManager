@@ -60,7 +60,13 @@ Candidate fields:
 - `oneDriveFolder` — a required object containing `driveId`, `driveName`,
   `folderItemId`, and `folderPath` (no legacy path-only mode)
 - `dateToleranceDays`
-- `freeAgentMatching`
+- `freeAgentMatching` — optional object; absent for configurations that don't
+  match to FreeAgent. Contains `contactUrl` (the FreeAgent contact's resource
+  URL, the only part matching keys off) and `contactDisplayName` (a cached,
+  non-authoritative display name shown in AdminWeb without a live FreeAgent
+  call on every page load; refreshed from FreeAgent whenever the owning
+  configuration is saved via Edit or Import), plus optional
+  `dateReconciliation`/`amountReconciliation` sub-objects
 - `createdAt`
 - `updatedAt`
 

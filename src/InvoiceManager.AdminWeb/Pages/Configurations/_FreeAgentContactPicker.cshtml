@@ -1,0 +1,25 @@
+@model InvoiceManager.AdminWeb.Pages.Configurations.ConfigurationFormPageModel
+<input asp-for="Input.FreeAgentContactUrl" id="Input_FreeAgentContactUrl" type="hidden" />
+<input asp-for="Input.FreeAgentContactDisplayName" id="Input_FreeAgentContactDisplayName" type="hidden" />
+<div class="freeagent-contact-picker-field">
+    <span class="status-label">FreeAgent contact</span>
+    <p id="freeagent-contact-picker-summary" class="freeagent-contact-picker-summary">
+        @(string.IsNullOrWhiteSpace(Model.Input.FreeAgentContactUrl)
+            ? "No contact selected"
+            : Model.Input.FreeAgentContactDisplayName)
+    </p>
+    <button type="button" id="freeagent-contact-picker-open" class="secondary-action">Search…</button>
+</div>
+
+<dialog id="freeagent-contact-picker-dialog" class="freeagent-contact-picker-dialog">
+    <div class="freeagent-contact-picker-header">
+        <h2>Search FreeAgent contacts</h2>
+        <button type="button" id="freeagent-contact-picker-close" class="secondary-action" aria-label="Close">Close</button>
+    </div>
+    <input type="search" id="freeagent-contact-picker-query" placeholder="Search…" autocomplete="off" />
+    <div id="freeagent-contact-picker-status" class="status-label" role="status"></div>
+    <ul id="freeagent-contact-picker-list" class="freeagent-contact-picker-list"></ul>
+    <div class="actions">
+        <button type="button" id="freeagent-contact-picker-cancel" class="secondary-action">Cancel</button>
+    </div>
+</dialog>

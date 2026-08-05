@@ -115,6 +115,27 @@ internal sealed class BankTransactionResponseWire
     public BankTransactionWire? BankTransaction { get; init; }
 }
 
+internal sealed class ContactWire
+{
+    public Uri? Url { get; init; }
+
+    public string? OrganisationName { get; init; }
+
+    public string? FirstName { get; init; }
+
+    public string? LastName { get; init; }
+}
+
+internal sealed class ContactsResponseWire
+{
+    public IReadOnlyList<ContactWire> Contacts { get; init; } = [];
+}
+
+internal sealed class ContactResponseWire
+{
+    public ContactWire? Contact { get; init; }
+}
+
 /// <summary>The shape of a FreeAgent 422 validation-error body, used to detect the "locked" signal proven by the POC.</summary>
 internal sealed class ErrorResponseWire
 {

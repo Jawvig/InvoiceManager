@@ -7,6 +7,7 @@ using InvoiceManager.Infrastructure;
 using InvoiceManager.Infrastructure.CosmosDb;
 using InvoiceManager.Infrastructure.FreeAgentAuthorization;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
+using InvoiceManager.Integrations.FreeAgent;
 using Microsoft.Azure.Cosmos;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -67,14 +68,7 @@ builder.Services.AddSingleton<IMicrosoftAuthorizationStore>(serviceProvider =>
         secretStoreClient,
         serviceProvider.GetRequiredService<IOptions<MicrosoftAuthorizationOptions>>());
 });
-builder.Services.AddSingleton<IFreeAgentAuthorizationStore>(serviceProvider =>
-{
-    var keyVaultUri = serviceProvider.GetRequiredService<IOptions<KeyVaultOptions>>().Value.Uri;
-    var secretStoreClient = new AzureKeyVaultSecretStoreClient(keyVaultUri);
-    return new KeyVaultFreeAgentAuthorizationStore(
-        secretStoreClient,
-        serviceProvider.GetRequiredService<IOptions<FreeAgentAuthorizationOptions>>());
-});
+builder.Services.AddFreeAgentIntegration();
 
 builder.Services
     .AddAuthentication(options =>

@@ -143,6 +143,27 @@ internal sealed class FreeAgentApiClient
             ?? throw new InvalidOperationException("FreeAgent's attachment upload response did not include attachment metadata.");
     }
 
+    public async Task<ContactWire?> GetContactAsync(string contactUrl, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Get, contactUrl, content: null, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, "reading a contact", cancellationToken);
+        var body = await response.Content.ReadFromJsonAsync<ContactResponseWire>(SerializerOptions, cancellationToken);
+        return body?.Contact;
+    }
+
+    public async Task<IReadOnlyList<ContactWire>> SearchContactsPageAsync(
+        int page, int perPage, CancellationToken cancellationToken)
+    {
+        var url = $"contacts?view=all&sort=name&page={page}&per_page={perPage}";
+        using var response = await SendAsync(HttpMethod.Get, url, content: null, cancellationToken);
+        await EnsureSuccessAsync(response, "listing contacts", cancellationToken);
+        var body = await response.Content.ReadFromJsonAsync<ContactsResponseWire>(SerializerOptions, cancellationToken);
+        return body?.Contacts ?? [];
+    }
+
     public async Task<IReadOnlyList<string>> GetBankAccountUrlsAsync(CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, "bank_accounts", content: null, cancellationToken);

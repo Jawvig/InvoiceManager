@@ -66,6 +66,14 @@ public sealed class ConfigurationFormInput
     [ValidateNever]
     public string FreeAgentContactUrl { get; set; } = "";
 
+    // Populated alongside FreeAgentContactUrl by the contact picker (see
+    // _FreeAgentContactPicker.cshtml / freeagent-contact-picker.js) - a cached display name for
+    // showing the selection without a live FreeAgent API call on every page load. Not
+    // authoritative: Edit/Import refresh it from FreeAgent on save (see Edit.cshtml.cs /
+    // Import.cshtml.cs), and matching itself never depends on it.
+    [ValidateNever]
+    public string FreeAgentContactDisplayName { get; set; } = "";
+
     public bool HasFreeAgentDateReconciliation { get; set; }
 
     [Range(0, 365)]
@@ -165,7 +173,8 @@ public sealed class ConfigurationFormInput
                 ? new FreeAgentAmountReconciliation(FreeAgentAmountTolerance)
                 : Option.None;
 
-            freeAgentMatching = new FreeAgentBillMatching(contactUrl, dateReconciliation, amountReconciliation);
+            var contact = new FreeAgentContact(contactUrl, FreeAgentContactDisplayName?.Trim() ?? "");
+            freeAgentMatching = new FreeAgentBillMatching(contact, dateReconciliation, amountReconciliation);
         }
 
         var configuration = new InvoiceConfiguration(
@@ -227,7 +236,8 @@ public sealed class ConfigurationFormInput
         if (configuration.FreeAgentMatching is FreeAgentBillMatching freeAgentMatching)
         {
             input.HasFreeAgentMatching = true;
-            input.FreeAgentContactUrl = freeAgentMatching.ContactUrl.Url.OriginalString;
+            input.FreeAgentContactUrl = freeAgentMatching.Contact.Url.Url.OriginalString;
+            input.FreeAgentContactDisplayName = freeAgentMatching.Contact.DisplayName;
             if (freeAgentMatching.DateReconciliation is FreeAgentDateReconciliation dateReconciliation)
             {
                 input.HasFreeAgentDateReconciliation = true;

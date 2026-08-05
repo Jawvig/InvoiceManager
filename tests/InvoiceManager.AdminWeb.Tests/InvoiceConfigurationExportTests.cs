@@ -119,7 +119,7 @@ public sealed class InvoiceConfigurationExportTests
     public void FromConfiguration_ThenToFormInput_RoundTripsFreeAgentMatching()
     {
         var freeAgentMatching = new FreeAgentBillMatching(
-            new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"),
+            new FreeAgentContact(new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Example Contact"),
             DateReconciliation: new FreeAgentDateReconciliation(3),
             AmountReconciliation: new FreeAgentAmountReconciliation(0.01m));
         var configuration = Configurations.Build(freeAgentMatching: freeAgentMatching);
@@ -131,6 +131,7 @@ public sealed class InvoiceConfigurationExportTests
 
         Assert.True(input.HasFreeAgentMatching);
         Assert.Equal("https://api.sandbox.freeagent.com/v2/contacts/1", input.FreeAgentContactUrl);
+        Assert.Equal("Example Contact", input.FreeAgentContactDisplayName);
         Assert.True(input.HasFreeAgentDateReconciliation);
         Assert.Equal(3, input.FreeAgentDateToleranceDays);
         Assert.True(input.HasFreeAgentAmountReconciliation);

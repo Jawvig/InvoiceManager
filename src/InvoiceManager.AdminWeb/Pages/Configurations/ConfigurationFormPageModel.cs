@@ -1,13 +1,16 @@
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace InvoiceManager.AdminWeb.Pages.Configurations;
 
-public abstract class ConfigurationFormPageModel(IMicrosoftResourceDiscovery discovery) : PageModel
+public abstract class ConfigurationFormPageModel(
+    IMicrosoftResourceDiscovery discovery, IFreeAgentContactDirectory contactDirectory) : PageModel
 {
     protected IMicrosoftResourceDiscovery Discovery { get; } = discovery;
+    protected IFreeAgentContactDirectory ContactDirectory { get; } = contactDirectory;
     public abstract ConfigurationFormInput Input { get; set; }
     public abstract bool IsEdit { get; }
     public IReadOnlyList<BillingAccountChoice> BillingAccounts { get; protected set; } = [];
@@ -103,6 +106,59 @@ public abstract class ConfigurationFormPageModel(IMicrosoftResourceDiscovery dis
         {
             return new JsonResult(new { error = ex.Message }) { StatusCode = StatusCodes.Status502BadGateway };
         }
+    }
+
+    /// <summary>Backs the FreeAgent contact picker's search box.</summary>
+    public async Task<IActionResult> OnGetFreeAgentContactsAsync(string query, CancellationToken cancellationToken)
+    {
+        if (!await CanMutateAsync()) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 3) return BadRequest();
+        try
+        {
+            var contacts = await ContactDirectory.SearchAsync(query.Trim(), cancellationToken);
+            return new JsonResult(contacts.Select(c => new { url = c.Url.Url.OriginalString, c.DisplayName }));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new JsonResult(new { error = ex.Message }) { StatusCode = StatusCodes.Status502BadGateway };
+        }
+    }
+
+    /// <summary>
+    /// Confirms the posted FreeAgent contact URL still resolves against FreeAgent and refreshes
+    /// <see cref="ConfigurationFormInput.FreeAgentContactDisplayName"/> from the live result -
+    /// covers both a contact renamed since it was last picked, and a contact URL that (for Import)
+    /// never went through the picker in this environment at all. Called from Edit/Import's
+    /// OnPostAsync before <see cref="ConfigurationFormInput.Build"/>, only when
+    /// <see cref="ConfigurationFormInput.HasFreeAgentMatching"/> is set - Create never calls this,
+    /// since its contact URL/display name just came straight out of a live picker search result.
+    /// Adds a model error and returns false when the URL is malformed or doesn't resolve.
+    /// </summary>
+    protected async Task<bool> RefreshFreeAgentContactAsync(CancellationToken cancellationToken)
+    {
+        if (!Input.HasFreeAgentMatching) return true;
+
+        FreeAgentContactIdentity contactUrl;
+        try
+        {
+            contactUrl = new FreeAgentContactIdentity(Input.FreeAgentContactUrl?.Trim() ?? "");
+        }
+        catch (ArgumentException)
+        {
+            ModelState.AddModelError(string.Empty, "FreeAgent contact URL must be an absolute https URI.");
+            return false;
+        }
+
+        if (await ContactDirectory.GetAsync(contactUrl, cancellationToken) is FreeAgentContact contact)
+        {
+            Input.FreeAgentContactDisplayName = contact.DisplayName;
+            return true;
+        }
+
+        ModelState.AddModelError(
+            string.Empty,
+            "The FreeAgent contact could not be confirmed - it may have been deleted, or FreeAgent could not be reached.");
+        return false;
     }
 
     /// <summary>

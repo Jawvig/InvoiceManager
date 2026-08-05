@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InvoiceManager.Infrastructure\InvoiceManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\InvoiceManager.Integrations.FreeAgent\InvoiceManager.Integrations.FreeAgent.csproj" />
   </ItemGroup>
 
 </Project>

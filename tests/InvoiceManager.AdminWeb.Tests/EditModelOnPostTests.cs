@@ -1,6 +1,7 @@
 using InvoiceManager.AdminWeb.Pages.Configurations;
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.TestSupport;
 using System.Security.Claims;
@@ -75,9 +76,51 @@ public sealed class EditModelOnPostTests
         Assert.IsType<Microsoft.AspNetCore.Mvc.RedirectToPageResult>(result);
     }
 
+    [Fact]
+    public async Task OnPostAsync_RefreshesFreeAgentDisplayName_WhenContactStillResolves()
+    {
+        var contactDirectory = new FakeFreeAgentContactDirectory
+        {
+            GetResult = new FreeAgentContact(
+                new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Renamed Contact"),
+        };
+        var model = CreateModel(
+            billingAccounts: [new BillingAccountChoice("stored-billing-id", "Account", "Business")],
+            verifiedFolder: StoredFolder,
+            contactDirectory: contactDirectory);
+        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice-0"));
+        model.Input.HasFreeAgentMatching = true;
+        model.Input.FreeAgentContactUrl = "https://api.sandbox.freeagent.com/v2/contacts/1";
+        model.Input.FreeAgentContactDisplayName = "Stale Name";
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<Microsoft.AspNetCore.Mvc.RedirectToPageResult>(result);
+        Assert.Equal("Renamed Contact", model.Input.FreeAgentContactDisplayName);
+    }
+
+    [Fact]
+    public async Task OnPostAsync_RejectsSave_WhenFreeAgentContactNoLongerResolves()
+    {
+        var contactDirectory = new FakeFreeAgentContactDirectory { GetResult = Option.None };
+        var model = CreateModel(
+            billingAccounts: [new BillingAccountChoice("stored-billing-id", "Account", "Business")],
+            verifiedFolder: StoredFolder,
+            contactDirectory: contactDirectory);
+        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice-0"));
+        model.Input.HasFreeAgentMatching = true;
+        model.Input.FreeAgentContactUrl = "https://api.sandbox.freeagent.com/v2/contacts/1";
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<PageResult>(result);
+        Assert.False(model.ModelState.IsValid);
+    }
+
     private static EditModel CreateModel(
         IReadOnlyList<BillingAccountChoice>? billingAccounts = null,
-        OneDriveFolder? verifiedFolder = null)
+        OneDriveFolder? verifiedFolder = null,
+        FakeFreeAgentContactDirectory? contactDirectory = null)
     {
         var discovery = new FakeMicrosoftResourceDiscovery(billingAccounts, verifiedFolder: verifiedFolder);
         var httpContext = new DefaultHttpContext
@@ -89,6 +132,7 @@ public sealed class EditModelOnPostTests
         var model = new EditModel(
             new InvoiceConfigurationService(new FakeConfigurationRepository(StoredConfiguration)),
             discovery,
+            contactDirectory ?? new FakeFreeAgentContactDirectory(),
             new FakeMicrosoftAuthorizationStore(hasTokenCache: true))
         {
             PageContext = new PageContext { HttpContext = httpContext },

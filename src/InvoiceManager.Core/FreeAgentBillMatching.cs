@@ -14,7 +14,7 @@ namespace InvoiceManager.Core;
 /// <c>IFreeAgentTokenProvider</c>/<c>FreeAgentApiHost</c>).
 /// </remarks>
 public sealed record FreeAgentBillMatching(
-    FreeAgentContactIdentity ContactUrl,
+    FreeAgentContact Contact,
     Option<FreeAgentDateReconciliation> DateReconciliation,
     Option<FreeAgentAmountReconciliation> AmountReconciliation);
 

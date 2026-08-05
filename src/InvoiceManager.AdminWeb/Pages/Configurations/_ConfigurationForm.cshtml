@@ -64,7 +64,7 @@
         <label>Date tolerance (days) <input asp-for="Input.DateToleranceDays" type="number" min="0" max="365" step="1" /></label>
         <label><input asp-for="Input.HasFreeAgentMatching" /> Match to a FreeAgent bill</label>
         <div id="freeagent-matching-fields" hidden="@(!Model.Input.HasFreeAgentMatching)">
-            <label>FreeAgent contact URL <input asp-for="Input.FreeAgentContactUrl" placeholder="https://api.sandbox.freeagent.com/v2/contacts/1" /></label>
+            <partial name="_FreeAgentContactPicker" />
             <label><input asp-for="Input.HasFreeAgentDateReconciliation" /> Reconcile bill date</label>
             <div id="freeagent-date-fields" hidden="@(!Model.Input.HasFreeAgentDateReconciliation)">
                 <label>Date tolerance (days) <input asp-for="Input.FreeAgentDateToleranceDays" type="number" min="0" max="365" step="1" /></label>

@@ -110,6 +110,7 @@ public sealed record InvoiceConfigurationExport
             FolderPath = OneDriveFolder.FolderPath,
             HasFreeAgentMatching = FreeAgentMatching is not null,
             FreeAgentContactUrl = FreeAgentMatching?.ContactUrl ?? "",
+            FreeAgentContactDisplayName = FreeAgentMatching?.ContactDisplayName ?? "",
             HasFreeAgentDateReconciliation = FreeAgentMatching?.DateToleranceDays is not null,
             FreeAgentDateToleranceDays = FreeAgentMatching?.DateToleranceDays ?? 0,
             HasFreeAgentAmountReconciliation = FreeAgentMatching?.AmountTolerance is not null,
@@ -135,12 +136,14 @@ public sealed record AmountMatchingCriteriaExport
 public sealed record FreeAgentBillMatchingExport
 {
     public required string ContactUrl { get; init; }
+    public required string ContactDisplayName { get; init; }
     public int? DateToleranceDays { get; init; }
     public decimal? AmountTolerance { get; init; }
 
     public static FreeAgentBillMatchingExport FromMatching(FreeAgentBillMatching matching) => new()
     {
-        ContactUrl = matching.ContactUrl.Url.OriginalString,
+        ContactUrl = matching.Contact.Url.Url.OriginalString,
+        ContactDisplayName = matching.Contact.DisplayName,
         DateToleranceDays = matching.DateReconciliation is FreeAgentDateReconciliation dateReconciliation
             ? dateReconciliation.ToleranceDays
             : null,

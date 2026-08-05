@@ -41,6 +41,7 @@ public static class FreeAgentIntegrationRegistration
         services.AddTransient<IFreeAgentBillReconciler, FreeAgentBillReconciler>();
         services.AddTransient<IFreeAgentAttachmentUploader, FreeAgentAttachmentUploader>();
         services.AddTransient<IFreeAgentGuessRemover, FreeAgentGuessRemover>();
+        services.AddTransient<IFreeAgentContactDirectory, FreeAgentContactDirectory>();
 
         return services;
     }
