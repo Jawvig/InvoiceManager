@@ -32,6 +32,8 @@ public sealed class GraphOneDriveIntegrationTests
             pdf));
 
         Assert.Equal("https://contoso-my.sharepoint.com/invoice.pdf", result.OneDriveLocation);
+        Assert.Equal("drive-1", result.DriveId);
+        Assert.Equal("01ABCDEF", result.ItemId);
 
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Put, request.Method);
@@ -98,6 +100,8 @@ public sealed class GraphOneDriveIntegrationTests
 
         var match = AssertMatch(result);
         Assert.Equal("https://example/id-1", match.OneDriveDetails.OneDriveLocation);
+        Assert.Equal("drive-1", match.OneDriveDetails.DriveId);
+        Assert.Equal("id-1", match.OneDriveDetails.ItemId);
         Assert.Equal(new DateOnly(2026, 7, 10), match.Details.ActualInvoiceDate);
         Assert.Equal(new Money(11.59m, "GBP"), match.Details.ActualAmount);
         Assert.Equal("G152207778", match.Details.SourceInvoiceId.Value);
@@ -274,6 +278,36 @@ public sealed class GraphOneDriveIntegrationTests
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
             integration.SearchAsync(new OneDriveSearchRequest(Folder, Criteria())));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_GetsContentEndpoint_ByDriveAndItemId_AndReturnsBytes()
+    {
+        var pdf = new byte[] { 1, 2, 3, 4 };
+        var handler = new StubHttpMessageHandler((_, _) =>
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(pdf) });
+        using var httpClient = new HttpClient(handler);
+        var integration = Build(httpClient);
+
+        var result = await integration.DownloadAsync(new OneDriveDetails("https://example/id-1", "drive-1", "item-1"));
+
+        Assert.Equal(pdf, result);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal(
+            "https://graph.microsoft.com/v1.0/drives/drive-1/items/item-1/content",
+            request.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task DownloadAsync_Throws_WhenGraphReturnsError()
+    {
+        var handler = new StubHttpMessageHandler((_, _) => Json(HttpStatusCode.NotFound, "not found"));
+        using var httpClient = new HttpClient(handler);
+        var integration = Build(httpClient);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            integration.DownloadAsync(new OneDriveDetails("https://example/id-1", "drive-1", "item-1")));
     }
 
     private static OneDriveMatch AssertMatch(OneDriveSearchResult result) =>

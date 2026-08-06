@@ -65,14 +65,15 @@ public sealed class GraphOneDriveIntegration(
         }
 
         var item = await response.Content.ReadFromJsonAsync<DriveItemResponse>(cancellationToken);
-        var location = item?.WebUrl ?? item?.Id
+        var itemId = item?.Id
             ?? throw new InvalidOperationException(
-                $"OneDrive upload of '{request.FileName}' succeeded but returned no item location.");
+                $"OneDrive upload of '{request.FileName}' succeeded but returned no item ID.");
+        var location = item?.WebUrl ?? itemId;
 
         activity?.SetTag("onedrive.location", location);
         logger.LogInformation(
             "Uploaded '{FileName}' to OneDrive at {Location}.", request.FileName, location);
-        return new OneDriveDetails(location);
+        return new OneDriveDetails(location, request.Destination.DriveId, itemId);
     }
 
     public async Task<OneDriveSearchResult> SearchAsync(
@@ -139,9 +140,9 @@ public sealed class GraphOneDriveIntegration(
             return new NoOneDriveMatch();
         }
 
-        var location = best.WebUrl ?? best.Id
-            ?? throw new InvalidOperationException(
-                $"OneDrive file '{best.Name}' matched but returned no location.");
+        var itemId = best.Id
+            ?? throw new InvalidOperationException($"OneDrive file '{best.Name}' matched but returned no item ID.");
+        var location = best.WebUrl ?? itemId;
         var matchReason =
             $"Matched OneDrive file '{best.Name}' by date {bestParsed.InvoiceDate:O} " +
             $"(within {request.Criteria.DateToleranceDays}d)" +
@@ -158,7 +159,26 @@ public sealed class GraphOneDriveIntegration(
             bestParsed.Amount,
             new SourceInvoiceId(bestParsed.InvoiceName));
 
-        return new OneDriveMatch(new OneDriveDetails(location), details, matchReason);
+        return new OneDriveMatch(new OneDriveDetails(location, request.Destination.DriveId, itemId), details, matchReason);
+    }
+
+    public async Task<byte[]> DownloadAsync(OneDriveDetails details, CancellationToken cancellationToken = default)
+    {
+        using var activity = Telemetry.ActivitySource.StartActivity("download_onedrive");
+        activity?.SetTag("onedrive.location", details.OneDriveLocation);
+
+        var token = await tokenProvider.AcquireTokenAsync(Scopes, cancellationToken);
+
+        var downloadUrl =
+            $"{GraphBaseUrl}/drives/{Uri.EscapeDataString(details.DriveId)}/items/{Uri.EscapeDataString(details.ItemId)}/content";
+
+        using var message = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await httpClient.SendAsync(message, cancellationToken);
+        await response.EnsureSuccessAsync("Microsoft Graph", "downloading a OneDrive file", cancellationToken);
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
     private sealed record DriveItemResponse(

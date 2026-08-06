@@ -75,15 +75,21 @@ public sealed class CosmosInvoiceRecordRepository : IInvoiceRecordRepository
         CancellationToken cancellationToken = default)
     {
         // Cross-partition: due records may belong to any configuration. Retryable
-        // statuses (Expected, RetrievalError, Retrieved) are all picked up; the
-        // terminal NotFound state is excluded.
+        // statuses (Expected, RetrievalError, Retrieved, FreeAgentMatchExpected,
+        // FreeAgentError) are all picked up - see docs/workflow-states.md. Terminal
+        // (NotFound) and decision-gated (FreeAgentInterventionPending, only resumed
+        // by an explicit administrator decision, never by polling) states are excluded.
         var query = new QueryDefinition(
             "SELECT * FROM c " +
-            "WHERE c.status IN (@expectedStatus, @retrievalErrorStatus, @retrievedStatus) " +
+            "WHERE c.status IN (" +
+            "@expectedStatus, @retrievalErrorStatus, @retrievedStatus, " +
+            "@freeAgentMatchExpectedStatus, @freeAgentErrorStatus) " +
             "AND c.expectedDate <= @asOf")
             .WithParameter("@expectedStatus", nameof(Expected))
             .WithParameter("@retrievalErrorStatus", nameof(RetrievalError))
             .WithParameter("@retrievedStatus", nameof(Retrieved))
+            .WithParameter("@freeAgentMatchExpectedStatus", nameof(FreeAgentMatchExpected))
+            .WithParameter("@freeAgentErrorStatus", nameof(FreeAgentError))
             .WithParameter("@asOf", asOf.ToString("O", CultureInfo.InvariantCulture));
 
         using var iterator = container.GetItemQueryIterator<InvoiceRecordDocument>(query);

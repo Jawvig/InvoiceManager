@@ -39,9 +39,25 @@ public sealed record ReconciledFromOneDrive(
     DateTimeOffset ReconciledAt);
 
 /// <summary>
-/// The retrieved invoice file has been saved to its OneDrive destination.
+/// The retrieved invoice file has been saved to its OneDrive destination. Terminal
+/// for configurations with no <see cref="FreeAgentBillMatching"/> configured; when
+/// FreeAgent matching is configured, the record goes straight to
+/// <see cref="FreeAgentMatchExpected"/> instead of this state (see
+/// <c>DueInvoiceProcessor</c>'s save_fork), so this state is only ever the final,
+/// non-retryable one.
 /// </summary>
 public sealed record SavedToOneDrive(ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails);
+
+/// <summary>
+/// The saved/reconciled invoice's configuration has FreeAgent matching configured,
+/// but no bill has matched yet (or the match was ambiguous). The single entry point
+/// into the FreeAgent stage from both the retrieval-and-save path and the OneDrive
+/// reconciliation path - see docs/workflow-states.md. Retried indefinitely on later
+/// runs (there is no FreeAgent-side deadline/give-up state, unlike
+/// <see cref="Expected"/>/<see cref="NotFound"/>): a retry re-fetches the PDF bytes
+/// from OneDrive via <see cref="OneDriveDetails"/> rather than persisting them.
+/// </summary>
+public sealed record FreeAgentMatchExpected(ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails);
 
 /// <summary>
 /// The retrieved/reconciled invoice has been matched to a FreeAgent bill, but no
@@ -100,6 +116,7 @@ public union InvoiceWorkflowState(
     Retrieved,
     ReconciledFromOneDrive,
     SavedToOneDrive,
+    FreeAgentMatchExpected,
     FreeAgentBillMatched,
     FreeAgentBillReconciled,
     FreeAgentAttached,

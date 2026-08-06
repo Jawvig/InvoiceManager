@@ -8,6 +8,8 @@ namespace InvoiceManager.Infrastructure.Tests;
 public sealed class InvoiceRecordDocumentTests
 {
     private const string OneDriveLocation = "/drives/test/root:/Bills/Test/invoice.pdf";
+    private const string DriveId = "test-drive";
+    private const string ItemId = "invoice-item";
 
     private static ActualInvoiceDetails SampleActualDetails => new(
         new DateOnly(2025, 7, 5),
@@ -39,7 +41,7 @@ public sealed class InvoiceRecordDocumentTests
     {
         var record = BuildRecord(new ReconciledFromOneDrive(
             SampleActualDetails,
-            new OneDriveDetails(OneDriveLocation),
+            new OneDriveDetails(OneDriveLocation, DriveId, ItemId),
             "matched by date and amount",
             new DateTimeOffset(2025, 7, 6, 8, 30, 0, TimeSpan.Zero)));
 
@@ -53,7 +55,19 @@ public sealed class InvoiceRecordDocumentTests
     {
         var record = BuildRecord(new SavedToOneDrive(
             SampleActualDetails,
-            new OneDriveDetails(OneDriveLocation)));
+            new OneDriveDetails(OneDriveLocation, DriveId, ItemId)));
+
+        var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
+
+        Assert.Equal(record, roundTripped);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesRecord_WhenStateIsFreeAgentMatchExpected()
+    {
+        var record = BuildRecord(new FreeAgentMatchExpected(
+            SampleActualDetails,
+            new OneDriveDetails(OneDriveLocation, DriveId, ItemId)));
 
         var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
 
