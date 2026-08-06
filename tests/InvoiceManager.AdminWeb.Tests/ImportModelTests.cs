@@ -3,6 +3,7 @@ using System.Text;
 using InvoiceManager.AdminWeb.Pages.Configurations;
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using InvoiceManager.TestSupport;
 using Microsoft.AspNetCore.Http;
@@ -220,6 +221,64 @@ public sealed class ImportModelTests
         Assert.IsType<RedirectToPageResult>(result);
     }
 
+    private const string FreeAgentExportJson = """
+        {
+          "id": "imported-freeagent-config",
+          "integrationType": "GraphEmail",
+          "senderEmailAddress": "billing@example.com",
+          "bodyPattern": "Invoice \\d+",
+          "invoiceDescription": "Imported invoice",
+          "frequency": "Monthly",
+          "defaultVatMode": "Exclusive",
+          "oneDriveFolder": {
+            "driveId": "drive-1",
+            "driveName": "Drive One",
+            "folderItemId": "folder-1",
+            "folderPath": "/Bills/Imported"
+          },
+          "startDate": "2025-01-01",
+          "dateToleranceDays": 5,
+          "freeAgentMatching": {
+            "contactUrl": "https://api.sandbox.freeagent.com/v2/contacts/1",
+            "contactDisplayName": "Stale Name"
+          }
+        }
+        """;
+
+    [Fact]
+    public async Task OnPostAsync_RefreshesFreeAgentDisplayName_WhenContactResolves()
+    {
+        var contactDirectory = new FakeFreeAgentContactDirectory
+        {
+            GetResult = new FreeAgentContact(
+                new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Fresh Name"),
+        };
+        var verifiedFolder = new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Imported");
+        var model = CreateModel(verifiedFolder: verifiedFolder, contactDirectory: contactDirectory);
+        await model.OnPostUploadAsync(MakeFile(FreeAgentExportJson));
+        model.ConfirmedFolderSelection = true;
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<RedirectToPageResult>(result);
+        Assert.Equal("Fresh Name", model.Input.FreeAgentContactDisplayName);
+    }
+
+    [Fact]
+    public async Task OnPostAsync_RejectsImport_WhenFreeAgentContactDoesNotResolve()
+    {
+        var contactDirectory = new FakeFreeAgentContactDirectory { GetResult = Option.None };
+        var verifiedFolder = new OneDriveFolder("drive-1", "Drive One", "folder-1", "/Bills/Imported");
+        var model = CreateModel(verifiedFolder: verifiedFolder, contactDirectory: contactDirectory);
+        await model.OnPostUploadAsync(MakeFile(FreeAgentExportJson));
+        model.ConfirmedFolderSelection = true;
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<PageResult>(result);
+        Assert.False(model.ModelState.IsValid);
+    }
+
     private static IFormFile MakeFile(string content)
     {
         var bytes = Encoding.UTF8.GetBytes(content);
@@ -229,7 +288,8 @@ public sealed class ImportModelTests
     private static ImportModel CreateModel(
         FakeConfigurationRepository? repository = null,
         IReadOnlyList<BillingAccountChoice>? billingAccounts = null,
-        OneDriveFolder? verifiedFolder = null)
+        OneDriveFolder? verifiedFolder = null,
+        FakeFreeAgentContactDirectory? contactDirectory = null)
     {
         var discovery = new FakeMicrosoftResourceDiscovery(billingAccounts, verifiedFolder: verifiedFolder);
         var httpContext = new DefaultHttpContext
@@ -241,6 +301,7 @@ public sealed class ImportModelTests
         var model = new ImportModel(
             new InvoiceConfigurationService(repository ?? new FakeConfigurationRepository()),
             discovery,
+            contactDirectory ?? new FakeFreeAgentContactDirectory(),
             new FakeMicrosoftAuthorizationStore(hasTokenCache: true))
         {
             PageContext = new PageContext { HttpContext = httpContext },

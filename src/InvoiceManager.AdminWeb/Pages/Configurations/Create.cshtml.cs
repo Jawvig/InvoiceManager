@@ -1,5 +1,6 @@
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,7 +9,8 @@ namespace InvoiceManager.AdminWeb.Pages.Configurations;
 public sealed class CreateModel(
     InvoiceConfigurationService service,
     IMicrosoftResourceDiscovery discovery,
-    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery)
+    IFreeAgentContactDirectory contactDirectory,
+    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery, contactDirectory)
 {
     [BindProperty]
     public override ConfigurationFormInput Input { get; set; } = new();
@@ -29,6 +31,13 @@ public sealed class CreateModel(
     {
         if (!await CanMutateAsync()) return RedirectToPage("Index");
         await LoadDiscoveryAsync(HttpContext.RequestAborted);
+        // The posted contact URL/display name are hidden inputs populated by the picker, but
+        // nothing stops a forged request from setting them directly (the same trust-boundary
+        // concern ResolveFolderAsync documents for the OneDrive folder fields below) - and even a
+        // genuine picker selection can go stale between search and submission if the contact is
+        // deleted in FreeAgent in between. So this is not skipped the way the plan first assumed;
+        // it's identical to Edit/Import's check.
+        await RefreshFreeAgentContactAsync(HttpContext.RequestAborted);
         if (!ModelState.IsValid) return Page();
         var folder = await ResolveFolderAsync(storedFolder: null, HttpContext.RequestAborted);
         if (folder is null)

@@ -451,7 +451,7 @@ public sealed class DueInvoiceProcessorTests
         // though reconciled - a multi-item bill whose total doesn't match the invoice has to be
         // reported as a conflict, not attached with the wrong amount left in place.
         var matching = new FreeAgentBillMatching(
-            new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"),
+            new FreeAgentContact(new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Test Contact"),
             DateReconciliation: Option.None,
             AmountReconciliation: new FreeAgentAmountReconciliation(0.01m));
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10), freeAgentMatching: matching);
@@ -470,7 +470,7 @@ public sealed class DueInvoiceProcessorTests
         var bill = new FreeAgentBillSnapshot(
             billIdentity, FreeAgentBillStatus.Open, new DateOnly(2025, 7, 12), new DateOnly(2025, 8, 12),
             new Money(100.00m, "GBP"), new Money(0m, "GBP"), new Money(100.00m, "GBP"), Option.None,
-            matching.ContactUrl, "REF-1", [itemA, itemB], Option.None);
+            matching.Contact.Url, "REF-1", [itemA, itemB], Option.None);
 
         var matcher = new FakeFreeAgentBillMatcher { Result = new FreeAgentBillFound(bill) };
         var uploader = new FakeFreeAgentAttachmentUploader

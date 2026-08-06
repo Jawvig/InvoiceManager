@@ -52,29 +52,37 @@
         <legend>Common details</legend>
         <label>Invoice description <input asp-for="Input.InvoiceDescription" /></label>
         <label>Frequency <select asp-for="Input.Frequency"><option value="Monthly">Monthly</option></select></label>
-        <label><input asp-for="Input.HasExpectedAmount" /> Match expected amount</label>
-        <div id="amount-matching-fields" hidden="@(!Model.Input.HasExpectedAmount)">
-            <label>Expected amount <input asp-for="Input.ExpectedAmount" type="number" step="0.01" /></label>
-            <label>ISO 4217 currency <input asp-for="Input.Currency" maxlength="3" /></label>
-            <label>Amount tolerance <input asp-for="Input.AmountTolerance" type="number" min="0" step="0.01" /></label>
+        <div class="reveal-group">
+            <label><input asp-for="Input.HasExpectedAmount" /> Match expected amount</label>
+            <fieldset id="amount-matching-fields" hidden="@(!Model.Input.HasExpectedAmount)">
+                <label>Expected amount <input asp-for="Input.ExpectedAmount" type="number" step="0.01" /></label>
+                <label>ISO 4217 currency <input asp-for="Input.Currency" maxlength="3" /></label>
+                <label>Amount tolerance <input asp-for="Input.AmountTolerance" type="number" min="0" step="0.01" /></label>
+            </fieldset>
         </div>
         <label>VAT mode <select asp-for="Input.DefaultVatMode"><option value="Inclusive">Inclusive</option><option value="Exclusive">Exclusive</option></select></label>
         <label>Start date <input asp-for="Input.StartDate" type="date" /></label>
         <p class="status-label">Changing the start date does not alter records already generated. After the first record, recurrence follows invoice history.</p>
         <label>Date tolerance (days) <input asp-for="Input.DateToleranceDays" type="number" min="0" max="365" step="1" /></label>
-        <label><input asp-for="Input.HasFreeAgentMatching" /> Match to a FreeAgent bill</label>
-        <div id="freeagent-matching-fields" hidden="@(!Model.Input.HasFreeAgentMatching)">
-            <label>FreeAgent contact URL <input asp-for="Input.FreeAgentContactUrl" placeholder="https://api.sandbox.freeagent.com/v2/contacts/1" /></label>
-            <label><input asp-for="Input.HasFreeAgentDateReconciliation" /> Reconcile bill date</label>
-            <div id="freeagent-date-fields" hidden="@(!Model.Input.HasFreeAgentDateReconciliation)">
-                <label>Date tolerance (days) <input asp-for="Input.FreeAgentDateToleranceDays" type="number" min="0" max="365" step="1" /></label>
-            </div>
-            <label><input asp-for="Input.HasFreeAgentAmountReconciliation" /> Reconcile bill amount</label>
-            <div id="freeagent-amount-fields" hidden="@(!Model.Input.HasFreeAgentAmountReconciliation)">
-                <label>Amount tolerance <input asp-for="Input.FreeAgentAmountTolerance" type="number" min="0" step="0.01" /></label>
-            </div>
-        </div>
         <partial name="_OneDriveFolderPicker" />
+        <div class="reveal-group">
+            <label><input asp-for="Input.HasFreeAgentMatching" /> Match to a FreeAgent bill</label>
+            <fieldset id="freeagent-matching-fields" hidden="@(!Model.Input.HasFreeAgentMatching)">
+                <partial name="_FreeAgentContactPicker" />
+                <div class="reveal-group">
+                    <label><input asp-for="Input.HasFreeAgentDateReconciliation" /> Reconcile bill date</label>
+                    <fieldset id="freeagent-date-fields" hidden="@(!Model.Input.HasFreeAgentDateReconciliation)">
+                        <label>Date tolerance (days) <input asp-for="Input.FreeAgentDateToleranceDays" type="number" min="0" max="365" step="1" /></label>
+                    </fieldset>
+                </div>
+                <div class="reveal-group">
+                    <label><input asp-for="Input.HasFreeAgentAmountReconciliation" /> Reconcile bill amount</label>
+                    <fieldset id="freeagent-amount-fields" hidden="@(!Model.Input.HasFreeAgentAmountReconciliation)">
+                        <label>Amount tolerance <input asp-for="Input.FreeAgentAmountTolerance" type="number" min="0" step="0.01" /></label>
+                    </fieldset>
+                </div>
+            </fieldset>
+        </div>
     </fieldset>
 
     <fieldset id="billing-details" data-integration="MicrosoftBilling" hidden="@(Model.IsEdit ? !isBilling : true)">

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,7 +10,8 @@ namespace InvoiceManager.AdminWeb.Pages.Configurations;
 public sealed class ImportModel(
     InvoiceConfigurationService service,
     IMicrosoftResourceDiscovery discovery,
-    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery)
+    IFreeAgentContactDirectory contactDirectory,
+    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery, contactDirectory)
 {
     [BindProperty]
     public override ConfigurationFormInput Input { get; set; } = new();
@@ -103,6 +105,7 @@ public sealed class ImportModel(
         {
             ModelState.AddModelError(string.Empty, "Confirm the billing account is correct for this environment before saving.");
         }
+        await RefreshFreeAgentContactAsync(HttpContext.RequestAborted);
         if (!ModelState.IsValid) return Page();
         var folder = await ResolveFolderAsync(storedFolder: null, HttpContext.RequestAborted);
         if (folder is null)

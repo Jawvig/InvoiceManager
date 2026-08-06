@@ -1,5 +1,6 @@
 using InvoiceManager.AdminWeb.Services;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Infrastructure.MicrosoftAuthorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,7 +9,8 @@ namespace InvoiceManager.AdminWeb.Pages.Configurations;
 public sealed class EditModel(
     InvoiceConfigurationService service,
     IMicrosoftResourceDiscovery discovery,
-    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery)
+    IFreeAgentContactDirectory contactDirectory,
+    IMicrosoftAuthorizationStore authorizationStore) : ConfigurationFormPageModel(discovery, contactDirectory)
 {
     [BindProperty]
     public override ConfigurationFormInput Input { get; set; } = new();
@@ -37,6 +39,7 @@ public sealed class EditModel(
         if (Input.IntegrationType is null) return Page();
         var currentResult = await service.GetAsync(new(Input.Id), Input.IntegrationType.Value, HttpContext.RequestAborted);
         if (currentResult is not StoredInvoiceConfiguration current) return NotFound();
+        if (!await RefreshFreeAgentContactAsync(HttpContext.RequestAborted)) return Page();
         if (!ModelState.IsValid) return Page();
 
         var folder = await ResolveFolderAsync(current.Configuration.OneDriveFolder, HttpContext.RequestAborted);

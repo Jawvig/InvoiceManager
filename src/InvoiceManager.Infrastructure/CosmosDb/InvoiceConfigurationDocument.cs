@@ -121,6 +121,9 @@ internal sealed class FreeAgentBillMatchingDocument
     [JsonPropertyName("contactUrl")]
     public required string ContactUrl { get; init; }
 
+    [JsonPropertyName("contactDisplayName")]
+    public required string ContactDisplayName { get; init; }
+
     [JsonPropertyName("dateReconciliation")]
     public FreeAgentDateReconciliationDocument? DateReconciliation { get; init; }
 
@@ -129,13 +132,14 @@ internal sealed class FreeAgentBillMatchingDocument
 
     public FreeAgentBillMatching ToMatching() =>
         new(
-            new FreeAgentContactIdentity(ContactUrl),
+            new FreeAgentContact(new FreeAgentContactIdentity(ContactUrl), ContactDisplayName),
             DateReconciliation is { } dateReconciliation ? dateReconciliation.ToReconciliation() : Option.None,
             AmountReconciliation is { } amountReconciliation ? amountReconciliation.ToReconciliation() : Option.None);
 
     public static FreeAgentBillMatchingDocument FromMatching(FreeAgentBillMatching matching) => new()
     {
-        ContactUrl = matching.ContactUrl.Url.OriginalString,
+        ContactUrl = matching.Contact.Url.Url.OriginalString,
+        ContactDisplayName = matching.Contact.DisplayName,
         DateReconciliation = matching.DateReconciliation switch
         {
             FreeAgentDateReconciliation dateReconciliation => FreeAgentDateReconciliationDocument.FromReconciliation(dateReconciliation),

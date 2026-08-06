@@ -495,3 +495,6 @@ $RECYCLE.BIN/
 
 # Playwright authentication
 playwright/.auth
+
+# Playwright MCP tool debug snapshots
+.playwright-mcp/
