@@ -151,7 +151,8 @@ internal sealed class FreeAgentApiClient
 
         await EnsureSuccessAsync(response, "reading a contact", cancellationToken);
         var body = await response.Content.ReadFromJsonAsync<ContactResponseWire>(SerializerOptions, cancellationToken);
-        return body?.Contact;
+        return body?.Contact
+            ?? throw new InvalidOperationException("FreeAgent's contact response did not include a contact.");
     }
 
     public async Task<IReadOnlyList<ContactWire>> SearchContactsPageAsync(

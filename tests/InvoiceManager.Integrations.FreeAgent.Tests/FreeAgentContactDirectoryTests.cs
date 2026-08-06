@@ -156,6 +156,20 @@ public sealed class FreeAgentContactDirectoryTests
         Assert.True(result is InvoiceManager.Core.None, $"Expected None but got {result}.");
     }
 
+    [Fact]
+    public async Task GetAsync_Propagates_WhenSuccessfulResponseHasNoContact()
+    {
+        // A 200 with a missing/null "contact" is not FreeAgent's documented not-found signal
+        // (that's a 404 - see GetAsync_ReturnsNone_WhenContactDoesNotExist) - it's a malformed
+        // or unexpected successful response, so it must not be misreported as "contact deleted".
+        var handler = new StubHttpMessageHandler((request, index) => JsonResponse("""{"contact": null}"""));
+        var client = TestClientFactory.Create(handler);
+        var directory = new FreeAgentContactDirectory(client);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => directory.GetAsync(new FreeAgentContactIdentity(ContactUrl)));
+    }
+
     private static string ContactsPageJson(params (string? Organisation, string? First, string? Last)[] contacts) =>
         $$"""
         {"contacts": [{{string.Join(",", contacts.Select(c => ContactBodyJson(c.Organisation, c.First, c.Last)))}}]}
