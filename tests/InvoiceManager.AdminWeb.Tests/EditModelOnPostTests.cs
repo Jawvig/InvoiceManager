@@ -114,7 +114,35 @@ public sealed class EditModelOnPostTests
         var result = await model.OnPostAsync();
 
         Assert.IsType<PageResult>(result);
-        Assert.False(model.ModelState.IsValid);
+        var error = Assert.Single(model.ModelState[string.Empty]!.Errors);
+        Assert.Contains("could not be found", error.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task OnPostAsync_RejectsSave_WithDiagnosticDetail_WhenFreeAgentLookupFails()
+    {
+        // A system error (FreeAgent unreachable, rate limited, ...) must be reported distinctly
+        // from "the contact was deleted" (the None case above), with enough detail to diagnose -
+        // not folded into the same generic message.
+        var contactDirectory = new FakeFreeAgentContactDirectory
+        {
+            GetException = new InvalidOperationException(
+                "FreeAgent request failed while reading a contact: 503 Service Unavailable."),
+        };
+        var model = CreateModel(
+            billingAccounts: [new BillingAccountChoice("stored-billing-id", "Account", "Business")],
+            verifiedFolder: StoredFolder,
+            contactDirectory: contactDirectory);
+        model.Input = ConfigurationFormInput.From(new StoredInvoiceConfiguration(StoredConfiguration, "etag-billing-invoice-0"));
+        model.Input.HasFreeAgentMatching = true;
+        model.Input.FreeAgentContactUrl = "https://api.sandbox.freeagent.com/v2/contacts/1";
+
+        var result = await model.OnPostAsync();
+
+        Assert.IsType<PageResult>(result);
+        var error = Assert.Single(model.ModelState[string.Empty]!.Errors);
+        Assert.Contains("503 Service Unavailable", error.ErrorMessage);
+        Assert.DoesNotContain("could not be found", error.ErrorMessage);
     }
 
     private static EditModel CreateModel(

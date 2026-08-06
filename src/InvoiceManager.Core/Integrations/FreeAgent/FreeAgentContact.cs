@@ -27,11 +27,13 @@ public interface IFreeAgentContactDirectory
     /// <summary>
     /// Looks up a single contact by its resource URL, for confirming an
     /// existing selection still resolves and refreshing its display name.
-    /// <see cref="None"/> both when FreeAgent has no contact at that URL and
-    /// when the lookup itself could not be completed (e.g. FreeAgent
-    /// unreachable, rate limited, or the URL points at the wrong environment) -
-    /// callers treat both as "this contact could not be confirmed right now"
-    /// and reject the save rather than risk persisting an unverified selection.
+    /// <see cref="None"/> means specifically that FreeAgent has no contact at
+    /// this URL - a genuine functional outcome, not a system error. A system
+    /// error (FreeAgent unreachable, rate limited, an unexpected status, the
+    /// URL pointing at the wrong environment) throws instead of being folded
+    /// into <see cref="None"/>, so a caller can tell "this contact doesn't
+    /// exist" apart from "this lookup failed" and show the administrator the
+    /// right message for each.
     /// </summary>
     Task<Option<FreeAgentContact>> GetAsync(FreeAgentContactIdentity url, CancellationToken cancellationToken = default);
 }

@@ -134,7 +134,11 @@ public abstract class ConfigurationFormPageModel(
     /// <see cref="ResolveFolderAsync"/> documents for the OneDrive folder fields. Called from every
     /// save path's OnPostAsync (Create, Edit, Import) before <see cref="ConfigurationFormInput.Build"/>,
     /// only when <see cref="ConfigurationFormInput.HasFreeAgentMatching"/> is set. Adds a model
-    /// error and returns false when the URL is malformed or doesn't resolve.
+    /// error and returns false when the URL is malformed, doesn't resolve, or the lookup itself
+    /// failed - the three are reported with distinct messages (see below) rather than one generic
+    /// "could not be confirmed", since only the first two are the administrator's problem to fix
+    /// and the third is a system error that needs its own diagnostic detail, not to be mistaken
+    /// for the contact having been deleted.
     /// </summary>
     protected async Task<bool> RefreshFreeAgentContactAsync(CancellationToken cancellationToken)
     {
@@ -151,15 +155,24 @@ public abstract class ConfigurationFormPageModel(
             return false;
         }
 
-        if (await ContactDirectory.GetAsync(contactUrl, cancellationToken) is FreeAgentContact contact)
+        Option<FreeAgentContact> result;
+        try
+        {
+            result = await ContactDirectory.GetAsync(contactUrl, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ModelState.AddModelError(string.Empty, $"Could not confirm the FreeAgent contact: {ex.Message}");
+            return false;
+        }
+
+        if (result is FreeAgentContact contact)
         {
             Input.FreeAgentContactDisplayName = contact.DisplayName;
             return true;
         }
 
-        ModelState.AddModelError(
-            string.Empty,
-            "The FreeAgent contact could not be confirmed - it may have been deleted, or FreeAgent could not be reached.");
+        ModelState.AddModelError(string.Empty, "The FreeAgent contact could not be found - it may have been deleted.");
         return false;
     }
 

@@ -9,6 +9,11 @@ public sealed class FakeFreeAgentContactDirectory : IFreeAgentContactDirectory
 
     public Option<FreeAgentContact> GetResult { get; set; } = Option.None;
 
+    /// <summary>When set, GetAsync throws this instead of returning <see cref="GetResult"/> -
+    /// simulates a system error (as distinct from a genuine not-found) for tests covering
+    /// ConfigurationFormPageModel.RefreshFreeAgentContactAsync's error-vs-not-found split.</summary>
+    public Exception? GetException { get; set; }
+
     public List<string> SearchQueries { get; } = [];
 
     public List<FreeAgentContactIdentity> GetRequests { get; } = [];
@@ -22,6 +27,7 @@ public sealed class FakeFreeAgentContactDirectory : IFreeAgentContactDirectory
     public Task<Option<FreeAgentContact>> GetAsync(FreeAgentContactIdentity url, CancellationToken cancellationToken = default)
     {
         GetRequests.Add(url);
+        if (GetException is { } exception) throw exception;
         return Task.FromResult(GetResult);
     }
 }

@@ -11,6 +11,7 @@
   --warning-line: #e5c150;
   --success-bg: #e9f7ee;
   --success-line: #3fa661;
+  --danger: #b3261e;
 }
 
 html {
@@ -241,6 +242,14 @@ h1 {
 .status-label {
   margin: 0;
   color: var(--muted);
+}
+
+/* A system error (an API call failed, not just "no results") - deliberately distinct from the
+   plain .status-label color so it can't be mistaken for a routine informational/empty-state
+   message. */
+.status-label.status-error {
+  color: var(--danger);
+  font-weight: 650;
 }
 
 .status-panel.status-healthy {

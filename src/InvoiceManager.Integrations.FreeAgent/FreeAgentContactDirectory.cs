@@ -57,22 +57,17 @@ internal sealed class FreeAgentContactDirectory(FreeAgentApiClient client) : IFr
     public async Task<Option<FreeAgentContact>> GetAsync(
         FreeAgentContactIdentity url, CancellationToken cancellationToken = default)
     {
-        // A caller-supplied URL (Edit/Import re-validating a stored or imported contact) can be
-        // syntactically valid but wrong for this environment - e.g. a sandbox URL posted against
-        // a production deployment, which SendAsync's host allowlist rejects with an exception
-        // rather than an HTTP response, or a URL that resolves to a 400. Both are "this contact
-        // doesn't resolve here" from the caller's point of view, exactly like a 404 - translate
-        // them at this boundary into the same None outcome rather than letting an unrelated
-        // exception surface as an unhandled 500 from the AdminWeb save handler.
-        try
-        {
-            var wire = await client.GetContactAsync(url.Url.OriginalString, cancellationToken);
-            return wire is not null ? wire.ToContact() : Option.None;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return Option.None;
-        }
+        // None means specifically "FreeAgent has no contact at this URL" (GetContactAsync
+        // translates a 404 into null at its own boundary) - a genuine, expected functional
+        // outcome the caller can act on directly. Anything else (a host-mismatch guard, a non-404
+        // error status, a network failure) is a system error, not "not found", and must not be
+        // collapsed into the same None outcome - that would hide a transient FreeAgent outage or
+        // a misconfigured environment behind a message telling the administrator their contact
+        // was deleted. It's the caller's job (see ConfigurationFormPageModel.RefreshFreeAgentContactAsync)
+        // to catch and translate this into a form error with diagnostic detail, the same way
+        // OnGetFreeAgentContactsAsync already does for the search path.
+        var wire = await client.GetContactAsync(url.Url.OriginalString, cancellationToken);
+        return wire is not null ? wire.ToContact() : Option.None;
     }
 
     private static bool Matches(ContactWire wire, string query) =>

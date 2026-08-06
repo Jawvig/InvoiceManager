@@ -74,7 +74,7 @@
         try {
             const response = await fetch(
                 buildHandlerUrl("FreeAgentContacts", { query }), { headers: { Accept: "application/json" } });
-            if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+            if (!response.ok) throw new Error(await describeFailedResponse(response));
             const contacts = await response.json();
             if (token !== searchToken) return; // a later keystroke's search has already superseded this one
 
@@ -83,11 +83,28 @@
             for (const contact of contacts) {
                 listEl.appendChild(makeRow(contact));
             }
-        } catch {
+        } catch (err) {
             if (token !== searchToken) return;
-            setStatus("Could not search FreeAgent contacts.");
+            // Deliberately distinct, in wording and styling, from the "no matches" case above -
+            // this is a system error (FreeAgent unreachable, rejected the request, ...), not a
+            // legitimate empty result, and the administrator needs to be able to tell the two
+            // apart and see enough detail to diagnose or report it.
+            setStatus(`FreeAgent search failed: ${err.message}`, /* isError */ true);
             appendRetry(() => search(query));
         }
+    }
+
+    // OnGetFreeAgentContactsAsync returns a JSON body of the shape { error: "..." } (its
+    // sanitized ex.Message - see EnsureSuccessAsync, which never includes FreeAgent's raw
+    // response body) whenever the search itself failed rather than just finding zero matches.
+    async function describeFailedResponse(response) {
+        try {
+            const body = await response.json();
+            if (body && typeof body.error === "string" && body.error) return body.error;
+        } catch {
+            // Body wasn't JSON (or was empty) - fall through to the status-based description.
+        }
+        return `request failed with status ${response.status}`;
     }
 
     function makeRow(contact) {
@@ -106,8 +123,9 @@
         return item;
     }
 
-    function setStatus(text) {
+    function setStatus(text, isError) {
         statusEl.textContent = text || "";
+        statusEl.classList.toggle("status-error", Boolean(isError));
     }
 
     function appendRetry(retryFn) {

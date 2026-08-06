@@ -115,20 +115,20 @@ public sealed class FreeAgentContactDirectoryTests
     }
 
     [Fact]
-    public async Task GetAsync_ReturnsNone_WhenApiClientThrows()
+    public async Task GetAsync_Propagates_WhenApiClientThrows()
     {
-        // A stored/imported contact URL can be syntactically valid but wrong for this environment
-        // (e.g. a sandbox URL posted against a production deployment) - FreeAgentApiClient's host
-        // allowlist rejects that with an exception rather than an HTTP response. GetAsync must
-        // translate it into the same "doesn't resolve here" outcome as a 404, not let it surface
-        // as an unhandled exception to the caller (AdminWeb's Edit/Import save handler).
+        // A system error (FreeAgent unreachable, rejected the request, a host-mismatch guard, ...)
+        // must not be collapsed into the same None outcome as a genuine 404 - that would tell the
+        // administrator their contact was deleted when the real problem is a system error they
+        // need to see distinctly, with enough detail to diagnose (see
+        // ConfigurationFormPageModel.RefreshFreeAgentContactAsync, which is where this exception
+        // is caught and translated into a form error).
         var handler = new StubHttpMessageHandler((request, index) => throw new InvalidOperationException("Refusing to call FreeAgent host."));
         var client = TestClientFactory.Create(handler);
         var directory = new FreeAgentContactDirectory(client);
 
-        var result = await directory.GetAsync(new FreeAgentContactIdentity(ContactUrl));
-
-        Assert.True(result is InvoiceManager.Core.None, $"Expected None but got {result}.");
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => directory.GetAsync(new FreeAgentContactIdentity(ContactUrl)));
     }
 
     [Fact]
