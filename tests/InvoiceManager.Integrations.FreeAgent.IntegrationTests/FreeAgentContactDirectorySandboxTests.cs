@@ -58,8 +58,20 @@ public sealed class FreeAgentContactDirectorySandboxTests
 
         var authorizationOptions = configuration.GetSection(FreeAgentAuthorizationOptions.SectionName)
             .Get<FreeAgentAuthorizationOptions>() ?? new FreeAgentAuthorizationOptions();
-        var freeAgentOptions = configuration.GetSection(FreeAgentOptions.SectionName)
-            .Get<FreeAgentOptions>() ?? new FreeAgentOptions { Environment = FreeAgentEnvironment.Sandbox };
+
+        if (!authorizationOptions.HasClientConfiguration)
+        {
+            throw new InvalidOperationException(
+                "FreeAgentAuthorization:ClientId and/or FreeAgentAuthorization:ClientSecret are not " +
+                "configured in the test environment Key Vault - without them this test would fail " +
+                "later with an opaque token-endpoint error instead of this actionable one.");
+        }
+
+        // This test's whole premise is exercising the sandbox company - never the real one, even
+        // if a reused local/Key Vault configuration happens to have FreeAgent:Environment set to
+        // Production (which would otherwise silently point this "sandbox" test, including its
+        // Key Vault refresh-token rotation, at production).
+        var freeAgentOptions = new FreeAgentOptions { Environment = FreeAgentEnvironment.Sandbox };
 
         var secretStoreClient = new AzureKeyVaultSecretStoreClient(keyVaultUri);
         var authorizationStore = new KeyVaultFreeAgentAuthorizationStore(
