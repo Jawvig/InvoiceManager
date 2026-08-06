@@ -157,6 +157,22 @@ public sealed class FreeAgentContactDirectoryTests
     }
 
     [Fact]
+    public async Task GetAsync_ReturnsNone_WhenContactUrlIsRejectedAsMalformed()
+    {
+        // 400 is as realistic as 404 for a caller-supplied contact URL (imported/forged from
+        // another company or environment, which FreeAgent rejects rather than 404s) and gets the
+        // same "not found" treatment - see docs/coding-standards.md's "Enumerate external failure
+        // modes explicitly".
+        var handler = new StubHttpMessageHandler((request, index) => new HttpResponseMessage(System.Net.HttpStatusCode.BadRequest));
+        var client = TestClientFactory.Create(handler);
+        var directory = new FreeAgentContactDirectory(client);
+
+        var result = await directory.GetAsync(new FreeAgentContactIdentity(ContactUrl));
+
+        Assert.True(result is InvoiceManager.Core.None, $"Expected None but got {result}.");
+    }
+
+    [Fact]
     public async Task GetAsync_Propagates_WhenSuccessfulResponseHasNoContact()
     {
         // A 200 with a missing/null "contact" is not FreeAgent's documented not-found signal

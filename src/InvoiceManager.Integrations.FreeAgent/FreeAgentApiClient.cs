@@ -146,7 +146,12 @@ internal sealed class FreeAgentApiClient
     public async Task<ContactWire?> GetContactAsync(string contactUrl, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, contactUrl, content: null, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        // 404 and 400 are both realistic for a caller-supplied contact URL (a deleted contact, or
+        // one imported/forged from another company/environment that FreeAgent rejects as malformed)
+        // and get the same "not found" treatment here - see docs/coding-standards.md's "Enumerate
+        // external failure modes explicitly". Auth failures and transient server errors still
+        // propagate via EnsureSuccessAsync below.
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
             return null;
 
         await EnsureSuccessAsync(response, "reading a contact", cancellationToken);
