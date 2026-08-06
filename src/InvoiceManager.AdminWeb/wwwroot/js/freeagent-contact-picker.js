@@ -49,6 +49,10 @@
 
     function closePicker() {
         if (debounceHandle) clearTimeout(debounceHandle);
+        // Invalidate any in-flight search: without this, reopening the dialog before that
+        // response arrives (without typing a new query first) would let its stale results
+        // populate a picker session the user never searched in.
+        searchToken++;
         if (typeof dialog.close === "function") dialog.close();
         else dialog.removeAttribute("open");
     }
