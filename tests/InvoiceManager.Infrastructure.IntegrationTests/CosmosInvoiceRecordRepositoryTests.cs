@@ -116,7 +116,27 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
             new DateOnly(2025, 7, 6),
             state: new SavedToOneDrive(
                 BuildActualDetails(),
-                new OneDriveDetails("/drives/test/root:/Bills/Test/saved.pdf")));
+                new OneDriveDetails("/drives/test/root:/Bills/Test/saved.pdf", "test-drive", "saved-item")));
+        var freeAgentMatchExpectedDue = BuildRecord(
+            new InvoiceConfigurationId("freeagent-match-expected-due"),
+            new DateOnly(2025, 7, 7),
+            state: new FreeAgentMatchExpected(
+                BuildActualDetails(),
+                new OneDriveDetails("/drives/test/root:/Bills/Test/fa-match.pdf", "test-drive", "fa-match-item")));
+        var freeAgentErrorNotDue = BuildRecord(
+            new InvoiceConfigurationId("freeagent-error-not-due"),
+            new DateOnly(2025, 7, 8),
+            state: new FreeAgentError(
+                BuildActualDetails(),
+                new OneDriveDetails("/drives/test/root:/Bills/Test/fa-error.pdf", "test-drive", "fa-error-item"),
+                "FreeAgent bill locked"));
+        var freeAgentInterventionPendingNotDue = BuildRecord(
+            new InvoiceConfigurationId("freeagent-intervention-not-due"),
+            new DateOnly(2025, 7, 9),
+            state: new FreeAgentInterventionPending(
+                BuildActualDetails(),
+                new OneDriveDetails("/drives/test/root:/Bills/Test/fa-pending.pdf", "test-drive", "fa-pending-item"),
+                new FreeAgentInterventionId("freeagent-intervention-1")));
 
         await repository!.CreateIfNotExistsAsync(expectedDue);
         await repository.CreateIfNotExistsAsync(retrievalErrorDue);
@@ -124,12 +144,20 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
         await repository.CreateIfNotExistsAsync(futureExpected);
         await repository.CreateIfNotExistsAsync(notFoundDue);
         await repository.CreateIfNotExistsAsync(savedDue);
+        await repository.CreateIfNotExistsAsync(freeAgentMatchExpectedDue);
+        await repository.CreateIfNotExistsAsync(freeAgentErrorNotDue);
+        await repository.CreateIfNotExistsAsync(freeAgentInterventionPendingNotDue);
 
         var due = await repository.ListDueAsync(new DateOnly(2025, 7, 15));
 
-        // Expected, RetrievalError and Retrieved are retryable; NotFound (terminal),
-        // SavedToOneDrive (done) and future-dated records are excluded.
-        InvoiceRecordId[] expected = [expectedDue.Id, retrievalErrorDue.Id, retrievedDue.Id];
+        // Expected, RetrievalError, Retrieved and FreeAgentMatchExpected are retryable;
+        // NotFound (terminal), SavedToOneDrive (done), FreeAgentError (not yet safe to
+        // resume - see ListDueAsync's comment), FreeAgentInterventionPending
+        // (decision-gated, not polled), and future-dated records are excluded.
+        InvoiceRecordId[] expected =
+        [
+            expectedDue.Id, retrievalErrorDue.Id, retrievedDue.Id, freeAgentMatchExpectedDue.Id,
+        ];
         Assert.Equal(
             expected.OrderBy(id => id.Value),
             due.Select(r => r.Id).OrderBy(id => id.Value));
@@ -173,7 +201,7 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
         {
             State = new SavedToOneDrive(
                 actualDetails,
-                new OneDriveDetails("/drives/test/root:/Bills/Test/replaced.pdf")),
+                new OneDriveDetails("/drives/test/root:/Bills/Test/replaced.pdf", "test-drive", "replaced-item")),
         };
 
         await repository.ReplaceAsync(saved);

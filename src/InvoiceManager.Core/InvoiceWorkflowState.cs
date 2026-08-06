@@ -39,9 +39,25 @@ public sealed record ReconciledFromOneDrive(
     DateTimeOffset ReconciledAt);
 
 /// <summary>
-/// The retrieved invoice file has been saved to its OneDrive destination.
+/// The retrieved invoice file has been saved to its OneDrive destination. Terminal
+/// for configurations with no <see cref="FreeAgentBillMatching"/> configured; when
+/// FreeAgent matching is configured, the record goes straight to
+/// <see cref="FreeAgentMatchExpected"/> instead of this state (see
+/// <c>DueInvoiceProcessor</c>'s save_fork), so this state is only ever the final,
+/// non-retryable one.
 /// </summary>
 public sealed record SavedToOneDrive(ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails);
+
+/// <summary>
+/// The saved/reconciled invoice's configuration has FreeAgent matching configured,
+/// but no bill has matched yet (or the match was ambiguous). The single entry point
+/// into the FreeAgent stage from both the retrieval-and-save path and the OneDrive
+/// reconciliation path - see docs/workflow-states.md. Retried indefinitely on later
+/// runs (there is no FreeAgent-side deadline/give-up state, unlike
+/// <see cref="Expected"/>/<see cref="NotFound"/>): a retry re-fetches the PDF bytes
+/// from OneDrive via <see cref="OneDriveDetails"/> rather than persisting them.
+/// </summary>
+public sealed record FreeAgentMatchExpected(ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails);
 
 /// <summary>
 /// The retrieved/reconciled invoice has been matched to a FreeAgent bill, but no
@@ -81,8 +97,12 @@ public sealed record FreeAgentInterventionPending(
 
 /// <summary>
 /// A FreeAgent step failed technically, hit a lock/conflict, or returned a
-/// business-rule rejection that isn't a normal match/no-match outcome. Always
-/// retried on a later run, mirroring <see cref="RetrievalError"/>.
+/// business-rule rejection that isn't a normal match/no-match outcome. Intended to
+/// always retry on a later run, mirroring <see cref="RetrievalError"/> - but not yet
+/// wired up: <c>ListDueAsync</c> deliberately excludes this state until
+/// <c>DueInvoiceProcessor</c> knows how to resume it (rather than re-running
+/// OneDrive reconciliation/retrieval from scratch), which lands with the
+/// dispatch-loop rework. Until then, a record here has no automatic path forward.
 /// </summary>
 public sealed record FreeAgentError(
     ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, string ErrorMessage);
@@ -100,6 +120,7 @@ public union InvoiceWorkflowState(
     Retrieved,
     ReconciledFromOneDrive,
     SavedToOneDrive,
+    FreeAgentMatchExpected,
     FreeAgentBillMatched,
     FreeAgentBillReconciled,
     FreeAgentAttached,

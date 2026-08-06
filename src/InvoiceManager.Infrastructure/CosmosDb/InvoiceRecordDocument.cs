@@ -52,10 +52,16 @@ internal sealed class OneDriveDetailsDocument
     [JsonPropertyName("oneDriveLocation")]
     public required string OneDriveLocation { get; init; }
 
-    public OneDriveDetails ToDetails() => new(OneDriveLocation);
+    [JsonPropertyName("driveId")]
+    public required string DriveId { get; init; }
+
+    [JsonPropertyName("itemId")]
+    public required string ItemId { get; init; }
+
+    public OneDriveDetails ToDetails() => new(OneDriveLocation, DriveId, ItemId);
 
     public static OneDriveDetailsDocument FromDetails(OneDriveDetails details) =>
-        new() { OneDriveLocation = details.OneDriveLocation };
+        new() { OneDriveLocation = details.OneDriveLocation, DriveId = details.DriveId, ItemId = details.ItemId };
 }
 
 /// <summary>The Cosmos JSON shape for <see cref="FreeAgentAttachmentMetadata"/>.</summary>
@@ -186,6 +192,7 @@ internal sealed class InvoiceRecordDocument
             RequiredMatchReason(),
             RequiredReconciledAt()),
         nameof(SavedToOneDrive) => new SavedToOneDrive(RequiredActualDetails(), RequiredOneDriveDetails()),
+        nameof(FreeAgentMatchExpected) => new FreeAgentMatchExpected(RequiredActualDetails(), RequiredOneDriveDetails()),
         nameof(FreeAgentBillMatched) => new FreeAgentBillMatched(
             RequiredActualDetails(), RequiredOneDriveDetails(), RequiredFreeAgentBillIdentity()),
         nameof(FreeAgentBillReconciled) => new FreeAgentBillReconciled(
@@ -261,6 +268,12 @@ internal sealed class InvoiceRecordDocument
             Status = nameof(SavedToOneDrive),
             ActualDetails = ActualInvoiceDetailsDocument.FromDetails(saved.ActualDetails),
             OneDriveDetails = OneDriveDetailsDocument.FromDetails(saved.OneDriveDetails),
+        },
+        FreeAgentMatchExpected matchExpected => new()
+        {
+            Status = nameof(FreeAgentMatchExpected),
+            ActualDetails = ActualInvoiceDetailsDocument.FromDetails(matchExpected.ActualDetails),
+            OneDriveDetails = OneDriveDetailsDocument.FromDetails(matchExpected.OneDriveDetails),
         },
         FreeAgentBillMatched matched => new()
         {

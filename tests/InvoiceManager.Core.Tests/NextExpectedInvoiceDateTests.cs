@@ -6,6 +6,8 @@ namespace InvoiceManager.Core.Tests;
 public sealed class NextExpectedInvoiceDateTests
 {
     private const string OneDriveLocation = "/drives/test/root:/Bills/Test/invoice.pdf";
+    private const string DriveId = "test-drive";
+    private const string ItemId = "invoice-item";
 
     [Fact]
     public void CalculateNext_ReturnsStartDate_WhenNoRecordsExist()
@@ -23,7 +25,7 @@ public sealed class NextExpectedInvoiceDateTests
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = Records.Build(config, state: new SavedToOneDrive(
             Actuals.Build(new DateOnly(2026, 6, 10)),
-            new OneDriveDetails(OneDriveLocation)));
+            new OneDriveDetails(OneDriveLocation, DriveId, ItemId)));
 
         var result = NextExpectedInvoiceDate.CalculateNext(config, mostRecent);
 
@@ -59,7 +61,7 @@ public sealed class NextExpectedInvoiceDateTests
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
         var mostRecent = Records.Build(config, state: new ReconciledFromOneDrive(
             Actuals.Build(new DateOnly(2026, 6, 10)),
-            new OneDriveDetails(OneDriveLocation),
+            new OneDriveDetails(OneDriveLocation, DriveId, ItemId),
             "matched by date and amount",
             new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero)));
 

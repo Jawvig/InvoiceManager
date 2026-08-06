@@ -39,4 +39,11 @@ public interface IOneDriveIntegration
     /// criteria, returning either <see cref="NoOneDriveMatch"/> or an accepted <see cref="OneDriveMatch"/>.
     /// </summary>
     Task<OneDriveSearchResult> SearchAsync(OneDriveSearchRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Re-downloads a previously saved/reconciled file's bytes via its stable
+    /// <see cref="OneDriveDetails.DriveId"/>/<see cref="OneDriveDetails.ItemId"/> reference. Used to
+    /// resume the FreeAgent stage on a later run without persisting the PDF bytes between steps.
+    /// </summary>
+    Task<byte[]> DownloadAsync(OneDriveDetails details, CancellationToken cancellationToken = default);
 }

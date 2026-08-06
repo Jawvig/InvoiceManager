@@ -386,7 +386,7 @@ public sealed class DueInvoiceProcessorTests
         var oneDrive = new FakeOneDriveIntegration
         {
             NextSearchResult = new OneDriveMatch(
-                new OneDriveDetails("/drives/test-drive/items/test-folder-item/existing.pdf"),
+                new OneDriveDetails("/drives/test-drive/items/test-folder-item/existing.pdf", "test-drive", "existing-item"),
                 Actuals.Build(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), new SourceInvoiceId("G152207778")),
                 "matched by date and amount"),
         };

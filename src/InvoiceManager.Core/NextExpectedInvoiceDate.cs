@@ -46,6 +46,8 @@ public static class NextExpectedInvoiceDate
                 new NextExpectedDate(AddFrequency(saved.ActualDetails.ActualInvoiceDate, frequency)),
             ReconciledFromOneDrive reconciled =>
                 new NextExpectedDate(AddFrequency(reconciled.ActualDetails.ActualInvoiceDate, frequency)),
+            FreeAgentMatchExpected matchExpected =>
+                new NextExpectedDate(AddFrequency(matchExpected.ActualDetails.ActualInvoiceDate, frequency)),
             FreeAgentBillMatched matched =>
                 new NextExpectedDate(AddFrequency(matched.ActualDetails.ActualInvoiceDate, frequency)),
             FreeAgentBillReconciled freeAgentReconciled =>
