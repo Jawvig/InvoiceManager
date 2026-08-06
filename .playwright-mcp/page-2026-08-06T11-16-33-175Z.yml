@@ -1,0 +1,35 @@
+- generic [active] [ref=f2e1]:
+  - banner [ref=f2e2]:
+    - generic [ref=f2e3]:
+      - button "Open menu" [ref=f2e4] [cursor=pointer]
+      - link "InvoiceManager Admin" [ref=f2e8] [cursor=pointer]:
+        - /url: /
+  - navigation [ref=f2e9]:
+    - link [ref=f2e10] [cursor=pointer]:
+      - /url: /
+      - text: Home
+    - link [ref=f2e11] [cursor=pointer]:
+      - /url: /Authorization
+      - text: Reauthorization
+    - link [ref=f2e12] [cursor=pointer]:
+      - /url: /Configurations
+      - text: Invoice configurations
+    - link [ref=f2e13] [cursor=pointer]:
+      - /url: /ServiceStatus
+      - text: Health status
+  - main [ref=f2e14]:
+    - generic [ref=f2e15]:
+      - generic [ref=f2e16]:
+        - heading "Create invoice configuration" [level=1] [ref=f2e17]
+        - paragraph [ref=f2e18]: New configurations are saved as inactive drafts.
+      - generic [ref=f2e20]:
+        - generic [ref=f2e22]:
+          - text: Integration
+          - combobox "Integration" [ref=f2e23]:
+            - option "Please choose an integration…" [disabled] [selected]
+            - option "Microsoft billing"
+            - option "Microsoft 365 email"
+        - generic [ref=f2e24]:
+          - button "Save configuration" [ref=f2e25] [cursor=pointer]
+          - link "Cancel" [ref=f2e26] [cursor=pointer]:
+            - /url: /Configurations

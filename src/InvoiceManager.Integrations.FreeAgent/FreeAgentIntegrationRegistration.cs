@@ -15,9 +15,16 @@ namespace InvoiceManager.Integrations.FreeAgent;
 /// </summary>
 public static class FreeAgentIntegrationRegistration
 {
+    // FreeAgent rejects any request with no User-Agent header at all (a plain .NET HttpClient
+    // sends none by default, unlike a browser) with a 400 and the body
+    // {"errors":{"error":{"message":"User agent http header not set"}}} - confirmed against the
+    // real sandbox API. Every FreeAgent host, including the OAuth token endpoint, needs this set.
+    private const string UserAgent = "InvoiceManager/1.0 (+https://github.com/omnics/InvoiceManager)";
+
     public static IServiceCollection AddFreeAgentIntegration(this IServiceCollection services)
     {
-        services.AddHttpClient<FreeAgentApiClient>().AddStandardResilienceHandler();
+        services.AddHttpClient<FreeAgentApiClient>(client => client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent))
+            .AddStandardResilienceHandler();
 
         services.AddSingleton<IFreeAgentAuthorizationStore>(sp =>
         {
@@ -26,7 +33,7 @@ public static class FreeAgentIntegrationRegistration
             return new KeyVaultFreeAgentAuthorizationStore(
                 secretStoreClient, sp.GetRequiredService<IOptions<FreeAgentAuthorizationOptions>>());
         });
-        services.AddHttpClient(nameof(FreeAgentTokenProvider));
+        services.AddHttpClient(nameof(FreeAgentTokenProvider), client => client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent));
         services.AddSingleton<IFreeAgentTokenProvider>(sp =>
         {
             var factory = sp.GetRequiredService<IHttpClientFactory>();

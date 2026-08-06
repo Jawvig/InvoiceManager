@@ -1,0 +1,217 @@
+- generic [ref=f6e2]:
+  - generic "Aspire" [ref=f6e4]:
+    - link "Aspire" [ref=f6e5] [cursor=pointer]:
+      - /url: /
+  - banner [ref=f6e6]:
+    - generic [ref=f6e7]:
+      - link "InvoiceManager" [ref=f6e9] [cursor=pointer]:
+        - /url: /
+      - generic "Aspire repo" [ref=f6e10]:
+        - link "Aspire repo" [ref=f6e11] [cursor=pointer]:
+          - /url: https://aka.ms/aspire/repo
+      - generic "Help" [ref=f6e12] [cursor=pointer]:
+        - button "Help" [ref=f6e13]
+      - generic "AI agents" [ref=f6e14] [cursor=pointer]:
+        - button "AI agents" [ref=f6e15]
+      - generic "Notifications" [ref=f6e301] [cursor=pointer]:
+        - button "Notifications" [ref=f6e302]:
+          - generic:
+            - generic:
+              - generic:
+                - generic "1"
+      - generic "Settings" [ref=f6e18] [cursor=pointer]:
+        - button "Settings" [ref=f6e19]
+  - navigation [ref=f6e20]:
+    - generic "Resources" [ref=f6e21]:
+      - link "Resources" [ref=f6e23] [cursor=pointer]:
+        - /url: /
+    - generic "Console" [ref=f6e28]:
+      - link "Console" [ref=f6e30] [cursor=pointer]:
+        - /url: /consolelogs
+    - generic "Structured" [ref=f6e35]:
+      - link "Structured" [ref=f6e37] [cursor=pointer]:
+        - /url: /structuredlogs
+    - generic "Traces" [ref=f6e42]:
+      - link "Traces" [ref=f6e44] [cursor=pointer]:
+        - /url: /traces
+    - generic "Metrics" [ref=f6e49]:
+      - link "Metrics" [ref=f6e51] [cursor=pointer]:
+        - /url: /metrics
+  - generic [ref=f6e58]:
+    - generic [ref=f6e303]: adminweb "Stop" starting
+    - generic [ref=f6e60]:
+      - banner "Page toolbar" [ref=f6e61]:
+        - toolbar [ref=f6e62]:
+          - generic [ref=f6e63]:
+            - heading "Resources" [level=1] [ref=f6e64]
+            - generic [ref=f6e65]:
+              - generic:
+                - generic [ref=f6e72]:
+                  - searchbox [ref=f6e73]
+                  - button [ref=f6e75]
+                - generic "No filters" [ref=f6e79] [cursor=pointer]:
+                  - button "No filters" [ref=f6e80]
+                - generic "View options" [ref=f6e81] [cursor=pointer]:
+                  - button "View options" [ref=f6e82]
+      - main [ref=f6e83]:
+        - generic [ref=f6e89]:
+          - generic [ref=f6e90]:
+            - tablist [ref=f6e91]:
+              - generic:
+                - tab "Resources" [selected] [ref=f6e92] [cursor=pointer]
+                - tab "Parameters" [ref=f6e95] [cursor=pointer]
+                - tab "Graph. For an accessible view please navigate to the Resources tab" [ref=f6e98] [cursor=pointer]:
+                  - generic: Graph
+            - generic:
+              - generic:
+                - tabpanel "Resources"
+          - table [ref=f6e103]:
+            - rowgroup [ref=f6e104]:
+              - row [ref=f6e105]:
+                - columnheader [ref=f6e106]:
+                  - generic "Name" [ref=f6e108] [cursor=pointer]:
+                    - button "Name" [ref=f6e109]:
+                      - generic:
+                        - generic:
+                          - generic "Name"
+                - columnheader [ref=f6e112]:
+                  - generic "State" [ref=f6e114] [cursor=pointer]:
+                    - button "State" [ref=f6e115]:
+                      - generic:
+                        - generic:
+                          - generic "State"
+                - columnheader [ref=f6e118]:
+                  - generic "Start time" [ref=f6e120] [cursor=pointer]:
+                    - button "Start time" [ref=f6e121]:
+                      - generic:
+                        - generic:
+                          - generic "Start time"
+                - columnheader [ref=f6e124]:
+                  - generic "Source" [ref=f6e126] [cursor=pointer]:
+                    - button "Source" [ref=f6e127]:
+                      - generic:
+                        - generic:
+                          - generic "Source"
+                - columnheader [ref=f6e130]:
+                  - generic "URLs" [ref=f6e132] [cursor=pointer]:
+                    - button "URLs" [ref=f6e133]:
+                      - generic:
+                        - generic:
+                          - generic "URLs"
+                - columnheader [ref=f6e136]:
+                  - generic "Actions" [ref=f6e138] [cursor=pointer]:
+                    - button "Actions" [ref=f6e139]:
+                      - generic:
+                        - generic:
+                          - generic "Actions"
+            - rowgroup [ref=f6e142]:
+              - row [ref=f6e143]:
+                - 'gridcell "AzureCosmosDBResource: cosmos" [ref=f6e144]':
+                  - generic [ref=f6e145]: cosmos
+                - gridcell "Running" [ref=f6e150]
+                - gridcell "06/08/2026 12:07:58" [ref=f6e154]: 12:07:58
+                - gridcell "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview" [ref=f6e155]:
+                  - generic [ref=f6e156]:
+                    - generic "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview" [ref=f6e157]
+                    - generic "Open in text visualizer" [ref=f6e158] [cursor=pointer]:
+                      - button "Open in text visualizer" [ref=f6e159]
+                - gridcell "Data Explorer, https://localhost:61751" [ref=f6e160]:
+                  - generic [ref=f6e161]:
+                    - link "Data Explorer" [ref=f6e163] [cursor=pointer]:
+                      - /url: https://localhost:61752
+                    - button "+1" [ref=f6e167] [cursor=pointer]
+                - gridcell [ref=f6e168]:
+                  - generic [ref=f6e169]:
+                    - generic "Stop resource" [ref=f6e170] [cursor=pointer]:
+                      - button "Stop resource" [ref=f6e171]
+                    - generic "Console logs" [ref=f6e172] [cursor=pointer]:
+                      - button "Console logs" [ref=f6e173]
+                    - generic "Actions" [ref=f6e174] [cursor=pointer]:
+                      - button "Actions" [ref=f6e175]
+              - row [ref=f6e176]:
+                - 'gridcell "AzureStorageResource: funcstorage487fb" [ref=f6e177]':
+                  - generic [ref=f6e178]: funcstorage487fb
+                - gridcell "Running" [ref=f6e183]
+                - gridcell "06/08/2026 12:08:00" [ref=f6e187]: 12:08:00
+                - gridcell "mcr.microsoft.com/azure-storage/azurite:3.35.0 docker-entrypoint.sh azurite -l /data --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --disableProductStyleUrl" [ref=f6e188]:
+                  - generic [ref=f6e189]:
+                    - generic "mcr.microsoft.com/azure-storage/azurite:3.35.0 docker-entrypoint.sh azurite -l /data --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --disableProductStyleUrl" [ref=f6e190]
+                    - generic "Open in text visualizer" [ref=f6e191] [cursor=pointer]:
+                      - button "Open in text visualizer" [ref=f6e192]
+                - gridcell "http://localhost:61754, http://localhost:61757, http://localhost:61756" [ref=f6e193]:
+                  - generic [ref=f6e194]:
+                    - link "http://localhost:61754" [ref=f6e196] [cursor=pointer]:
+                      - /url: http://localhost:61754
+                    - button "+2" [ref=f6e200] [cursor=pointer]
+                - gridcell [ref=f6e201]:
+                  - generic [ref=f6e202]:
+                    - generic "Stop resource" [ref=f6e203] [cursor=pointer]:
+                      - button "Stop resource" [ref=f6e204]
+                    - generic "Console logs" [ref=f6e205] [cursor=pointer]:
+                      - button "Console logs" [ref=f6e206]
+                    - generic "Actions" [ref=f6e207] [cursor=pointer]:
+                      - button "Actions" [ref=f6e208]
+              - row [ref=f6e318]:
+                - 'gridcell "Project: adminweb" [ref=f6e210] [cursor=pointer]':
+                  - generic [ref=f6e211]: adminweb
+                - gridcell "Stopping" [ref=f6e319] [cursor=pointer]
+                - gridcell "06/08/2026 12:08:13" [ref=f6e220] [cursor=pointer]: 12:08:13
+                - gridcell "C:\\Users\\josh_\\source\\repos\\InvoiceManager\\src\\InvoiceManager.AdminWeb\\InvoiceManager.AdminWeb.csproj" [ref=f6e221] [cursor=pointer]:
+                  - generic [ref=f6e222]:
+                    - generic "C:\\Users\\josh_\\source\\repos\\InvoiceManager\\src\\InvoiceManager.AdminWeb\\InvoiceManager.AdminWeb.csproj" [ref=f6e223]: InvoiceManager.AdminWeb.csproj
+                    - generic "Open in text visualizer" [ref=f6e224]:
+                      - button "Open in text visualizer" [ref=f6e225]
+                - gridcell "-" [ref=f6e321] [cursor=pointer]
+                - gridcell [ref=f6e234] [cursor=pointer]:
+                  - generic [ref=f6e235]:
+                    - generic "Stop resource" [ref=f6e236]:
+                      - button "Stop resource" [disabled] [ref=f6e237]
+                    - generic "Console logs" [ref=f6e238]:
+                      - button "Console logs" [ref=f6e239]
+                    - generic "Actions" [ref=f6e240]:
+                      - button "Actions" [ref=f6e241]
+              - row [ref=f6e242]:
+                - 'gridcell "Project: functions" [ref=f6e243]':
+                  - generic [ref=f6e244]: functions
+                - gridcell "Running" [ref=f6e249]
+                - gridcell "06/08/2026 12:08:07" [ref=f6e253]: 12:08:07
+                - gridcell "C:\\Users\\josh_\\source\\repos\\InvoiceManager\\src\\InvoiceManager.Functions\\InvoiceManager.Functions.csproj --port 59643" [ref=f6e254]:
+                  - generic [ref=f6e255]:
+                    - generic "C:\\Users\\josh_\\source\\repos\\InvoiceManager\\src\\InvoiceManager.Functions\\InvoiceManager.Functions.csproj --port 59643" [ref=f6e256]: InvoiceManager.Functions.csproj --port 59643
+                    - generic "Open in text visualizer" [ref=f6e257] [cursor=pointer]:
+                      - button "Open in text visualizer" [ref=f6e258]
+                - gridcell "http://localhost:61755" [ref=f6e259]:
+                  - link "http://localhost:61755" [ref=f6e260] [cursor=pointer]:
+                    - /url: http://localhost:61755
+                - gridcell [ref=f6e261]:
+                  - generic [ref=f6e262]:
+                    - generic "Stop resource" [ref=f6e263] [cursor=pointer]:
+                      - button "Stop resource" [ref=f6e264]
+                    - generic "Console logs" [ref=f6e265] [cursor=pointer]:
+                      - button "Console logs" [ref=f6e266]
+                    - generic "Actions" [ref=f6e267] [cursor=pointer]:
+                      - button "Actions" [ref=f6e268]
+              - row [ref=f6e269]:
+                - 'gridcell "Project: seeder" [ref=f6e270]':
+                  - generic [ref=f6e271]: seeder
+                - gridcell "Project is no longer running." [ref=f6e276]:
+                  - generic [ref=f6e277]: Finished
+                - gridcell "06/08/2026 12:08:05" [ref=f6e280]: 12:08:05
+                - gridcell "C:\\Users\\josh_\\source\\repos\\InvoiceManager\\tools\\InvoiceManager.Seeder\\InvoiceManager.Seeder.csproj -- --ensure-schema --environment test C:\\Users\\josh_\\source\\repos\\InvoiceManager\\data\\seed\\invoice-configurations.json" [ref=f6e281]:
+                  - generic [ref=f6e282]:
+                    - generic "C:\\Users\\josh_\\source\\repos\\InvoiceManager\\tools\\InvoiceManager.Seeder\\InvoiceManager.Seeder.csproj -- --ensure-schema --environment test C:\\Users\\josh_\\source\\repos\\InvoiceManager\\data\\seed\\invoice-configurations.json" [ref=f6e283]: InvoiceManager.Seeder.csproj -- --ensure-schema --environment test C:\Users\josh_\source\repos\InvoiceManager\data\seed\invoice-configurations.json
+                    - generic "Open in text visualizer" [ref=f6e284] [cursor=pointer]:
+                      - button "Open in text visualizer" [ref=f6e285]
+                - gridcell "-" [ref=f6e286]
+                - gridcell [ref=f6e288]:
+                  - generic [ref=f6e289]:
+                    - generic "Start resource" [ref=f6e290] [cursor=pointer]:
+                      - button "Start resource" [ref=f6e291]
+                    - generic "Console logs" [ref=f6e292] [cursor=pointer]:
+                      - button "Console logs" [ref=f6e293]
+                    - generic "Actions" [ref=f6e294] [cursor=pointer]:
+                      - button "Actions" [ref=f6e295]
+      - contentinfo [ref=f6e296]:
+        - generic [ref=f6e299]:
+          - text: Showing
+          - strong [ref=f6e300]: 5 resources
