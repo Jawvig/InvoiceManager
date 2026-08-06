@@ -498,6 +498,24 @@ instance.
 Re-run the tool whenever the saved session expires (an Entra sign-in prompt
 reappearing is the signal).
 
+### FreeAgent opt-in sandbox integration test
+
+`tests/InvoiceManager.Integrations.FreeAgent.IntegrationTests` is the FreeAgent
+analog of the Playwright suite above, but deliberately lighter-weight: FreeAgent's
+OAuth is a plain rotating refresh token already sitting in Key Vault once an
+administrator has authorized it once via AdminWeb's `/Authorization` page (see
+above) — no interactive browser/OIDC flow is needed to *use* it, only to
+originally capture it — so this test calls `FreeAgentApiClient` directly against
+the real sandbox API rather than booting the whole AppHost through a browser.
+Also tagged `Category=Integration`, so CI's `--filter "Category!=Integration"`
+skips it.
+
+Prerequisites: signed in to Azure with access to the test environment's Key
+Vault (`az login`); `KeyVault:Uri` set in `InvoiceManager.AdminWeb`'s local user
+secrets (reused as-is — no separate setup needed if Aspire already runs
+locally); and a FreeAgent refresh token already captured against the sandbox
+company via the `/Authorization` page's FreeAgent section.
+
 ## GitHub Actions Workflow
 
 Two workflows orchestrate the pipeline: `ci.yml` (build/test/terraform-validate)

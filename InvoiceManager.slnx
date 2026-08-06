@@ -18,6 +18,7 @@
     <Project Path="tests/InvoiceManager.Infrastructure.Tests/InvoiceManager.Infrastructure.Tests.csproj" />
     <Project Path="tests/InvoiceManager.Integrations.Microsoft365.Tests/InvoiceManager.Integrations.Microsoft365.Tests.csproj" />
     <Project Path="tests/InvoiceManager.Integrations.FreeAgent.Tests/InvoiceManager.Integrations.FreeAgent.Tests.csproj" />
+    <Project Path="tests/InvoiceManager.Integrations.FreeAgent.IntegrationTests/InvoiceManager.Integrations.FreeAgent.IntegrationTests.csproj" />
     <Project Path="tests/InvoiceManager.TestSupport/InvoiceManager.TestSupport.csproj" />
   </Folder>
   <Folder Name="/tools/">
