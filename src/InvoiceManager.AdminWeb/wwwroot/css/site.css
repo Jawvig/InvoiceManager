@@ -424,10 +424,39 @@ a.secondary-action.disabled {
   background: var(--panel);
 }
 
+/* An author stylesheet's `display` declaration always wins over the UA stylesheet's
+   `[hidden] { display: none }`, regardless of specificity - normal-priority author rules simply
+   outrank normal-priority UA rules in the cascade. Without this, the rule above alone would make
+   every hidden="..." fieldset on this form (billing/email details, and each reveal-group's
+   fieldset) render anyway despite the attribute being set. */
+.form-grid fieldset[hidden] {
+  display: none;
+}
+
 .form-grid legend {
   padding: 0 .4rem;
   font-weight: 650;
   color: var(--muted);
+}
+
+/* A checkbox that reveals a set of fields (e.g. "Match expected amount"), paired with the
+   fieldset holding those fields. The fieldset reuses the same border/background as any other
+   form-grid fieldset (e.g. "Common details"), so it's visually obvious which fields belong to
+   which checkbox. The checkbox's own label is pulled down over the fieldset's top border via a
+   matching negative margin, and given the same background as the fieldset it sits in front of,
+   so it reads like a <legend> straddling the border rather than a separate element floating
+   above an unrelated box. */
+.reveal-group > label {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  margin: 0 0 0 .75rem;
+  padding: 0 .4rem;
+  background: var(--panel);
+}
+
+.reveal-group > fieldset {
+  margin-top: -.65rem;
 }
 
 .onedrive-picker-field {
@@ -522,6 +551,88 @@ a.secondary-action.disabled {
 }
 
 .onedrive-picker-row:hover {
+  background: var(--warning-bg);
+}
+
+.freeagent-contact-picker-field {
+  display: grid;
+  gap: .35rem;
+}
+
+.freeagent-contact-picker-summary {
+  margin: 0;
+  color: var(--ink);
+}
+
+.freeagent-contact-picker-dialog {
+  width: min(32rem, 92vw);
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.freeagent-contact-picker-dialog::backdrop {
+  background: rgba(0, 0, 0, .45);
+}
+
+.freeagent-contact-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .75rem;
+}
+
+.freeagent-contact-picker-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.freeagent-contact-picker-dialog input[type="search"] {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: .5rem;
+  padding: .55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--ink);
+}
+
+.freeagent-contact-picker-dialog .status-label {
+  margin-bottom: .5rem;
+}
+
+.freeagent-contact-picker-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.freeagent-contact-picker-row {
+  display: block;
+  width: 100%;
+  min-height: unset;
+  padding: .55rem .75rem;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.freeagent-contact-picker-list li:last-child .freeagent-contact-picker-row {
+  border-bottom: none;
+}
+
+.freeagent-contact-picker-row:hover {
   background: var(--warning-bg);
 }
 
