@@ -31,6 +31,16 @@
     const DEBOUNCE_MS = 300;
     let debounceHandle = null;
     let searchToken = 0;
+    let inFlightSearch = null;
+
+    // Cancels the current fetch (if any) so its potentially-multi-page server-side scan is
+    // abandoned via RequestAborted rather than left running to completion for a response
+    // nothing will use - otherwise a user editing the query repeatedly could pile up several
+    // overlapping full scans against FreeAgent at once.
+    function abortInFlightSearch() {
+        inFlightSearch?.abort();
+        inFlightSearch = null;
+    }
 
     openButton.addEventListener("click", openPicker);
     closeButton?.addEventListener("click", closePicker);
@@ -53,6 +63,7 @@
         // response arrives (without typing a new query first) would let its stale results
         // populate a picker session the user never searched in.
         searchToken++;
+        abortInFlightSearch();
         if (typeof dialog.close === "function") dialog.close();
         else dialog.removeAttribute("open");
     }
@@ -65,6 +76,7 @@
             // point (the token check in search() would otherwise accept it) and repopulate the
             // list with results for a query the box no longer shows.
             searchToken++;
+            abortInFlightSearch();
             listEl.innerHTML = "";
             setStatus("Type at least 3 characters to search.");
             return;
@@ -73,11 +85,15 @@
     }
 
     async function search(query) {
+        abortInFlightSearch(); // a new search always supersedes whatever scan is still running
         const token = ++searchToken;
+        const controller = new AbortController();
+        inFlightSearch = controller;
         setStatus("Searching…");
         try {
             const response = await fetch(
-                buildHandlerUrl("FreeAgentContacts", { query }), { headers: { Accept: "application/json" } });
+                buildHandlerUrl("FreeAgentContacts", { query }),
+                { headers: { Accept: "application/json" }, signal: controller.signal });
             if (!response.ok) throw new Error(await describeFailedResponse(response));
             const contacts = await response.json();
             if (token !== searchToken) return; // a later keystroke's search has already superseded this one
@@ -88,6 +104,7 @@
                 listEl.appendChild(makeRow(contact));
             }
         } catch (err) {
+            if (err.name === "AbortError") return; // superseded - abortInFlightSearch already handled it
             if (token !== searchToken) return;
             // Deliberately distinct, in wording and styling, from the "no matches" case above -
             // this is a system error (FreeAgent unreachable, rejected the request, ...), not a
@@ -95,6 +112,8 @@
             // apart and see enough detail to diagnose or report it.
             setStatus(`FreeAgent search failed: ${err.message}`, /* isError */ true);
             appendRetry(() => search(query));
+        } finally {
+            if (inFlightSearch === controller) inFlightSearch = null;
         }
     }
 
