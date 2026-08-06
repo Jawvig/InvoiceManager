@@ -97,8 +97,12 @@ public sealed record FreeAgentInterventionPending(
 
 /// <summary>
 /// A FreeAgent step failed technically, hit a lock/conflict, or returned a
-/// business-rule rejection that isn't a normal match/no-match outcome. Always
-/// retried on a later run, mirroring <see cref="RetrievalError"/>.
+/// business-rule rejection that isn't a normal match/no-match outcome. Intended to
+/// always retry on a later run, mirroring <see cref="RetrievalError"/> - but not yet
+/// wired up: <c>ListDueAsync</c> deliberately excludes this state until
+/// <c>DueInvoiceProcessor</c> knows how to resume it (rather than re-running
+/// OneDrive reconciliation/retrieval from scratch), which lands with the
+/// dispatch-loop rework. Until then, a record here has no automatic path forward.
 /// </summary>
 public sealed record FreeAgentError(
     ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, string ErrorMessage);
