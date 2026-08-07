@@ -11,6 +11,10 @@ provider "github" {
   owner = var.github_owner
 }
 
+# Credentials are supplied only through NAMECHEAP_* process environment variables
+# by Deploy-Infra.ps1. No Namecheap credential is represented in configuration/state.
+provider "namecheap" {}
+
 resource "azurerm_resource_group" "invoice_manager" {
   name     = local.resource_group_name
   location = var.location
@@ -22,15 +26,18 @@ resource "azuread_application" "invoice_manager" {
   group_membership_claims = ["SecurityGroup"]
 
   web {
-    # Append the deployed admin website callback to any caller-supplied URIs (e.g. the
-    # local https://localhost:5001/signin-oidc). The URL is derived from the Container Apps
-    # environment default domain plus the fixed app name, NOT from the container app
-    # resource itself: the container app depends on this app registration (for ClientId),
-    # so referencing it here would create a cycle. The environment has no such dependency.
+    # Append both custom-host and generated-host callbacks to caller-supplied URIs.
+    # These are derived without referencing the container app resource because the app
+    # depends on this registration for its ClientId; doing so would create a cycle.
     redirect_uris = concat(
       var.redirect_uris,
       local.workflow_redirect_uris,
-      [local.adminweb_signin_redirect_uri, local.adminweb_workflow_redirect_uri]
+      [
+        local.adminweb_signin_redirect_uri,
+        local.adminweb_workflow_redirect_uri,
+        local.adminweb_default_signin_redirect_uri,
+        local.adminweb_default_workflow_redirect_uri,
+      ]
     )
   }
 

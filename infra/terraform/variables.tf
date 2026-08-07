@@ -37,6 +37,28 @@ variable "redirect_uris" {
   default     = []
 }
 
+variable "adminweb_dns_zone" {
+  description = "Namecheap DNS zone used for the AdminWeb custom hostname."
+  type        = string
+  default     = "omnics.tech"
+
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$", var.adminweb_dns_zone))
+    error_message = "AdminWeb DNS zone must be a lowercase fully-qualified domain name without a trailing dot."
+  }
+}
+
+variable "adminweb_hostname_base" {
+  description = "Environment-neutral base label used to derive the AdminWeb custom hostname."
+  type        = string
+  default     = "InvoiceManager"
+
+  validation {
+    condition     = can(regex("^[A-Za-z][A-Za-z0-9-]{1,56}[A-Za-z0-9]$", var.adminweb_hostname_base))
+    error_message = "AdminWeb hostname base must be 3-58 letters, numbers, or hyphens, start with a letter, and end with a letter or number."
+  }
+}
+
 variable "adminweb_image" {
   description = "Container image for the admin website, published to a public ghcr.io package. CI updates the running tag out-of-band, so this is only the initial/bootstrap reference."
   type        = string

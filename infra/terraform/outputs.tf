@@ -64,8 +64,13 @@ output "adminweb_container_app_name" {
 }
 
 output "adminweb_fqdn" {
-  description = "Admin website public hostname."
-  value       = local.adminweb_fqdn
+  description = "Canonical custom hostname for the admin website."
+  value       = local.adminweb_custom_fqdn
+}
+
+output "adminweb_default_fqdn" {
+  description = "Generated Azure Container Apps hostname retained for diagnostics and rollback."
+  value       = local.adminweb_default_fqdn
 }
 
 output "adminweb_signin_redirect_uri" {

@@ -102,7 +102,7 @@ resource "github_actions_environment_variable" "adminweb_fqdn" {
   repository    = var.github_repository
   environment   = github_repository_environment.deploy[0].environment
   variable_name = "ADMINWEB_FQDN"
-  value         = local.adminweb_fqdn
+  value         = local.adminweb_custom_fqdn
 }
 
 resource "github_actions_environment_variable" "azure_resource_group" {

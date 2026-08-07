@@ -92,3 +92,24 @@ provider "registry.terraform.io/integrations/github" {
     "zh:fbd1fee2c9df3aa19cf8851ce134dea6e45ea01cb85695c1726670c285797e25",
   ]
 }
+
+provider "registry.terraform.io/namecheap/namecheap" {
+  version     = "2.7.0"
+  constraints = "~> 2.7"
+  hashes = [
+    "h1:hfg9i4dl/W1nOaY9x32VpUC1zm7J1A9tspyqBHImwCg=",
+    "zh:06f5d7c91cb73d17d924739caf88f8f3c89bf56c1633cbc69a5fc620fc3a2d59",
+    "zh:11d62fc05fae4561201d01fafa99fe06dd41e118c17323f64b93a63491c08ce3",
+    "zh:15b8af3f929aeb9949cf0ea5aedb76fbeb469effe4c76a5395a81a7562e7e168",
+    "zh:30cecf62e2e53695d213f5e1795ec5e4f039cf0ca6086f7481872eca047169d9",
+    "zh:55bdb8288b3d51d175f2d8931850411a7d762a394c9f190d3dd164893093922f",
+    "zh:61786eaef565296a49bda65c232c17e3e83e083ece9abf761a10bdf0f620ed16",
+    "zh:6e3fb3d679426d289899a059d03826ce64799fade0da036916c96b946042dff1",
+    "zh:7487a101241a17e37a5a35f1993036c7ac6538700882cd504cbd0317a06ab48a",
+    "zh:77db07f469052e9f5c0bf8600293f7c4cd85263db746a58e33a88315b9e02027",
+    "zh:c77492fa8f950b2eda8b27f3f944abce90296f3bcd4293c3b71c713b041c75b9",
+    "zh:d2898854522fc53ecb04514ec7cdd2f8731a16a819f70a3c0bccea01c2439191",
+    "zh:e60224fd562e0687ea6d0589926eae5f8772eb1b249aaec73f0e288361cd4e4a",
+    "zh:f2dce9211ca6aab3b922713c5fbb6252c5f00d96dc978efd97a33a7e6c924db2",
+  ]
+}

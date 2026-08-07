@@ -73,7 +73,12 @@ Terraform manages all Azure infrastructure including:
   net10.0 are polyfilled for that target
   (`src/InvoiceManager.Core/Polyfills/UnionSupport.cs`).
 - **Admin website**: Azure Container Apps (scale-to-zero) pulling a public
-  ghcr.io image; ingress exposed on port 8080.
+  ghcr.io image; ingress exposed on port 8080. Its canonical public names are
+  `invoicemanager-test.omnics.tech` for test and `invoicemanager.omnics.tech`
+  for production, with Azure-managed TLS certificates.
+- **Namecheap DNS**: the environment's AdminWeb CNAME and Azure verification
+  TXT record in the shared `omnics.tech` zone, managed in non-authoritative
+  `MERGE` mode.
 - **Azure Cosmos DB**: Serverless database for invoice configuration and state.
 - **Azure Key Vault**: Secrets storage for credentials and API keys.
 - **Managed identities**: One user-assigned identity per app, each granted the
@@ -145,11 +150,11 @@ Terraform also creates the runtime hosting and its access grants:
   mirroring the values Aspire/user-secrets supply locally. `ClientSecret` and the
   MSAL token cache are never set here; they load from Key Vault at runtime.
 
-The admin website OIDC callback (`https://adminweb.<env-domain>/signin-oidc`) is
-derived from the Container Apps environment default domain and appended to the
-Entra app registration's redirect URIs. It is computed from the *environment*
-(not the container app resource) to avoid a dependency cycle with the app
-registration that supplies the app's `ClientId`.
+The admin website's canonical OIDC callback is derived from the application base
+name and the existing environment suffix rule. Terraform also retains callbacks
+for the generated Container Apps hostname as a diagnostic and rollback path.
+Both sets are computed without referencing the container app resource, avoiding
+a dependency cycle with the app registration that supplies the app's `ClientId`.
 
 ### Environment-Specific Configuration
 
@@ -184,13 +189,17 @@ Use the PowerShell bootstrap script from the repository root:
 Parameter syntax:
 
 ```text
-./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-SkipGitHubManagement] [-PublishAdminWebImage] [-PromptFreeAgentClientId] [-PromptFreeAgentClientSecret]
+./scripts/Deploy-Infra.ps1 -Environment <test|production> [-Location <location>] [-SubscriptionId <subscription-id>] [-ApplicationName <name>] [-PlanOnly] [-AutoApprove] [-ClearDatabase] [-SkipGitHubManagement] [-PublishAdminWebImage] [-PromptFreeAgentClientId] [-PromptFreeAgentClientSecret] [-PromptNamecheapApiKey]
 ```
 
 `-PromptFreeAgentClientId` / `-PromptFreeAgentClientSecret` force the script to
 re-prompt for that FreeAgent OAuth credential even when it is already present
 in the target environment's Key Vault (see below) — separate flags because the
 client secret rotates far more often than the client ID.
+
+`-PromptNamecheapApiKey` securely prompts for a replacement Namecheap API key
+and overwrites the repository-specific credential stored for the current
+Windows user. Normal deployments reuse the stored key without prompting.
 
 `-SkipGitHubManagement` runs a **GitHub-less apply**: it passes
 `-var=manage_github=false` and skips every `gh` interaction (the tool check,
@@ -207,12 +216,91 @@ apply creates the Container App against a genuine image on port 8080 rather than
 the stock bootstrap reference. Requires Docker and a prior `docker login ghcr.io`;
 the ghcr package must be made public once for anonymous pulls.
 
+### AdminWeb custom domains and Namecheap credentials
+
+Terraform derives the AdminWeb hostname from the single environment-neutral
+`adminweb_hostname_base` value (`InvoiceManager` by default) and the same suffix
+rule used by Azure resources:
+
+| Environment | Canonical hostname | Namecheap records |
+| --- | --- | --- |
+| Test | `invoicemanager-test.omnics.tech` | CNAME `invoicemanager-test` and TXT `asuid.invoicemanager-test` |
+| Production | `invoicemanager.omnics.tech` | CNAME `invoicemanager` and TXT `asuid.invoicemanager` |
+
+The CNAME targets the generated Azure Container Apps hostname. The TXT value is
+the Container App's custom-domain verification ID. The Namecheap resource uses
+explicit `MERGE` mode, so other `omnics.tech` records remain unmanaged and must
+not be proposed for deletion. Test and production use separate Terraform states
+but update the same Namecheap zone; never run their infrastructure applies at
+the same time.
+
+Before the first deployment from a machine:
+
+1. Enable API access in the Namecheap account.
+2. Add the machine/operator's public IPv4 address to Namecheap's API whitelist.
+3. Run `Deploy-Infra.ps1`. It prompts for `NAMECHEAP_USER_NAME`,
+   `NAMECHEAP_API_USER`, and `NAMECHEAP_CLIENT_IP` when missing and offers to
+   persist each as a current-user environment variable. Values saved at user
+   scope are refreshed into the running process immediately.
+4. Enter the API key at the secure prompt. The script stores it as the generic
+   Windows credential `InvoiceManager/NamecheapApiKey`, with local-machine
+   persistence in the current user's Credential Manager vault.
+
+The API key is never persisted as an environment variable. The script reads it
+through the native Windows Credential Manager API, places it in
+`NAMECHEAP_API_KEY` only for the Terraform portion of the current process, and
+restores or removes that process value in a `finally` block. Do not put any
+Namecheap credentials in `.tfvars`, source control, Terraform state, saved
+plans, outputs, or command-line arguments.
+
+To rotate the key, run a deployment (or plan) with
+`-PromptNamecheapApiKey`. To remove it, open Windows Credential Manager and
+delete the generic credential named `InvoiceManager/NamecheapApiKey`, or run:
+
+```powershell
+cmdkey /delete:InvoiceManager/NamecheapApiKey
+```
+
+`cmdkey` is suitable for deletion only; the deployment script deliberately uses
+the native credential APIs because `cmdkey` cannot retrieve a stored secret.
+Remove a persisted non-secret setting, if needed, with:
+
+```powershell
+[Environment]::SetEnvironmentVariable("NAMECHEAP_USER_NAME", $null, "User")
+[Environment]::SetEnvironmentVariable("NAMECHEAP_API_USER", $null, "User")
+[Environment]::SetEnvironmentVariable("NAMECHEAP_CLIENT_IP", $null, "User")
+```
+
+Roll out the custom domain to test first:
+
+1. Add
+   `https://invoicemanager-test.omnics.tech/freeagent-authorization/callback`
+   to the existing `Omnics InvoiceManager Sandbox` app.
+2. Run a test plan and confirm the Namecheap resource says `MERGE` and contains
+   only the test CNAME and verification TXT record. It must not propose deleting
+   unrelated zone records.
+3. Apply test. DNS propagation and Azure managed-certificate issuance are
+   asynchronous; the custom-domain create timeout is 60 minutes.
+4. Confirm the custom hostname resolves, HTTPS has a valid certificate, both
+   Entra callback flows work, FreeAgent authorization completes, and the
+   generated Azure hostname remains usable.
+5. Run a later plan to confirm the stored API key is reused without prompting.
+
+Production deployment is deferred until its Terraform backend and FreeAgent app
+exist. When they do, configure the documented production FreeAgent callback
+before applying production. To roll back, revert the custom-domain Terraform
+change and apply the affected environment. Terraform removes only that
+environment's `MERGE`-managed CNAME/TXT records and Azure binding; the generated
+Container Apps hostname and its Entra callbacks remain available throughout.
+
 The script:
 
 1. Checks that Terraform, Azure CLI, and GitHub CLI (`gh`) are installed
    (`gh` is skipped under `-SkipGitHubManagement`).
-2. Prompts for Azure CLI login when needed.
-3. Confirms `gh` is authenticated and sources `GITHUB_TOKEN` from
+2. Loads or prompts for the Namecheap non-secret settings and, immediately
+   before Terraform runs, retrieves or securely captures the API key.
+3. Prompts for Azure CLI login when needed.
+4. Confirms `gh` is authenticated and sources `GITHUB_TOKEN` from
    `gh auth token` so the `github` Terraform provider can manage the deploy
    environment. It also derives `github_owner` / `github_owner_id` /
    `github_repository` / `github_repository_id` (from
@@ -222,21 +310,21 @@ The script:
    credential's immutable subject. Under
    `-SkipGitHubManagement` this whole step is skipped and Terraform runs with
    `-var=manage_github=false`.
-4. Creates the environment-specific Terraform state resource group, storage
+5. Creates the environment-specific Terraform state resource group, storage
    account, and blob container if missing.
-5. Runs `terraform init`.
-6. Runs `terraform plan`.
-7. On the first apply only, deletes any leftover deploy-target GitHub
+6. Runs `terraform init`.
+7. Runs `terraform plan`.
+8. On the first apply only, deletes any leftover deploy-target GitHub
    Environment variables that the retired publishing step created out-of-band
    (they would otherwise collide with the provider's create); skipped once
    Terraform owns them, and skipped entirely under `-SkipGitHubManagement`.
-8. Runs `terraform apply` when the plan has changes, unless `-PlanOnly` is
+9. Runs `terraform apply` when the plan has changes, unless `-PlanOnly` is
    supplied. Terraform provisions the per-environment CI identity, its RBAC, and
    the GitHub deploy environment, secrets, and variables (see the workflow
    section below).
-9. Removes the provider-injected empty-key Function App storage connection
+10. Removes the provider-injected empty-key Function App storage connection
    strings (see below).
-10. Ensures FreeAgent client credentials exist in the target environment's Key
+11. Ensures FreeAgent client credentials exist in the target environment's Key
     Vault, prompting interactively for `FreeAgentAuthorization--ClientId`
     and/or `FreeAgentAuthorization--ClientSecret` only when a value is missing
     (or `-PromptFreeAgentClientId`/`-PromptFreeAgentClientSecret` forces
@@ -246,7 +334,7 @@ The script:
     [dev.freeagent.com](https://dev.freeagent.com/) first. The refresh token
     is captured separately, through the admin website's FreeAgent
     authorization page, not by this script.
-11. Seeds the invoice configurations, passing `--environment <env>` (and
+12. Seeds the invoice configurations, passing `--environment <env>` (and
     `--clear-database` when `-ClearDatabase` is supplied — see below).
 
 ### Function App storage connection string cleanup
@@ -353,16 +441,23 @@ admin has consented to — the scope must also be added here, and the admin
 must sign in again afterward, before a new scope takes effect.
 
 The admin website runs both locally (from `src/InvoiceManager.AdminWeb`) and
-deployed to Azure Container Apps. Terraform registers two callback URIs on each
-app registration: the local `https://localhost:5001/signin-oidc` (from
-`redirect_uris` in the `.tfvars`) and the deployed
-`https://adminweb.<env-domain>/signin-oidc` (derived automatically from the
-Container Apps environment). Behind the Container Apps ingress the app honors
-`X-Forwarded-Proto` (forwarded-headers middleware) so the callback is built as
-`https://`. Both administrator and workflow authorization use the authorization
-code flow with PKCE and return the code in the callback query string. Query mode
-avoids treating Entra's cross-origin callback as a form post, which .NET 11's
-automatic CSRF protection rejects before the OIDC handler can validate it.
+deployed to Azure Container Apps. Terraform registers both `/signin-oidc` and
+`/workflow-signin-oidc` for the local `https://localhost:5001` origin, the
+canonical custom hostname, and the generated Container Apps hostname. For test,
+the canonical callbacks are:
+
+```text
+https://invoicemanager-test.omnics.tech/signin-oidc
+https://invoicemanager-test.omnics.tech/workflow-signin-oidc
+```
+
+Production uses the same paths on `https://invoicemanager.omnics.tech`. Behind
+the Container Apps ingress the app honors `X-Forwarded-Proto`
+(forwarded-headers middleware) so the callback is built as `https://`. Both
+administrator and workflow authorization use the authorization code flow with
+PKCE and return the code in the callback query string. Query mode avoids
+treating Entra's cross-origin callback as a form post, which .NET 11's automatic
+CSRF protection rejects before the OIDC handler can validate it.
 
 The deployed image is a **public ghcr.io package** pulled anonymously, so no
 registry credential is stored anywhere and there is nothing to rotate. CI builds
@@ -426,18 +521,24 @@ refresh token is written straight to Key Vault
 (`FreeAgentAuthorization--RefreshToken`, via `IFreeAgentAuthorizationStore`)
 and never placed in the authentication cookie.
 
-Two separate FreeAgent OAuth apps exist, registered manually at
+FreeAgent OAuth apps are registered manually at
 [dev.freeagent.com](https://dev.freeagent.com/) (no Terraform provider — see
 `Deploy-Infra.ps1`'s FreeAgent client-credential provisioning above):
 
 - **`Omnics InvoiceManager Sandbox`** — used by the test environment and by
   opt-in sandbox integration tests. Redirect URI:
-  `https://<test-adminweb-fqdn>/freeagent-authorization/callback`, plus
+  `https://invoicemanager-test.omnics.tech/freeagent-authorization/callback`, plus
   `https://localhost:5001/freeagent-authorization/callback` for local dev.
-- **`Omnics InvoiceManager`** — used by production. Redirect URI:
-  `https://<production-adminweb-fqdn>/freeagent-authorization/callback`.
+- **Future `Omnics InvoiceManager` production app** — this app does not exist
+  yet. When it is created, configure the redirect URI
+  `https://invoicemanager.omnics.tech/freeagent-authorization/callback`.
 
-Each app's client ID/secret are provisioned into that environment's Key Vault
+Before validating test authorization, add the canonical test redirect URI to
+the existing sandbox app manually. No other external hostname-dependent callback
+registration is currently known: Entra is Terraform-managed, and FreeAgent is
+the only manual registration used by AdminWeb.
+
+Each app's client ID/secret is provisioned into that environment's Key Vault
 by `Deploy-Infra.ps1` (`FreeAgentAuthorization--ClientId`/`--ClientSecret`);
 the refresh token is captured separately, once, by an administrator
 completing the FreeAgent authorization section on that environment's
