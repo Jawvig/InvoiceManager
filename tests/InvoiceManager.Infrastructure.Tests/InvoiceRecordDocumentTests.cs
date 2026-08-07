@@ -1,5 +1,6 @@
 using System.Text.Json;
 using InvoiceManager.Core;
+using InvoiceManager.Core.Integrations.FreeAgent;
 using InvoiceManager.Infrastructure.CosmosDb;
 using NodaMoney;
 
@@ -68,6 +69,36 @@ public sealed class InvoiceRecordDocumentTests
         var record = BuildRecord(new FreeAgentMatchExpected(
             SampleActualDetails,
             new OneDriveDetails(OneDriveLocation, DriveId, ItemId)));
+
+        var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
+
+        Assert.Equal(record, roundTripped);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesRecord_WhenStateIsFreeAgentError_WithNoAttemptedAttachment()
+    {
+        var record = BuildRecord(new FreeAgentError(
+            SampleActualDetails,
+            new OneDriveDetails(OneDriveLocation, DriveId, ItemId),
+            "FreeAgent bill locked",
+            Option.None));
+
+        var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
+
+        Assert.Equal(record, roundTripped);
+    }
+
+    [Fact]
+    public void RoundTrip_PreservesRecord_WhenStateIsFreeAgentError_WithAttemptedAttachment()
+    {
+        var record = BuildRecord(new FreeAgentError(
+            SampleActualDetails,
+            new OneDriveDetails(OneDriveLocation, DriveId, ItemId),
+            "verification failed on the prior attempt",
+            new FreeAgentAttachmentMetadata(
+                "2025-07-05 Test Invoice G152207778 £9.99 exc.pdf", 1024, "application/pdf",
+                new DateTimeOffset(2025, 7, 6, 8, 30, 0, TimeSpan.Zero))));
 
         var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
 

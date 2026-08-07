@@ -202,7 +202,8 @@ internal sealed class InvoiceRecordDocument
         nameof(FreeAgentInterventionPending) => new FreeAgentInterventionPending(
             RequiredActualDetails(), RequiredOneDriveDetails(), RequiredFreeAgentInterventionId()),
         nameof(FreeAgentError) => new FreeAgentError(
-            RequiredActualDetails(), RequiredOneDriveDetails(), LastError ?? string.Empty),
+            RequiredActualDetails(), RequiredOneDriveDetails(), LastError ?? string.Empty,
+            FreeAgentAttachment is { } attemptedAttachment ? attemptedAttachment.ToMetadata() : Option.None),
         _ => throw new InvalidOperationException(
             $"Invoice record document '{Id}' has unrecognised status '{Status}'."),
     };
@@ -310,6 +311,9 @@ internal sealed class InvoiceRecordDocument
             ActualDetails = ActualInvoiceDetailsDocument.FromDetails(freeAgentError.ActualDetails),
             OneDriveDetails = OneDriveDetailsDocument.FromDetails(freeAgentError.OneDriveDetails),
             LastError = freeAgentError.ErrorMessage,
+            FreeAgentAttachment = freeAgentError.AttemptedAttachment is FreeAgentAttachmentMetadata attempted
+                ? FreeAgentAttachmentMetadataDocument.FromMetadata(attempted)
+                : null,
         },
     };
 

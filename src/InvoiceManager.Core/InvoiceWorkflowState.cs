@@ -104,8 +104,20 @@ public sealed record FreeAgentInterventionPending(
 /// and attachment as one step, rather than restarting OneDrive reconciliation or
 /// source retrieval from scratch.
 /// </summary>
+/// <param name="AttemptedAttachment">
+/// The exact metadata of an attachment this run genuinely POSTed to FreeAgent before
+/// erroring - set only when the upload itself succeeded but its read-back verification
+/// failed (<c>FreeAgentVerificationFailed</c> from the attach step specifically), so a
+/// retry can pass it back as <c>expectedExisting</c> and recognise its own prior upload.
+/// <see cref="Core.None"/> for every other error cause (a lock, a business rejection, a
+/// technical exception, or a failure before the attach step ever ran), so a retry can
+/// never mistake a bill's pre-existing, unrelated attachment for its own.
+/// </param>
 public sealed record FreeAgentError(
-    ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, string ErrorMessage);
+    ActualInvoiceDetails ActualDetails,
+    OneDriveDetails OneDriveDetails,
+    string ErrorMessage,
+    Option<FreeAgentAttachmentMetadata> AttemptedAttachment);
 
 /// <summary>
 /// The current state of an invoice record as it moves through retrieval,
