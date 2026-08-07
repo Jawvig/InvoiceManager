@@ -123,8 +123,8 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
             state: new FreeAgentMatchExpected(
                 BuildActualDetails(),
                 new OneDriveDetails("/drives/test/root:/Bills/Test/fa-match.pdf", "test-drive", "fa-match-item")));
-        var freeAgentErrorNotDue = BuildRecord(
-            new InvoiceConfigurationId("freeagent-error-not-due"),
+        var freeAgentErrorDue = BuildRecord(
+            new InvoiceConfigurationId("freeagent-error-due"),
             new DateOnly(2025, 7, 8),
             state: new FreeAgentError(
                 BuildActualDetails(),
@@ -145,18 +145,18 @@ public sealed class CosmosInvoiceRecordRepositoryTests : IAsyncLifetime
         await repository.CreateIfNotExistsAsync(notFoundDue);
         await repository.CreateIfNotExistsAsync(savedDue);
         await repository.CreateIfNotExistsAsync(freeAgentMatchExpectedDue);
-        await repository.CreateIfNotExistsAsync(freeAgentErrorNotDue);
+        await repository.CreateIfNotExistsAsync(freeAgentErrorDue);
         await repository.CreateIfNotExistsAsync(freeAgentInterventionPendingNotDue);
 
         var due = await repository.ListDueAsync(new DateOnly(2025, 7, 15));
 
-        // Expected, RetrievalError, Retrieved and FreeAgentMatchExpected are retryable;
-        // NotFound (terminal), SavedToOneDrive (done), FreeAgentError (not yet safe to
-        // resume - see ListDueAsync's comment), FreeAgentInterventionPending
-        // (decision-gated, not polled), and future-dated records are excluded.
+        // Expected, RetrievalError, Retrieved, FreeAgentMatchExpected, and FreeAgentError
+        // are retryable; NotFound (terminal), SavedToOneDrive (done),
+        // FreeAgentInterventionPending (decision-gated, not polled), and future-dated
+        // records are excluded.
         InvoiceRecordId[] expected =
         [
-            expectedDue.Id, retrievalErrorDue.Id, retrievedDue.Id, freeAgentMatchExpectedDue.Id,
+            expectedDue.Id, retrievalErrorDue.Id, retrievedDue.Id, freeAgentMatchExpectedDue.Id, freeAgentErrorDue.Id,
         ];
         Assert.Equal(
             expected.OrderBy(id => id.Value),

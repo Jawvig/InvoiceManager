@@ -44,8 +44,7 @@ public class InMemoryInvoiceRecordRepository : IInvoiceRecordRepository
     {
         IReadOnlyList<InvoiceRecord> due = store
             .Where(r =>
-                // FreeAgentError is deliberately excluded - see CosmosInvoiceRecordRepository.ListDueAsync.
-                r.State is Expected or RetrievalError or Retrieved or FreeAgentMatchExpected
+                r.State is Expected or RetrievalError or Retrieved or FreeAgentMatchExpected or FreeAgentError
                 && r.ExpectedDate <= asOf)
             .ToList();
         return Task.FromResult(due);

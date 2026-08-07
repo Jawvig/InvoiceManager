@@ -138,6 +138,12 @@ public sealed class DueInvoiceProcessor(
         Activity? recordActivity,
         CancellationToken cancellationToken)
     {
+        // A record already inside the FreeAgent stage resumes there directly, re-fetching
+        // the PDF bytes from OneDrive rather than restarting retrieval/reconciliation - see
+        // docs/workflow-states.md's FreeAgentMatchExpected note.
+        if (record.State is FreeAgentMatchExpected or FreeAgentError)
+            return await ResumeFreeAgentStageAsync(record, snapshot, recordActivity, cancellationToken);
+
         if (!sourcesByType.TryGetValue(snapshot.IntegrationType, out var source))
         {
             throw new InvalidOperationException(
@@ -173,7 +179,7 @@ public sealed class DueInvoiceProcessor(
         }
 
         if (search is OneDriveMatch reconciledMatch)
-            return await ReconcileAsync(record, configuration, reconciledMatch, recordActivity, cancellationToken);
+            return await ReconcileAsync(record, configuration, snapshot, reconciledMatch, recordActivity, cancellationToken);
 
         // No existing file: fall through to the source integration.
         InvoiceSourceResult result;
@@ -210,32 +216,97 @@ public sealed class DueInvoiceProcessor(
             new OneDriveUploadRequest(snapshot.OneDriveFolder, fileName, match.PdfContent),
             cancellationToken);
 
+        // save_fork: when FreeAgent matching is configured, go straight to
+        // FreeAgentMatchExpected - SavedToOneDrive is never written - so a crash between
+        // "file available" and "FreeAgent stage entered" never strands the record in a
+        // state the due query has stopped re-selecting (see docs/workflow-states.md).
+        if (snapshot.FreeAgentMatching is FreeAgentBillMatching matching)
+        {
+            var matchExpected = retrieved with { State = new FreeAgentMatchExpected(match.Details, oneDriveDetails) };
+            await recordRepository.ReplaceAsync(matchExpected, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("state_freeagent_match_expected"));
+
+            // Next-expected-record generation happens here, unconditionally - the recurring
+            // schedule never stalls on a FreeAgent-side conflict below (see docs/workflow-states.md).
+            await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
+
+            logger.LogInformation(
+                "Saved invoice {FileName} for record {RecordId}; entering the FreeAgent stage.", fileName, record.Id);
+
+            return await ProcessFreeAgentStageAsync(
+                matchExpected, matching, match.Details, oneDriveDetails, match.PdfContent, fileName, recordActivity, cancellationToken);
+        }
+
         // Saved to OneDrive: persist before creating the next expected record.
         var saved = retrieved with { State = new SavedToOneDrive(match.Details, oneDriveDetails) };
         await recordRepository.ReplaceAsync(saved, cancellationToken);
         recordActivity?.AddEvent(new ActivityEvent("state_saved_to_onedrive"));
 
-        // Next-expected-record generation happens here, unconditionally - the recurring
-        // schedule never stalls on a FreeAgent-side conflict below (see docs/workflow-states.md).
         await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
 
         logger.LogInformation("Saved invoice {FileName} for record {RecordId}.", fileName, record.Id);
-
-        if (snapshot.FreeAgentMatching is FreeAgentBillMatching matching)
-        {
-            return await ProcessFreeAgentStageAsync(
-                saved, matching, match.Details, oneDriveDetails, match.PdfContent, fileName, recordActivity, cancellationToken);
-        }
 
         return new ProcessingSucceeded(record.Id);
     }
 
     /// <summary>
-    /// Matches, reconciles, and attaches the invoice to a FreeAgent bill, entirely within
-    /// this run using the PDF bytes already retrieved. A record left mid-stage (ambiguous
-    /// match, conflict, or intervention) is not currently retried automatically on a later
-    /// run - see docs/workflow.md's FreeAgent section for this known gap (resuming a later
-    /// run needs a way to re-fetch the PDF bytes, which OneDrive reconciliation also lacks).
+    /// Resumes the FreeAgent stage for a record already at <see cref="FreeAgentMatchExpected"/>
+    /// or <see cref="FreeAgentError"/>: re-downloads the invoice PDF from OneDrive (the bytes are
+    /// never persisted between steps) and re-runs matching, reconciliation, and attachment as one
+    /// step, exactly as <see cref="ProcessFreeAgentStageAsync"/> does within the initial run.
+    /// </summary>
+    private async Task<DueInvoiceProcessingResult> ResumeFreeAgentStageAsync(
+        InvoiceRecord record,
+        InvoiceProcessingSnapshot snapshot,
+        Activity? recordActivity,
+        CancellationToken cancellationToken)
+    {
+        var (actualDetails, oneDriveDetails) = record.State switch
+        {
+            FreeAgentMatchExpected matchExpected => (matchExpected.ActualDetails, matchExpected.OneDriveDetails),
+            FreeAgentError error => (error.ActualDetails, error.OneDriveDetails),
+            _ => throw new InvalidOperationException(
+                $"ResumeFreeAgentStageAsync called for record {record.Id} in unsupported state '{record.State.GetType().Name}'."),
+        };
+
+        if (snapshot.FreeAgentMatching is not FreeAgentBillMatching matching)
+        {
+            throw new InvalidOperationException(
+                $"Record {record.Id} is in the FreeAgent stage but its configuration no longer has FreeAgent matching configured.");
+        }
+
+        byte[] pdfContent;
+        try
+        {
+            pdfContent = await oneDriveIntegration.DownloadAsync(oneDriveDetails, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            const string reason = "Could not re-download the invoice from OneDrive.";
+            await MarkFreeAgentErrorAsync(record, actualDetails, oneDriveDetails, $"{reason} {ex.Message}", cancellationToken);
+            recordActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            recordActivity?.AddException(ex);
+            logger.LogError(ex, "Re-downloading the invoice from OneDrive failed for record {RecordId}; marked FreeAgentError.", record.Id);
+            return new ProcessingFreeAgentConflict(record.Id, reason);
+        }
+
+        var fileName = invoiceFilename.Generate(
+            actualDetails.ActualInvoiceDate,
+            snapshot.InvoiceDescription,
+            actualDetails.SourceInvoiceId.Value,
+            actualDetails.ActualAmount,
+            snapshot.VatMode);
+
+        return await ProcessFreeAgentStageAsync(
+            record, matching, actualDetails, oneDriveDetails, pdfContent, fileName, recordActivity, cancellationToken);
+    }
+
+    /// <summary>
+    /// Matches, reconciles, and attaches the invoice to a FreeAgent bill using the supplied
+    /// PDF bytes - either just retrieved/reconciled within this run, or re-downloaded by
+    /// <see cref="ResumeFreeAgentStageAsync"/> for a record left mid-stage (ambiguous match,
+    /// conflict, or intervention) on an earlier run. See docs/workflow-states.md's FreeAgent
+    /// stage for the full state shape.
     /// </summary>
     private async Task<DueInvoiceProcessingResult> ProcessFreeAgentStageAsync(
         InvoiceRecord savedRecord,
@@ -269,9 +340,14 @@ public sealed class DueInvoiceProcessor(
         switch (matchResult)
         {
             case NoFreeAgentBillMatch:
+                // Clears a prior FreeAgentError back to FreeAgentMatchExpected so the next
+                // retry re-attempts matching instead of resuming an error message that no
+                // longer applies; a no-op write when already FreeAgentMatchExpected.
+                await EnsureFreeAgentMatchExpectedAsync(savedRecord, actualDetails, oneDriveDetails, cancellationToken);
                 logger.LogInformation("No FreeAgent bill matched record {RecordId}.", savedRecord.Id);
                 return new ProcessingFreeAgentConflict(savedRecord.Id, "No FreeAgent bill matched the invoice.");
             case AmbiguousFreeAgentBillMatch ambiguous:
+                await EnsureFreeAgentMatchExpectedAsync(savedRecord, actualDetails, oneDriveDetails, cancellationToken);
                 logger.LogWarning(
                     "{CandidateCount} FreeAgent bills matched record {RecordId}; never choosing among candidates.",
                     ambiguous.Candidates.Count, savedRecord.Id);
@@ -496,6 +572,23 @@ public sealed class DueInvoiceProcessor(
         return new ProcessingSucceeded(reconciledRecord.Id);
     }
 
+    /// <summary>
+    /// Ensures the record is at <see cref="FreeAgentMatchExpected"/>, writing it only when the
+    /// current state differs (clearing a prior <see cref="FreeAgentError"/>; a no-op otherwise).
+    /// </summary>
+    private async Task EnsureFreeAgentMatchExpectedAsync(
+        InvoiceRecord record,
+        ActualInvoiceDetails actualDetails,
+        OneDriveDetails oneDriveDetails,
+        CancellationToken cancellationToken)
+    {
+        if (record.State is FreeAgentMatchExpected)
+            return;
+
+        var matchExpected = record with { State = new FreeAgentMatchExpected(actualDetails, oneDriveDetails) };
+        await recordRepository.ReplaceAsync(matchExpected, cancellationToken);
+    }
+
     private async Task MarkFreeAgentErrorAsync(
         InvoiceRecord record,
         ActualInvoiceDetails actualDetails,
@@ -509,17 +602,38 @@ public sealed class DueInvoiceProcessor(
     }
 
     /// <summary>
-    /// Records a match against a file already in OneDrive: sets the record to
-    /// <see cref="ReconciledFromOneDrive"/> (with the match reason and time) and
-    /// creates the next expected record, without calling the source or uploading.
+    /// Records a match against a file already in OneDrive. reconcile_fork: when FreeAgent
+    /// matching is configured, goes straight to <see cref="FreeAgentMatchExpected"/> -
+    /// <see cref="ReconciledFromOneDrive"/> is never written - and enters the FreeAgent stage
+    /// using the matched file's bytes; otherwise sets <see cref="ReconciledFromOneDrive"/> (with
+    /// the match reason and time). Either way the next expected record is created, without
+    /// calling the source or re-uploading.
     /// </summary>
     private async Task<DueInvoiceProcessingResult> ReconcileAsync(
         InvoiceRecord record,
         InvoiceConfiguration configuration,
+        InvoiceProcessingSnapshot snapshot,
         OneDriveMatch match,
         Activity? recordActivity,
         CancellationToken cancellationToken)
     {
+        if (snapshot.FreeAgentMatching is FreeAgentBillMatching)
+        {
+            var matchExpected = record with
+            {
+                State = new FreeAgentMatchExpected(match.Details, match.OneDriveDetails),
+            };
+            await recordRepository.ReplaceAsync(matchExpected, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("state_freeagent_match_expected"));
+            logger.LogInformation(
+                "Reconciled record {RecordId} against existing OneDrive file at {Location}; entering the FreeAgent stage.",
+                record.Id, match.OneDriveDetails.OneDriveLocation);
+
+            await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
+
+            return await ResumeFreeAgentStageAsync(matchExpected, snapshot, recordActivity, cancellationToken);
+        }
+
         var reconciled = record with
         {
             State = new ReconciledFromOneDrive(
