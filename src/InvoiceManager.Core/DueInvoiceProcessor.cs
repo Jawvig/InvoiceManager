@@ -372,8 +372,13 @@ public sealed class DueInvoiceProcessor(
         // Tracks the most recent genuine proof of our own upload to this bill, so the catch
         // block below can preserve it if a later step (including persisting the terminal
         // FreeAgentAttached state itself) then fails - a technical failure at that point
-        // doesn't undo the successful FreeAgent-side upload it followed.
-        Option<FreeAgentAttemptedAttachment> lastKnownAttachment = Option.None;
+        // doesn't undo the successful FreeAgent-side upload it followed. Seeded from a prior
+        // attempt's proof when this retry rematches the same bill, so a fresh reconciliation
+        // failure striking before the upload step is reached doesn't discard it for nothing.
+        Option<FreeAgentAttemptedAttachment> lastKnownAttachment =
+            savedRecord.State is FreeAgentError { AttemptedAttachment: FreeAgentAttemptedAttachment seed } && seed.Bill == billIdentity
+                ? seed
+                : Option.None;
 
         try
         {
