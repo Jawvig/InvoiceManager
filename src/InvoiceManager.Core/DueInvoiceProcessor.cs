@@ -431,13 +431,19 @@ public sealed class DueInvoiceProcessor(
             await recordRepository.ReplaceAsync(reconciledRecord, cancellationToken);
             recordActivity?.AddEvent(new ActivityEvent("state_freeagent_bill_reconciled"));
 
-            // expectedExisting is derived from what we're about to upload, not a persisted
-            // last-known-good value - the filename/content are already deterministic for this
-            // invoice, so a retry (after a technical failure or a prior verification failure)
-            // recognises its own already-uploaded attachment instead of misreporting it as
-            // FreeAgentAttachmentUnexpectedExisting and getting permanently stuck.
-            var expectedExisting = new FreeAgentAttachmentMetadata(
-                fileName, pdfContent.Length, "application/pdf", timeProvider.GetUtcNow());
+            // expectedExisting is derived from what we're about to upload (filename/content are
+            // deterministic for this invoice) only when resuming a FreeAgentError, so a retry
+            // after a technical failure or a prior verification failure recognises its own
+            // already-uploaded attachment instead of misreporting it as
+            // FreeAgentAttachmentUnexpectedExisting and getting permanently stuck. The very
+            // first attempt (fresh from save_fork/reconcile_fork, or after a no-match/ambiguous
+            // result cleared back to FreeAgentMatchExpected) has never attempted an attach, so
+            // any attachment already on the bill can only be someone else's - always None there,
+            // so it is never mistaken for our own by a coincidental filename/size/content-type
+            // match.
+            Option<FreeAgentAttachmentMetadata> expectedExisting = savedRecord.State is FreeAgentError
+                ? new FreeAgentAttachmentMetadata(fileName, pdfContent.Length, "application/pdf", timeProvider.GetUtcNow())
+                : Option.None;
             var uploadResult = await freeAgentAttachmentUploader.UploadAsync(
                 billIdentity, pdfContent, fileName, expectedExisting, cancellationToken);
 

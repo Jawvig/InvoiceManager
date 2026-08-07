@@ -875,6 +875,54 @@ public sealed class DueInvoiceProcessorTests
     }
 
     [Fact]
+    public async Task ProcessDueAsync_NeverFabricatesExpectedExisting_OnAFirstAttachAttempt()
+    {
+        // A record's very first attach attempt (freshly matched via save_fork/reconcile_fork,
+        // never having reached FreeAgentError) must always pass Option.None: any attachment
+        // already on the bill can only belong to someone else, and must never be mistaken for
+        // our own upload by a coincidental filename/size/content-type match.
+        var matching = new FreeAgentBillMatching(
+            new FreeAgentContact(new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Test Contact"),
+            DateReconciliation: Option.None,
+            AmountReconciliation: Option.None);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10), freeAgentMatching: matching);
+        var dueRecord = Records.Build(config, expectedDate: new DateOnly(2025, 7, 10));
+        var records = new InMemoryInvoiceRecordRepository(dueRecord);
+
+        var source = new FakeInvoiceSourceIntegration(
+            BuildMatch(new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), "G152207778"));
+        var oneDrive = new FakeOneDriveIntegration();
+
+        var billIdentity = new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1");
+        var bill = new FreeAgentBillSnapshot(
+            billIdentity, FreeAgentBillStatus.Open, new DateOnly(2025, 7, 12), new DateOnly(2025, 8, 12),
+            new Money(10.00m, "GBP"), new Money(0m, "GBP"), new Money(10.00m, "GBP"), Option.None,
+            matching.Contact.Url, "REF-1", [], Option.None);
+        var matcher = new FakeFreeAgentBillMatcher { Result = new FreeAgentBillFound(bill) };
+        var attached = new FreeAgentAttachmentMetadata("invoice.pdf", 3, "application/pdf", Today.ToDateTime(TimeOnly.MinValue));
+        var uploader = new FakeFreeAgentAttachmentUploader { Upload = (_, _, _) => new FreeAgentAttachmentUploaded(attached) };
+
+        var processor = new DueInvoiceProcessor(
+            records,
+            new FakeConfigurationRepository(config),
+            [source],
+            oneDrive,
+            BuildFilename(),
+            BuildGenerator(records, config),
+            matcher,
+            new FakeFreeAgentBillReconciler(),
+            uploader,
+            new InMemoryFreeAgentInterventionRepository(),
+            new FixedTimeProvider(Today),
+            NullLogger<DueInvoiceProcessor>.Instance);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingSucceeded);
+        Assert.True(Assert.Single(uploader.ExpectedExistingRequests) is None);
+    }
+
+    [Fact]
     public async Task ProcessDueAsync_MarksRetrievalError_WhenOneDriveSearchThrows()
     {
         var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10));
