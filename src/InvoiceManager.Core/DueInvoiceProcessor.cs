@@ -138,6 +138,12 @@ public sealed class DueInvoiceProcessor(
         Activity? recordActivity,
         CancellationToken cancellationToken)
     {
+        // A record already inside the FreeAgent stage resumes there directly, re-fetching
+        // the PDF bytes from OneDrive rather than restarting retrieval/reconciliation - see
+        // docs/workflow-states.md's FreeAgentMatchExpected note.
+        if (record.State is FreeAgentMatchExpected or FreeAgentError)
+            return await ResumeFreeAgentStageAsync(record, snapshot, recordActivity, cancellationToken);
+
         if (!sourcesByType.TryGetValue(snapshot.IntegrationType, out var source))
         {
             throw new InvalidOperationException(
@@ -173,7 +179,7 @@ public sealed class DueInvoiceProcessor(
         }
 
         if (search is OneDriveMatch reconciledMatch)
-            return await ReconcileAsync(record, configuration, reconciledMatch, recordActivity, cancellationToken);
+            return await ReconcileAsync(record, configuration, snapshot, reconciledMatch, recordActivity, cancellationToken);
 
         // No existing file: fall through to the source integration.
         InvoiceSourceResult result;
@@ -210,32 +216,100 @@ public sealed class DueInvoiceProcessor(
             new OneDriveUploadRequest(snapshot.OneDriveFolder, fileName, match.PdfContent),
             cancellationToken);
 
+        // save_fork: when FreeAgent matching is configured, go straight to
+        // FreeAgentMatchExpected - SavedToOneDrive is never written - so a crash between
+        // "file available" and "FreeAgent stage entered" never strands the record in a
+        // state the due query has stopped re-selecting (see docs/workflow-states.md).
+        if (snapshot.FreeAgentMatching is FreeAgentBillMatching matching)
+        {
+            var matchExpected = retrieved with { State = new FreeAgentMatchExpected(match.Details, oneDriveDetails) };
+            await recordRepository.ReplaceAsync(matchExpected, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("state_freeagent_match_expected"));
+
+            // Next-expected-record generation happens here, unconditionally - the recurring
+            // schedule never stalls on a FreeAgent-side conflict below (see docs/workflow-states.md).
+            await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
+
+            logger.LogInformation(
+                "Saved invoice {FileName} for record {RecordId}; entering the FreeAgent stage.", fileName, record.Id);
+
+            return await ProcessFreeAgentStageAsync(
+                matchExpected, matching, match.Details, oneDriveDetails, match.PdfContent, fileName, recordActivity, cancellationToken);
+        }
+
         // Saved to OneDrive: persist before creating the next expected record.
         var saved = retrieved with { State = new SavedToOneDrive(match.Details, oneDriveDetails) };
         await recordRepository.ReplaceAsync(saved, cancellationToken);
         recordActivity?.AddEvent(new ActivityEvent("state_saved_to_onedrive"));
 
-        // Next-expected-record generation happens here, unconditionally - the recurring
-        // schedule never stalls on a FreeAgent-side conflict below (see docs/workflow-states.md).
         await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
 
         logger.LogInformation("Saved invoice {FileName} for record {RecordId}.", fileName, record.Id);
-
-        if (snapshot.FreeAgentMatching is FreeAgentBillMatching matching)
-        {
-            return await ProcessFreeAgentStageAsync(
-                saved, matching, match.Details, oneDriveDetails, match.PdfContent, fileName, recordActivity, cancellationToken);
-        }
 
         return new ProcessingSucceeded(record.Id);
     }
 
     /// <summary>
-    /// Matches, reconciles, and attaches the invoice to a FreeAgent bill, entirely within
-    /// this run using the PDF bytes already retrieved. A record left mid-stage (ambiguous
-    /// match, conflict, or intervention) is not currently retried automatically on a later
-    /// run - see docs/workflow.md's FreeAgent section for this known gap (resuming a later
-    /// run needs a way to re-fetch the PDF bytes, which OneDrive reconciliation also lacks).
+    /// Resumes the FreeAgent stage for a record already at <see cref="FreeAgentMatchExpected"/>
+    /// or <see cref="FreeAgentError"/>: re-downloads the invoice PDF from OneDrive (the bytes are
+    /// never persisted between steps) and re-runs matching, reconciliation, and attachment as one
+    /// step, exactly as <see cref="ProcessFreeAgentStageAsync"/> does within the initial run.
+    /// </summary>
+    private async Task<DueInvoiceProcessingResult> ResumeFreeAgentStageAsync(
+        InvoiceRecord record,
+        InvoiceProcessingSnapshot snapshot,
+        Activity? recordActivity,
+        CancellationToken cancellationToken)
+    {
+        (ActualInvoiceDetails actualDetails, OneDriveDetails oneDriveDetails, Option<FreeAgentAttemptedAttachment> existingAttemptedAttachment) = record.State switch
+        {
+            FreeAgentMatchExpected matchExpected => (matchExpected.ActualDetails, matchExpected.OneDriveDetails, Option.None),
+            FreeAgentError error => (error.ActualDetails, error.OneDriveDetails, error.AttemptedAttachment),
+            _ => throw new InvalidOperationException(
+                $"ResumeFreeAgentStageAsync called for record {record.Id} in unsupported state '{record.State.GetType().Name}'."),
+        };
+
+        if (snapshot.FreeAgentMatching is not FreeAgentBillMatching matching)
+        {
+            throw new InvalidOperationException(
+                $"Record {record.Id} is in the FreeAgent stage but its configuration no longer has FreeAgent matching configured.");
+        }
+
+        byte[] pdfContent;
+        try
+        {
+            pdfContent = await oneDriveIntegration.DownloadAsync(oneDriveDetails, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            const string reason = "Could not re-download the invoice from OneDrive.";
+            // A transient re-download failure doesn't change what's already known: preserve any
+            // attachment proof this record already carried rather than clobbering it with None.
+            await MarkFreeAgentErrorAsync(
+                record, actualDetails, oneDriveDetails, $"{reason} {ex.Message}", existingAttemptedAttachment, cancellationToken);
+            recordActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            recordActivity?.AddException(ex);
+            logger.LogError(ex, "Re-downloading the invoice from OneDrive failed for record {RecordId}; marked FreeAgentError.", record.Id);
+            return new ProcessingFailed(record.Id, ex);
+        }
+
+        var fileName = invoiceFilename.Generate(
+            actualDetails.ActualInvoiceDate,
+            snapshot.InvoiceDescription,
+            actualDetails.SourceInvoiceId.Value,
+            actualDetails.ActualAmount,
+            snapshot.VatMode);
+
+        return await ProcessFreeAgentStageAsync(
+            record, matching, actualDetails, oneDriveDetails, pdfContent, fileName, recordActivity, cancellationToken);
+    }
+
+    /// <summary>
+    /// Matches, reconciles, and attaches the invoice to a FreeAgent bill using the supplied
+    /// PDF bytes - either just retrieved/reconciled within this run, or re-downloaded by
+    /// <see cref="ResumeFreeAgentStageAsync"/> for a record left mid-stage (ambiguous match,
+    /// conflict, or intervention) on an earlier run. See docs/workflow-states.md's FreeAgent
+    /// stage for the full state shape.
     /// </summary>
     private async Task<DueInvoiceProcessingResult> ProcessFreeAgentStageAsync(
         InvoiceRecord savedRecord,
@@ -269,9 +343,14 @@ public sealed class DueInvoiceProcessor(
         switch (matchResult)
         {
             case NoFreeAgentBillMatch:
+                // Clears a prior FreeAgentError back to FreeAgentMatchExpected so the next
+                // retry re-attempts matching instead of resuming an error message that no
+                // longer applies; a no-op write when already FreeAgentMatchExpected.
+                await EnsureFreeAgentMatchExpectedAsync(savedRecord, actualDetails, oneDriveDetails, cancellationToken);
                 logger.LogInformation("No FreeAgent bill matched record {RecordId}.", savedRecord.Id);
                 return new ProcessingFreeAgentConflict(savedRecord.Id, "No FreeAgent bill matched the invoice.");
             case AmbiguousFreeAgentBillMatch ambiguous:
+                await EnsureFreeAgentMatchExpectedAsync(savedRecord, actualDetails, oneDriveDetails, cancellationToken);
                 logger.LogWarning(
                     "{CandidateCount} FreeAgent bills matched record {RecordId}; never choosing among candidates.",
                     ambiguous.Candidates.Count, savedRecord.Id);
@@ -289,104 +368,161 @@ public sealed class DueInvoiceProcessor(
         {
             State = new FreeAgentBillMatched(actualDetails, oneDriveDetails, billIdentity),
         };
-        await recordRepository.ReplaceAsync(matchedRecord, cancellationToken);
-        recordActivity?.AddEvent(new ActivityEvent("state_freeagent_bill_matched"));
 
-        var currentBill = billFound.Bill;
+        // Tracks the most recent genuine proof of our own upload to this bill, so the catch
+        // block below can preserve it if a later step (including persisting the terminal
+        // FreeAgentAttached state itself) then fails - a technical failure at that point
+        // doesn't undo the successful FreeAgent-side upload it followed. Seeded from a prior
+        // attempt's proof when this retry rematches the same bill, so a fresh reconciliation
+        // failure striking before the upload step is reached doesn't discard it for nothing.
+        Option<FreeAgentAttemptedAttachment> lastKnownAttachment =
+            savedRecord.State is FreeAgentError { AttemptedAttachment: FreeAgentAttemptedAttachment seed } && seed.Bill == billIdentity
+                ? seed
+                : Option.None;
 
-        if (matching.DateReconciliation is FreeAgentDateReconciliation && currentBill.DatedOn != actualDetails.ActualInvoiceDate)
+        try
         {
-            var dateResult = await freeAgentBillReconciler.ReconcileDateAsync(
-                billIdentity, actualDetails.ActualInvoiceDate, cancellationToken);
-            var outcome = await HandleReconciliationResultAsync(
-                matchedRecord, actualDetails, oneDriveDetails, billIdentity, dateResult, cancellationToken);
-            if (outcome is DueInvoiceProcessingResult outcomeResult)
+            await recordRepository.ReplaceAsync(matchedRecord, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("state_freeagent_bill_matched"));
+
+            var currentBill = billFound.Bill;
+
+            if (matching.DateReconciliation is FreeAgentDateReconciliation && currentBill.DatedOn != actualDetails.ActualInvoiceDate)
             {
-                return outcomeResult;
+                var dateResult = await freeAgentBillReconciler.ReconcileDateAsync(
+                    billIdentity, actualDetails.ActualInvoiceDate, cancellationToken);
+                var outcome = await HandleReconciliationResultAsync(
+                    matchedRecord, actualDetails, oneDriveDetails, billIdentity, dateResult, cancellationToken);
+                if (outcome is DueInvoiceProcessingResult outcomeResult)
+                {
+                    return outcomeResult;
+                }
+            }
+
+            // Amount reconciliation only ever targets a bill with exactly one item - "never
+            // guess which item to change" extends to never auto-picking the only item on a
+            // multi-item bill. A mismatched total on a bill with zero or multiple items is never
+            // silently accepted, though - falling through to attach as though reconciled would
+            // leave a wrong amount on the bill with no record of the discrepancy.
+            if (matching.AmountReconciliation is FreeAgentAmountReconciliation && currentBill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
+            {
+                if (currentBill.Items.Count != 1)
+                {
+                    const string reason =
+                        "FreeAgent bill amount does not match the invoice and the bill does not have exactly one item to reconcile.";
+                    await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, reason, Option.None, cancellationToken);
+                    return new ProcessingFreeAgentConflict(matchedRecord.Id, reason);
+                }
+
+                var item = currentBill.Items[0].ItemUrl;
+                var amountResult = await freeAgentBillReconciler.ReconcileItemAmountAsync(
+                    billIdentity, item, actualDetails.ActualAmount, cancellationToken);
+                var outcome = await HandleReconciliationResultAsync(
+                    matchedRecord, actualDetails, oneDriveDetails, billIdentity, amountResult, cancellationToken);
+                if (outcome is DueInvoiceProcessingResult outcomeResult)
+                {
+                    return outcomeResult;
+                }
+
+                // The reconciler verified the item itself reflects the requested amount, but the
+                // actual goal - the reason this branch ran at all - is the bill's own aggregate
+                // total matching the invoice. Verify that explicitly rather than assuming the two
+                // always move together (VAT/rounding could leave them apart).
+                if (amountResult is FreeAgentReconciled reconciled &&
+                    reconciled.Bill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
+                {
+                    const string reason =
+                        "FreeAgent accepted the item amount change but the bill's aggregate total still does not match the invoice.";
+                    await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, reason, Option.None, cancellationToken);
+                    return new ProcessingFreeAgentConflict(matchedRecord.Id, reason);
+                }
+            }
+
+            var reconciledRecord = matchedRecord with
+            {
+                State = new FreeAgentBillReconciled(actualDetails, oneDriveDetails, billIdentity),
+            };
+            await recordRepository.ReplaceAsync(reconciledRecord, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("state_freeagent_bill_reconciled"));
+
+            // expectedExisting is only the exact metadata this run itself already POSTed to this
+            // exact bill (see FreeAgentAttemptedAttachment) - never fabricated from what we're
+            // about to upload, and never carried over from a different bill a previous retry
+            // matched. Any attachment already on the bill that we did not genuinely just POST to
+            // it can only be someone else's, or an earlier attempt whose outcome we don't
+            // actually know (a lock, a business rejection, a technical exception) - always None
+            // in those cases, so it is never mistaken for our own by a coincidental
+            // filename/size/content-type match.
+            Option<FreeAgentAttachmentMetadata> expectedExisting =
+                savedRecord.State is FreeAgentError { AttemptedAttachment: FreeAgentAttemptedAttachment attempted } &&
+                attempted.Bill == billIdentity
+                    ? attempted.Attachment
+                    : Option.None;
+
+            var uploadResult = await freeAgentAttachmentUploader.UploadAsync(
+                billIdentity, pdfContent, fileName, expectedExisting, cancellationToken);
+
+            switch (uploadResult)
+            {
+                case FreeAgentAttachmentUploaded uploaded:
+                    lastKnownAttachment = new FreeAgentAttemptedAttachment(billIdentity, uploaded.New);
+                    return await CompleteFreeAgentAttachAsync(
+                        reconciledRecord, actualDetails, oneDriveDetails, billIdentity, uploaded.New, recordActivity, cancellationToken);
+                case FreeAgentAttachmentReplaced replaced:
+                    lastKnownAttachment = new FreeAgentAttemptedAttachment(billIdentity, replaced.New);
+                    return await CompleteFreeAgentAttachAsync(
+                        reconciledRecord, actualDetails, oneDriveDetails, billIdentity, replaced.New, recordActivity, cancellationToken);
+                case FreeAgentAttachmentAlreadyCorrect already:
+                    lastKnownAttachment = new FreeAgentAttemptedAttachment(billIdentity, already.Existing);
+                    return await CompleteFreeAgentAttachAsync(
+                        reconciledRecord, actualDetails, oneDriveDetails, billIdentity, already.Existing, recordActivity, cancellationToken);
+                case FreeAgentAttachmentUnexpectedExisting:
+                    {
+                        const string reason = "The FreeAgent bill already has an attachment that does not match this invoice's last known upload.";
+                        await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, Option.None, cancellationToken);
+                        return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
+                    }
+                case FreeAgentBillLocked locked:
+                    {
+                        var reason = $"FreeAgent bill locked: {locked.Reason}.";
+                        await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, Option.None, cancellationToken);
+                        return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
+                    }
+                case FreeAgentVerificationFailed verificationFailed:
+                    {
+                        // The POST itself succeeded (this is only returned after a successful
+                        // upload whose read-back verification failed), so this exact metadata is
+                        // genuine proof of our own attachment on this bill - safe to hand back as
+                        // expectedExisting on the next retry, as long as it still matches.
+                        var attemptedAttachment = new FreeAgentAttemptedAttachment(
+                            billIdentity,
+                            new FreeAgentAttachmentMetadata(fileName, pdfContent.Length, "application/pdf", timeProvider.GetUtcNow()));
+                        await MarkFreeAgentErrorAsync(
+                            reconciledRecord, actualDetails, oneDriveDetails, verificationFailed.Detail, attemptedAttachment, cancellationToken);
+                        return new ProcessingFreeAgentConflict(reconciledRecord.Id, verificationFailed.Detail);
+                    }
+                default:
+                    {
+                        const string reason = "Unrecognised attachment result.";
+                        await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, Option.None, cancellationToken);
+                        return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
+                    }
             }
         }
-
-        // Amount reconciliation only ever targets a bill with exactly one item - "never
-        // guess which item to change" extends to never auto-picking the only item on a
-        // multi-item bill. A mismatched total on a bill with zero or multiple items is never
-        // silently accepted, though - falling through to attach as though reconciled would
-        // leave a wrong amount on the bill with no record of the discrepancy.
-        if (matching.AmountReconciliation is FreeAgentAmountReconciliation && currentBill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            if (currentBill.Items.Count != 1)
-            {
-                const string reason =
-                    "FreeAgent bill amount does not match the invoice and the bill does not have exactly one item to reconcile.";
-                await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                return new ProcessingFreeAgentConflict(matchedRecord.Id, reason);
-            }
-
-            var item = currentBill.Items[0].ItemUrl;
-            var amountResult = await freeAgentBillReconciler.ReconcileItemAmountAsync(
-                billIdentity, item, actualDetails.ActualAmount, cancellationToken);
-            var outcome = await HandleReconciliationResultAsync(
-                matchedRecord, actualDetails, oneDriveDetails, billIdentity, amountResult, cancellationToken);
-            if (outcome is DueInvoiceProcessingResult outcomeResult)
-            {
-                return outcomeResult;
-            }
-
-            // The reconciler verified the item itself reflects the requested amount, but the
-            // actual goal - the reason this branch ran at all - is the bill's own aggregate
-            // total matching the invoice. Verify that explicitly rather than assuming the two
-            // always move together (VAT/rounding could leave them apart).
-            if (amountResult is FreeAgentReconciled reconciled &&
-                reconciled.Bill.TotalValue.Amount != actualDetails.ActualAmount.Amount)
-            {
-                const string reason =
-                    "FreeAgent accepted the item amount change but the bill's aggregate total still does not match the invoice.";
-                await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                return new ProcessingFreeAgentConflict(matchedRecord.Id, reason);
-            }
-        }
-
-        var reconciledRecord = matchedRecord with
-        {
-            State = new FreeAgentBillReconciled(actualDetails, oneDriveDetails, billIdentity),
-        };
-        await recordRepository.ReplaceAsync(reconciledRecord, cancellationToken);
-        recordActivity?.AddEvent(new ActivityEvent("state_freeagent_bill_reconciled"));
-
-        var uploadResult = await freeAgentAttachmentUploader.UploadAsync(
-            billIdentity, pdfContent, fileName, Option.None, cancellationToken);
-
-        switch (uploadResult)
-        {
-            case FreeAgentAttachmentUploaded uploaded:
-                return await CompleteFreeAgentAttachAsync(
-                    reconciledRecord, actualDetails, oneDriveDetails, billIdentity, uploaded.New, recordActivity, cancellationToken);
-            case FreeAgentAttachmentReplaced replaced:
-                return await CompleteFreeAgentAttachAsync(
-                    reconciledRecord, actualDetails, oneDriveDetails, billIdentity, replaced.New, recordActivity, cancellationToken);
-            case FreeAgentAttachmentAlreadyCorrect already:
-                return await CompleteFreeAgentAttachAsync(
-                    reconciledRecord, actualDetails, oneDriveDetails, billIdentity, already.Existing, recordActivity, cancellationToken);
-            case FreeAgentAttachmentUnexpectedExisting:
-                {
-                    const string reason = "The FreeAgent bill already has an attachment that does not match this invoice's last known upload.";
-                    await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                    return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
-                }
-            case FreeAgentBillLocked locked:
-                {
-                    var reason = $"FreeAgent bill locked: {locked.Reason}.";
-                    await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                    return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
-                }
-            case FreeAgentVerificationFailed verificationFailed:
-                await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, verificationFailed.Detail, cancellationToken);
-                return new ProcessingFreeAgentConflict(reconciledRecord.Id, verificationFailed.Detail);
-            default:
-                {
-                    const string reason = "Unrecognised attachment result.";
-                    await MarkFreeAgentErrorAsync(reconciledRecord, actualDetails, oneDriveDetails, reason, cancellationToken);
-                    return new ProcessingFreeAgentConflict(reconciledRecord.Id, reason);
-                }
+            // A technical failure reconciling or attaching (for example a transient FreeAgent
+            // outage) after the bill was already matched and persisted: fall back to the
+            // retryable FreeAgentError rather than stranding the record in
+            // FreeAgentBillMatched/FreeAgentBillReconciled, both excluded from the due query.
+            // lastKnownAttachment preserves proof of a successful upload if the failure struck
+            // afterwards (for example persisting the terminal FreeAgentAttached state); it stays
+            // None if the attach step never ran or never resolved to a known-good result.
+            await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, ex.Message, lastKnownAttachment, cancellationToken);
+            recordActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            recordActivity?.AddException(ex);
+            logger.LogError(ex, "FreeAgent reconciliation/attachment failed for record {RecordId}; marked FreeAgentError.", matchedRecord.Id);
+            return new ProcessingFailed(matchedRecord.Id, ex);
         }
     }
 
@@ -406,12 +542,13 @@ public sealed class DueInvoiceProcessor(
                 return Option.None;
             case FreeAgentItemNotOnBill:
                 await MarkFreeAgentErrorAsync(
-                    matchedRecord, actualDetails, oneDriveDetails, "Selected FreeAgent item does not belong to the matched bill.", cancellationToken);
+                    matchedRecord, actualDetails, oneDriveDetails, "Selected FreeAgent item does not belong to the matched bill.",
+                    Option.None, cancellationToken);
                 conflictResult = new ProcessingFreeAgentConflict(matchedRecord.Id, "Selected FreeAgent item does not belong to the matched bill.");
                 break;
             case FreeAgentBillLocked locked:
                 await MarkFreeAgentErrorAsync(
-                    matchedRecord, actualDetails, oneDriveDetails, $"FreeAgent bill locked: {locked.Reason}.", cancellationToken);
+                    matchedRecord, actualDetails, oneDriveDetails, $"FreeAgent bill locked: {locked.Reason}.", Option.None, cancellationToken);
                 conflictResult = new ProcessingFreeAgentConflict(matchedRecord.Id, $"FreeAgent bill locked: {locked.Reason}.");
                 break;
             case FreeAgentPaymentInterventionRequired interventionRequired:
@@ -421,15 +558,20 @@ public sealed class DueInvoiceProcessor(
                     return interventionOutcome;
                 }
             case FreeAgentVerificationFailed verificationFailed:
-                await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, verificationFailed.Detail, cancellationToken);
+                // This is reconciliation verification (date/amount), not attachment - no upload
+                // was ever attempted, so no attachment metadata to persist.
+                await MarkFreeAgentErrorAsync(
+                    matchedRecord, actualDetails, oneDriveDetails, verificationFailed.Detail, Option.None, cancellationToken);
                 conflictResult = new ProcessingFreeAgentConflict(matchedRecord.Id, verificationFailed.Detail);
                 break;
             case FreeAgentRemoteRejected remoteRejected:
-                await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, remoteRejected.Detail, cancellationToken);
+                await MarkFreeAgentErrorAsync(
+                    matchedRecord, actualDetails, oneDriveDetails, remoteRejected.Detail, Option.None, cancellationToken);
                 conflictResult = new ProcessingFreeAgentConflict(matchedRecord.Id, remoteRejected.Detail);
                 break;
             default:
-                await MarkFreeAgentErrorAsync(matchedRecord, actualDetails, oneDriveDetails, "Unrecognised reconciliation result.", cancellationToken);
+                await MarkFreeAgentErrorAsync(
+                    matchedRecord, actualDetails, oneDriveDetails, "Unrecognised reconciliation result.", Option.None, cancellationToken);
                 conflictResult = new ProcessingFreeAgentConflict(matchedRecord.Id, "Unrecognised reconciliation result.");
                 break;
         }
@@ -496,30 +638,72 @@ public sealed class DueInvoiceProcessor(
         return new ProcessingSucceeded(reconciledRecord.Id);
     }
 
+    /// <summary>
+    /// Ensures the record is at <see cref="FreeAgentMatchExpected"/>, writing it only when the
+    /// current state differs (clearing a prior <see cref="FreeAgentError"/>; a no-op otherwise).
+    /// </summary>
+    private async Task EnsureFreeAgentMatchExpectedAsync(
+        InvoiceRecord record,
+        ActualInvoiceDetails actualDetails,
+        OneDriveDetails oneDriveDetails,
+        CancellationToken cancellationToken)
+    {
+        if (record.State is FreeAgentMatchExpected)
+            return;
+
+        var matchExpected = record with { State = new FreeAgentMatchExpected(actualDetails, oneDriveDetails) };
+        await recordRepository.ReplaceAsync(matchExpected, cancellationToken);
+    }
+
     private async Task MarkFreeAgentErrorAsync(
         InvoiceRecord record,
         ActualInvoiceDetails actualDetails,
         OneDriveDetails oneDriveDetails,
         string errorMessage,
+        Option<FreeAgentAttemptedAttachment> attemptedAttachment,
         CancellationToken cancellationToken)
     {
-        var errored = record with { State = new FreeAgentError(actualDetails, oneDriveDetails, errorMessage) };
+        var errored = record with
+        {
+            State = new FreeAgentError(actualDetails, oneDriveDetails, errorMessage, attemptedAttachment),
+        };
         await recordRepository.ReplaceAsync(errored, cancellationToken);
         logger.LogError("FreeAgent processing for record {RecordId} failed: {ErrorMessage}", record.Id, errorMessage);
     }
 
     /// <summary>
-    /// Records a match against a file already in OneDrive: sets the record to
-    /// <see cref="ReconciledFromOneDrive"/> (with the match reason and time) and
-    /// creates the next expected record, without calling the source or uploading.
+    /// Records a match against a file already in OneDrive. reconcile_fork: when FreeAgent
+    /// matching is configured, goes straight to <see cref="FreeAgentMatchExpected"/> -
+    /// <see cref="ReconciledFromOneDrive"/> is never written - and enters the FreeAgent stage
+    /// using the matched file's bytes; otherwise sets <see cref="ReconciledFromOneDrive"/> (with
+    /// the match reason and time). Either way the next expected record is created, without
+    /// calling the source or re-uploading.
     /// </summary>
     private async Task<DueInvoiceProcessingResult> ReconcileAsync(
         InvoiceRecord record,
         InvoiceConfiguration configuration,
+        InvoiceProcessingSnapshot snapshot,
         OneDriveMatch match,
         Activity? recordActivity,
         CancellationToken cancellationToken)
     {
+        if (snapshot.FreeAgentMatching is FreeAgentBillMatching)
+        {
+            var matchExpected = record with
+            {
+                State = new FreeAgentMatchExpected(match.Details, match.OneDriveDetails),
+            };
+            await recordRepository.ReplaceAsync(matchExpected, cancellationToken);
+            recordActivity?.AddEvent(new ActivityEvent("state_freeagent_match_expected"));
+            logger.LogInformation(
+                "Reconciled record {RecordId} against existing OneDrive file at {Location}; entering the FreeAgent stage.",
+                record.Id, match.OneDriveDetails.OneDriveLocation);
+
+            await expectedRecordGenerator.GenerateAsync(configuration, cancellationToken);
+
+            return await ResumeFreeAgentStageAsync(matchExpected, snapshot, recordActivity, cancellationToken);
+        }
+
         var reconciled = record with
         {
             State = new ReconciledFromOneDrive(
