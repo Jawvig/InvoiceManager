@@ -826,15 +826,17 @@ public sealed class DueInvoiceProcessorTests
             new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), new SourceInvoiceId("G152207778"));
         var oneDriveDetails = new OneDriveDetails(
             "/drives/test-drive/items/test-folder-item/existing.pdf", "test-drive", "existing-item");
+        var billIdentity = new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1");
         var attemptedAttachment = new FreeAgentAttachmentMetadata(
             "2025-07-12 Test Invoice G152207778 £10.00 exc.pdf", 3, "application/pdf", Today.ToDateTime(TimeOnly.MinValue));
         var erroredRecord = Records.Build(
             config,
             expectedDate: new DateOnly(2025, 7, 10),
-            state: new FreeAgentError(actualDetails, oneDriveDetails, "verification failed on the prior attempt", attemptedAttachment));
+            state: new FreeAgentError(
+                actualDetails, oneDriveDetails, "verification failed on the prior attempt",
+                new FreeAgentAttemptedAttachment(billIdentity, attemptedAttachment)));
         var records = new InMemoryInvoiceRecordRepository(erroredRecord);
 
-        var billIdentity = new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1");
         var bill = new FreeAgentBillSnapshot(
             billIdentity, FreeAgentBillStatus.Open, actualDetails.ActualInvoiceDate, actualDetails.ActualInvoiceDate.AddDays(30),
             actualDetails.ActualAmount, new Money(0m, "GBP"), actualDetails.ActualAmount, Option.None,
@@ -872,6 +874,133 @@ public sealed class DueInvoiceProcessorTests
         }
 
         Assert.Equal(attemptedAttachment, metadata);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_NeverReusesAttemptedAttachment_WhenRetryMatchesADifferentBill()
+    {
+        // Proof of an earlier upload is bound to the bill it was actually uploaded to. If a
+        // later retry matches a different bill (the contact's bills changed, an earlier
+        // ambiguous match resolved differently), that proof must never be presented as evidence
+        // for the new bill - it was never uploaded there.
+        var matching = new FreeAgentBillMatching(
+            new FreeAgentContact(new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Test Contact"),
+            DateReconciliation: Option.None,
+            AmountReconciliation: Option.None);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10), freeAgentMatching: matching);
+        var actualDetails = Actuals.Build(
+            new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), new SourceInvoiceId("G152207778"));
+        var oneDriveDetails = new OneDriveDetails(
+            "/drives/test-drive/items/test-folder-item/existing.pdf", "test-drive", "existing-item");
+        var originalBillIdentity = new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1");
+        var attemptedAttachment = new FreeAgentAttachmentMetadata(
+            "2025-07-12 Test Invoice G152207778 £10.00 exc.pdf", 3, "application/pdf", Today.ToDateTime(TimeOnly.MinValue));
+        var erroredRecord = Records.Build(
+            config,
+            expectedDate: new DateOnly(2025, 7, 10),
+            state: new FreeAgentError(
+                actualDetails, oneDriveDetails, "verification failed on the prior attempt",
+                new FreeAgentAttemptedAttachment(originalBillIdentity, attemptedAttachment)));
+        var records = new InMemoryInvoiceRecordRepository(erroredRecord);
+
+        var differentBillIdentity = new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/2");
+        var bill = new FreeAgentBillSnapshot(
+            differentBillIdentity, FreeAgentBillStatus.Open, actualDetails.ActualInvoiceDate, actualDetails.ActualInvoiceDate.AddDays(30),
+            actualDetails.ActualAmount, new Money(0m, "GBP"), actualDetails.ActualAmount, Option.None,
+            matching.Contact.Url, "REF-2", [], Option.None);
+        var matcher = new FakeFreeAgentBillMatcher { Result = new FreeAgentBillFound(bill) };
+        var source = new FakeInvoiceSourceIntegration(new NoInvoiceMatch());
+        var oneDrive = new FakeOneDriveIntegration { DownloadResult = [1, 2, 3] };
+
+        var attached = new FreeAgentAttachmentMetadata("invoice.pdf", 3, "application/pdf", Today.ToDateTime(TimeOnly.MinValue));
+        var uploader = new FakeFreeAgentAttachmentUploader { Upload = (_, _, _) => new FreeAgentAttachmentUploaded(attached) };
+
+        var processor = new DueInvoiceProcessor(
+            records,
+            new FakeConfigurationRepository(config),
+            [source],
+            oneDrive,
+            BuildFilename(),
+            BuildGenerator(records, config),
+            matcher,
+            new FakeFreeAgentBillReconciler(),
+            uploader,
+            new InMemoryFreeAgentInterventionRepository(),
+            new FixedTimeProvider(Today),
+            NullLogger<DueInvoiceProcessor>.Instance);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingSucceeded);
+        Assert.True(Assert.Single(uploader.ExpectedExistingRequests) is None);
+    }
+
+    [Fact]
+    public async Task ProcessDueAsync_PreservesUploadProof_WhenPersistingFreeAgentAttachedFails()
+    {
+        // A technical failure persisting the terminal FreeAgentAttached state (after FreeAgent
+        // itself already accepted and verified the upload) must not discard the proof that the
+        // upload succeeded - otherwise the next retry finds the real attachment on the bill but
+        // has no way to recognise it as its own.
+        var matching = new FreeAgentBillMatching(
+            new FreeAgentContact(new FreeAgentContactIdentity("https://api.sandbox.freeagent.com/v2/contacts/1"), "Test Contact"),
+            DateReconciliation: Option.None,
+            AmountReconciliation: Option.None);
+        var config = Configurations.Build(startDate: new DateOnly(2025, 7, 10), freeAgentMatching: matching);
+        var actualDetails = Actuals.Build(
+            new DateOnly(2025, 7, 12), new Money(10.00m, "GBP"), new SourceInvoiceId("G152207778"));
+        var oneDriveDetails = new OneDriveDetails(
+            "/drives/test-drive/items/test-folder-item/existing.pdf", "test-drive", "existing-item");
+        var matchExpectedRecord = Records.Build(
+            config,
+            expectedDate: new DateOnly(2025, 7, 10),
+            state: new FreeAgentMatchExpected(actualDetails, oneDriveDetails));
+        var records = new ThrowingOnReplaceStateRepository(matchExpectedRecord, state => state is FreeAgentAttached);
+
+        var billIdentity = new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1");
+        var bill = new FreeAgentBillSnapshot(
+            billIdentity, FreeAgentBillStatus.Open, actualDetails.ActualInvoiceDate, actualDetails.ActualInvoiceDate.AddDays(30),
+            actualDetails.ActualAmount, new Money(0m, "GBP"), actualDetails.ActualAmount, Option.None,
+            matching.Contact.Url, "REF-1", [], Option.None);
+        var matcher = new FakeFreeAgentBillMatcher { Result = new FreeAgentBillFound(bill) };
+        var source = new FakeInvoiceSourceIntegration(new NoInvoiceMatch());
+        var oneDrive = new FakeOneDriveIntegration();
+
+        var attached = new FreeAgentAttachmentMetadata("invoice.pdf", 3, "application/pdf", Today.ToDateTime(TimeOnly.MinValue));
+        var uploader = new FakeFreeAgentAttachmentUploader { Upload = (_, _, _) => new FreeAgentAttachmentUploaded(attached) };
+
+        var processor = new DueInvoiceProcessor(
+            records,
+            new FakeConfigurationRepository(config),
+            [source],
+            oneDrive,
+            BuildFilename(),
+            BuildGenerator(records, config),
+            matcher,
+            new FakeFreeAgentBillReconciler(),
+            uploader,
+            new InMemoryFreeAgentInterventionRepository(),
+            new FixedTimeProvider(Today),
+            NullLogger<DueInvoiceProcessor>.Instance);
+
+        var results = await processor.ProcessDueAsync();
+
+        Assert.True(Assert.Single(results) is ProcessingFailed);
+        var stored = records.All.Single(r => r.Id == matchExpectedRecord.Id);
+        if (stored.State is not FreeAgentError error)
+        {
+            Assert.Fail($"Expected FreeAgentError but was {stored.State}.");
+            return;
+        }
+
+        if (error.AttemptedAttachment is not FreeAgentAttemptedAttachment attemptedAttachment)
+        {
+            Assert.Fail("Expected AttemptedAttachment to preserve proof of the successful upload despite the persistence failure.");
+            return;
+        }
+
+        Assert.Equal(billIdentity, attemptedAttachment.Bill);
+        Assert.Equal(attached, attemptedAttachment.Attachment);
     }
 
     [Fact]
@@ -1053,6 +1182,16 @@ public sealed class DueInvoiceProcessorTests
             replaced.Add(record);
             return base.ReplaceAsync(record, cancellationToken);
         }
+    }
+
+    /// <summary>Throws when asked to persist a record whose state matches <paramref name="failFor"/>, to exercise preserving already-known evidence across a persistence failure.</summary>
+    private sealed class ThrowingOnReplaceStateRepository(InvoiceRecord initial, Func<InvoiceWorkflowState, bool> failFor)
+        : InMemoryInvoiceRecordRepository(initial)
+    {
+        public override Task ReplaceAsync(InvoiceRecord record, CancellationToken cancellationToken = default) =>
+            failFor(record.State)
+                ? throw new InvalidOperationException("Simulated persistence failure.")
+                : base.ReplaceAsync(record, cancellationToken);
     }
 
     /// <summary>Throws for a specific expected date, matching otherwise, to exercise failure isolation.</summary>

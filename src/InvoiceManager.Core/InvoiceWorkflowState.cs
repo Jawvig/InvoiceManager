@@ -96,6 +96,14 @@ public sealed record FreeAgentInterventionPending(
     ActualInvoiceDetails ActualDetails, OneDriveDetails OneDriveDetails, FreeAgentInterventionId InterventionId);
 
 /// <summary>
+/// Proof that this workflow genuinely POSTed <see cref="Attachment"/> to <see cref="Bill"/>.
+/// Bill-bound because matching can find a different bill on a later retry (the contact's
+/// bills changed, an earlier ambiguous match resolved differently) - proof from an earlier
+/// bill must never be presented as evidence for a bill it was never uploaded to.
+/// </summary>
+public sealed record FreeAgentAttemptedAttachment(FreeAgentBillIdentity Bill, FreeAgentAttachmentMetadata Attachment);
+
+/// <summary>
 /// A FreeAgent step failed technically, hit a lock/conflict, or returned a
 /// business-rule rejection that isn't a normal match/no-match outcome. Always
 /// retried on a later run, mirroring <see cref="RetrievalError"/>: <c>ListDueAsync</c>
@@ -105,19 +113,22 @@ public sealed record FreeAgentInterventionPending(
 /// source retrieval from scratch.
 /// </summary>
 /// <param name="AttemptedAttachment">
-/// The exact metadata of an attachment this run genuinely POSTed to FreeAgent before
-/// erroring - set only when the upload itself succeeded but its read-back verification
-/// failed (<c>FreeAgentVerificationFailed</c> from the attach step specifically), so a
-/// retry can pass it back as <c>expectedExisting</c> and recognise its own prior upload.
-/// <see cref="Core.None"/> for every other error cause (a lock, a business rejection, a
-/// technical exception, or a failure before the attach step ever ran), so a retry can
-/// never mistake a bill's pre-existing, unrelated attachment for its own.
+/// Proof of an attachment this run genuinely POSTed to FreeAgent before erroring - set only
+/// when the upload itself succeeded (bound to the bill it was uploaded to), whether the
+/// error is that its read-back verification failed, or a later technical failure (a
+/// reconciliation/persistence exception, or a re-download failure resuming this same
+/// FreeAgentError) that struck after the upload but didn't change what was already known.
+/// A retry passes it back as <c>expectedExisting</c>, but only when the newly matched bill
+/// is the same one it was uploaded to, so it recognises its own prior upload instead of
+/// resuming with a fabricated identity. <see cref="Core.None"/> for every other error cause
+/// (a lock, a business rejection, or a failure before any attach was ever attempted), so a
+/// retry can never mistake a bill's pre-existing, unrelated attachment for its own.
 /// </param>
 public sealed record FreeAgentError(
     ActualInvoiceDetails ActualDetails,
     OneDriveDetails OneDriveDetails,
     string ErrorMessage,
-    Option<FreeAgentAttachmentMetadata> AttemptedAttachment);
+    Option<FreeAgentAttemptedAttachment> AttemptedAttachment);
 
 /// <summary>
 /// The current state of an invoice record as it moves through retrieval,

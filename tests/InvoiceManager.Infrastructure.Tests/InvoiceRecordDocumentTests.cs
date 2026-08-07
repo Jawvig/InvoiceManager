@@ -96,9 +96,11 @@ public sealed class InvoiceRecordDocumentTests
             SampleActualDetails,
             new OneDriveDetails(OneDriveLocation, DriveId, ItemId),
             "verification failed on the prior attempt",
-            new FreeAgentAttachmentMetadata(
-                "2025-07-05 Test Invoice G152207778 £9.99 exc.pdf", 1024, "application/pdf",
-                new DateTimeOffset(2025, 7, 6, 8, 30, 0, TimeSpan.Zero))));
+            new FreeAgentAttemptedAttachment(
+                new FreeAgentBillIdentity("https://api.sandbox.freeagent.com/v2/bills/1"),
+                new FreeAgentAttachmentMetadata(
+                    "2025-07-05 Test Invoice G152207778 £9.99 exc.pdf", 1024, "application/pdf",
+                    new DateTimeOffset(2025, 7, 6, 8, 30, 0, TimeSpan.Zero)))));
 
         var roundTripped = InvoiceRecordDocument.FromRecord(record).ToRecord();
 
